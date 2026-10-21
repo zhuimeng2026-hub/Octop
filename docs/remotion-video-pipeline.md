@@ -76,6 +76,19 @@ node sync.mjs \
 JWT 取自服务器 Dashboard 的 Local Storage `auth_token`（或服务器上
 `octop user login` 生成的 `~/.octop/cli_state.json`）。
 
+**服务器不需要能连到本机**：同步器只做出站请求（拉目录树、下载任务、可选上传）。
+本机拉不到任务时最常见的原因是服务器上那个 agent 没在运行——workspace 读写接口
+要求 agent 存活。
+
+### 成片的两种交付方式
+
+| 模式 | 命令 | 成片在哪 | token 权限 |
+|------|------|---------|-----------|
+| 回传（默认） | `node sync.mjs …` | 本机 + 服务器 `render-jobs/<job>/final.mp4`（agent 可在对话里发出来） | 读 + 写 |
+| **本地（只读）** | `node sync.mjs … --no-upload` | 只在本机 `remotion/work/<job>/project/out/final.mp4` | 只读 |
+
+本地模式不需要写权限，成片也不会出现在服务器上；适合「视频就在渲染机上取」的用法。
+
 ## 两种产出形态
 
 | 形态 | 服务器产出 | 本机使用 | 适用 |

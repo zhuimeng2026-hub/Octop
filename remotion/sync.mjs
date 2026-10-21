@@ -37,6 +37,9 @@ function parseArgs(argv) {
     interval: 30,
     once: false,
     quality: "prod",
+    // Local-only mode: keep the rendered video on this machine and never
+    // write back to the server (read-only token is enough).
+    upload: true,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -49,6 +52,7 @@ function parseArgs(argv) {
     else if (arg === "--interval") args.interval = Number(next());
     else if (arg === "--quality") args.quality = next();
     else if (arg === "--once") args.once = true;
+    else if (arg === "--no-upload") args.upload = false;
   }
   return args;
 }
@@ -164,8 +168,12 @@ async function handleJob(client, jobName, args, state, statePath) {
   console.log(`[sync] job ${jobName}: rendering (${args.quality})…`);
   await runRender(localProject, outFile, args.quality);
 
-  console.log(`[sync] job ${jobName}: uploading result…`);
-  await client.uploadFile(outFile, `${jobDir}/final.mp4`);
+  if (args.upload) {
+    console.log(`[sync] job ${jobName}: uploading result…`);
+    await client.uploadFile(outFile, `${jobDir}/final.mp4`);
+  } else {
+    console.log(`[sync] job ${jobName}: kept locally → ${outFile}`);
+  }
 
   state.done.push({ job: jobName, at: new Date().toISOString() });
   writeState(statePath, state);

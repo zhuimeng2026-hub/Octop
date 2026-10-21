@@ -65,11 +65,20 @@ node sync.mjs \
 
 - `--once`：只跑一轮（适合 cron / 手工触发）
 - `--work ./work`：本地工作目录（默认 `remotion/work`）
+- `--no-upload`：**本地模式**——只从服务器取任务、渲染后**不回传**，成片留在本机
+  （`work/<job>/project/out/final.mp4`）。只读 token 就够。
 - 任务处理记录在 `work/state.json`，已完成的 job 不会重复渲染
+
+### 两种交付方式
+
+| 模式 | 成片在哪 | 需要的权限 |
+|------|---------|-----------|
+| 默认（回传） | 本机 + 服务器 workspace 的 `render-jobs/<job>/final.mp4` | 读 + 写 |
+| `--no-upload`（本地） | 只在本机 `work/<job>/project/out/final.mp4` | 只读 |
 
 ### token 怎么拿
 
-同步器需要一个**对服务器有读写该 agent workspace 权限**的 JWT：
+同步器需要一个**对该 agent workspace 有权限**的 JWT：
 
 1. 浏览器登录 `https://ocbot.aixifs.com/videogen`，F12 → Application → Local Storage →
    `auth_token` 的值；或
@@ -77,6 +86,8 @@ node sync.mjs \
 
 > workspace 的读写接口要求 **agent 处于运行中**（`require_running_workspace`），
 > 也就是服务器上那个 agent 要开着。
+>
+> 服务器不需要能连到本机：同步器只做出站请求（GET 树 / 下载 / 可选上传）。
 
 ## 服务器侧（模型）要做什么
 
