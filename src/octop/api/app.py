@@ -112,6 +112,10 @@ def build_app(server: OctopServer) -> FastAPI:
         description=API_DESCRIPTION,
         openapi_url="/api/openapi.json" if enable_api_docs else None,
         openapi_tags=OPENAPI_TAGS,
+        # Mounted under a path prefix (e.g. "/videogen"): Starlette strips it
+        # from the request path before routing, so the same routers answer
+        # both "/api/…" and "/videogen/api/…".
+        root_path=(cfg.base_path if cfg else "") or "",
     )
     configure_openapi(app)
     app.state.octop_server = server

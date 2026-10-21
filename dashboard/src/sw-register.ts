@@ -12,6 +12,8 @@
  *     so Vite HMR and an old worker do not fight over navigations.
  */
 
+import { getBasePath } from "./api/config";
+
 let pendingRegistration: ServiceWorkerRegistration | null = null;
 let applyingUpdate = false;
 
@@ -64,8 +66,11 @@ export async function applyUpdate(): Promise<void> {
 
 /** Production registration. Exported for unit tests (vitest always sets DEV). */
 export async function registerProductionSW(): Promise<void> {
-  const registration = await navigator.serviceWorker.register("/sw.js", {
-    scope: "/",
+  // Under a mount prefix (e.g. "/videogen") the worker must be registered
+  // under that prefix too, otherwise it would claim the whole origin.
+  const base = getBasePath();
+  const registration = await navigator.serviceWorker.register(`${base}/sw.js`, {
+    scope: `${base}/`,
     updateViaCache: "none",
   });
 

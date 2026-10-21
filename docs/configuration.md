@@ -97,6 +97,7 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
 {
   "bind_host": "127.0.0.1",
   "port": 8088,
+  "base_path": "",
   "log_level": "info",
   "access_token_ttl_seconds": 86400,
   "login_max_attempts": 5,
@@ -159,6 +160,42 @@ Notes:
   Plugins). Bundled plugins are copied into `~/.octop/plugins/` on init and
   server start with `enabled: false`. `bundled_plugins_seeded` lists ids
   already offered so uninstall does not come back on the next start.
+- `base_path` mounts the whole app under a URL path prefix (e.g.
+  `/videogen`). Empty (default) = the origin root. See
+  [Deploying under a path prefix](#deploying-under-a-path-prefix).
+
+## Deploying under a path prefix
+
+Set `base_path` (or `OCTOP_BASE_PATH`) to serve the dashboard and the API
+under a sub-path instead of the origin root:
+
+```json
+{ "bind_host": "0.0.0.0", "port": 8088, "base_path": "/videogen" }
+```
+
+The API then answers on both `/api/…` and `/videogen/api/…`, so a reverse
+proxy may either forward the prefix unchanged or strip it — both work.
+
+**The dashboard must be built with the same prefix.** The SPA bundle carries
+the prefix in its asset URLs, its API base, its router basename and its
+service-worker scope, so the build has to know it:
+
+```bash
+cd dashboard
+BASE_URL=/videogen npm run build     # → src/octop/dashboard/
+```
+
+`BASE_URL` may also be an absolute origin (`https://api.example.com`) for a
+split dashboard/API deployment; the path prefix is then not applied to the
+router.
+
+With TLS terminated by an outer proxy, `config.json → tls` stays empty
+(`enabled: false`, no `cert_file` / `key_file`) and the proxy must forward
+`X-Forwarded-Proto` / `X-Forwarded-Host` so OAuth callbacks and secure
+cookies use the public `https://` origin. `X-Forwarded-For` is only trusted
+when the peer is loopback (`api/common/client_ip.py`), so the proxy should run
+on the same host as Octop — otherwise failed logins are counted against the
+proxy's IP.
 
 ## Environment overrides
 
@@ -170,6 +207,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_HOME` | path | `~/.octop` | Install root (DB, secrets, workspaces, plugins) |
 | `OCTOP_BIND_HOST` | string | `127.0.0.1` | Listen address (use `0.0.0.0` for LAN access) |
 | `OCTOP_PORT` | int | `8088` | Listen port (`0`–`65535`; `0` asks the OS for a free port) |
+| `OCTOP_BASE_PATH` | string | empty | URL path prefix the app is mounted under (e.g. `/videogen`); empty = origin root |
 | `OCTOP_LOG_LEVEL` | string | `info` | One of `debug` `info` `warning` `error` |
 | `OCTOP_LOG_RETENTION_DAYS` | int | `14` | Keep rotated `octop.YYYY-MM-DD.log` files for this many days |
 | `OCTOP_LOG_MAX_BYTES` | int | `104857600` (100 MiB) | Roll the active log when it exceeds this size (in addition to daily rotation) |

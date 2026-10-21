@@ -2,6 +2,7 @@ import { webcrypto } from "node:crypto";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import fs from "node:fs";
 import path from "path";
 
 // serialize-javascript@7 (pulled in by vite-plugin-pwa → @rollup/plugin-terser)
@@ -52,10 +53,49 @@ function suppressViteDisconnectReload(): Plugin {
   };
 }
 
+/**
+ * Rewrite the static PWA manifest so it points at the public base path.
+ *
+ * `public/manifest.json` is copied verbatim by Vite, so under a mount prefix
+ * (e.g. "/videogen") `start_url` / `scope` would still point at the origin
+ * root and the installed shortcut would open a 404.
+ */
+function prefixWebManifest(base: string): Plugin {
+  return {
+    name: "octop-prefix-web-manifest",
+    apply: "build",
+    closeBundle() {
+      if (base === "/") return;
+      const manifestPath = path.resolve(
+        __dirname,
+        "../src/octop/dashboard/manifest.json",
+      );
+      if (!fs.existsSync(manifestPath)) return;
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as {
+        id?: string;
+        start_url?: string;
+        scope?: string;
+      };
+      const prefix = base.replace(/\/+$/, "");
+      manifest.id = prefix;
+      manifest.start_url = prefix;
+      manifest.scope = prefix;
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   // Empty = same-origin; frontend and backend served together, no hardcoded host.
   const apiBaseUrl = env.BASE_URL ?? "";
+  // Public base path of the built SPA. When the app is mounted under a path
+  // prefix (e.g. "/videogen"), Vite must emit asset URLs under that prefix
+  // too — otherwise index.html points at "/assets/…" and 404s.
+  const publicBase =
+    apiBaseUrl && !/^[a-z][a-z0-9+.-]*:\/\//i.test(apiBaseUrl)
+      ? `${apiBaseUrl.replace(/\/+$/, "")}/`
+      : "/";
   // Allow overriding the backend port via VITE_API_PORT env variable (default: 8088)
   const apiPort = process.env.VITE_API_PORT ?? env.VITE_API_PORT ?? "8088";
 
@@ -88,6 +128,7 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    base: publicBase,
     build: {
       outDir: path.resolve(__dirname, "../src/octop/dashboard"),
       emptyOutDir: true,
@@ -170,6 +211,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       suppressViteDisconnectReload(),
+      prefixWebManifest(publicBase),
       react(),
       VitePWA({
         // prompt: new SW stays in waiting until the user accepts via

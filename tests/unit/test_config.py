@@ -430,3 +430,31 @@ def test_non_object_config_raises(tmp_path: Path):
     with pytest.raises(ValueError, match="JSON object"):
         load_config(cfg_path)
     assert cfg_path.read_text(encoding="utf-8") == "[1, 2]"
+
+
+def test_base_path_defaults_to_empty(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg = load_config(cfg_path)
+    assert cfg.base_path == ""
+
+
+def test_base_path_read_from_file_and_normalized(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"base_path": "videogen/"}), encoding="utf-8")
+    cfg = load_config(cfg_path)
+    assert cfg.base_path == "/videogen"
+
+
+def test_base_path_root_slash_is_empty(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"base_path": "/"}), encoding="utf-8")
+    cfg = load_config(cfg_path)
+    assert cfg.base_path == ""
+
+
+def test_base_path_env_overrides_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"base_path": "/from-file"}), encoding="utf-8")
+    monkeypatch.setenv("OCTOP_BASE_PATH", "/from-env/")
+    cfg = load_config(cfg_path)
+    assert cfg.base_path == "/from-env"

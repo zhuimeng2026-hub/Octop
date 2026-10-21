@@ -18,12 +18,17 @@ def resolve_public_base(request: Request) -> str:
     Trusts ``X-Forwarded-Proto`` / ``X-Forwarded-Host`` when present (typical
     behind a reverse proxy). Prefer deploying Octop behind a trusted proxy and
     keeping the dashboard same-origin with the API for OIDC cookies.
+
+    When the app is mounted under a path prefix (``base_path``), the prefix is
+    appended so callback URLs point at e.g.
+    ``https://host/videogen/api/auth/oidc/callback``.
     """
+    root_path = (request.scope.get("root_path") or "").rstrip("/")
     forwarded_proto = _first_header_value(request.headers.get("x-forwarded-proto"))
     forwarded_host = _first_header_value(request.headers.get("x-forwarded-host"))
     if forwarded_proto:
         host = forwarded_host or request.headers.get("host")
         if host:
-            return f"{forwarded_proto}://{host}".rstrip("/")
+            return f"{forwarded_proto}://{host}{root_path}".rstrip("/")
 
-    return str(request.url.replace(path="", query="", fragment="")).rstrip("/")
+    return f"{str(request.url.replace(path='', query='', fragment='')).rstrip('/')}{root_path}"

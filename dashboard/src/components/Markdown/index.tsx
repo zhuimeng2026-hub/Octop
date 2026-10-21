@@ -19,6 +19,7 @@ import {
   isAuthDownloadHref,
 } from "../AuthFileDownloadLink";
 import { isShellLanguage } from "../../utils/shellCodeBlock";
+import { getApiUrl } from "../../api/config";
 import { copyText } from "../../utils/copyText";
 import { loadMermaid } from "./mermaidLoader";
 import { HighlightedCode } from "./syntaxHighlight";
@@ -149,7 +150,9 @@ function resolveImageSrc(src: string): string {
   const workspaceMatch = filePath.match(/[/\\]\.octop[/\\]workspace[/\\](.*)/);
   if (workspaceMatch) {
     const relPath = workspaceMatch[1].replace(/\\/g, "/");
-    return `/api/workspace/media?path=${encodeURIComponent(relPath)}`;
+    return getApiUrl(
+      `/workspace/media?path=${encodeURIComponent(relPath)}`,
+    );
   }
 
   return src;

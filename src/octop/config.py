@@ -125,6 +125,8 @@ class CapabilitiesConfig:
 class OctopConfig:
     bind_host: str = "127.0.0.1"
     port: int = 8088
+    # URL path prefix the app is mounted under, e.g. "/videogen" (empty = root).
+    base_path: str = ""
     log_level: str = "info"
     access_token_ttl_seconds: int = 86400
     login_max_attempts: int = 5
@@ -416,6 +418,19 @@ def env_bind_overrides() -> tuple[str | None, int | None]:
     return host, port
 
 
+def _normalize_base_path(value: str) -> str:
+    """Normalize a URL path prefix to ``""`` or ``/segment`` form.
+
+    ``"videogen/"`` → ``"/videogen"``; ``"/"`` → ``""`` (mounted at root).
+    """
+    path = (value or "").strip().rstrip("/")
+    if not path:
+        return ""
+    if not path.startswith("/"):
+        path = "/" + path
+    return path
+
+
 def load_config(path: Path) -> OctopConfig:
     """Load ``config.json``; write defaults if absent. Apply env overrides.
 
@@ -599,6 +614,9 @@ def load_config(path: Path) -> OctopConfig:
     return OctopConfig(
         bind_host=merged["bind_host"],
         port=int(merged["port"]),
+        base_path=_normalize_base_path(
+            os.environ.get("OCTOP_BASE_PATH") or merged.get("base_path") or ""
+        ),
         log_level=merged["log_level"],
         access_token_ttl_seconds=int(merged["access_token_ttl_seconds"]),
         login_max_attempts=int(merged.get("login_max_attempts", 5)),

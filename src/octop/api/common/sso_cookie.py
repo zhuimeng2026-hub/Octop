@@ -17,12 +17,18 @@ def request_is_https(request: Request) -> bool:
     return request.url.scheme == "https"
 
 
+def _cookie_path(request: Request) -> str:
+    """Cookie path, including the mount prefix (e.g. "/videogen/api/auth")."""
+    root_path = (request.scope.get("root_path") or "").rstrip("/")
+    return f"{root_path}{SSO_COOKIE_PATH}"
+
+
 def set_sso_state_cookie(response: JSONResponse, request: Request, state: str) -> None:
     response.set_cookie(
         SSO_STATE_COOKIE,
         state,
         max_age=SSO_STATE_TTL_SECONDS,
-        path=SSO_COOKIE_PATH,
+        path=_cookie_path(request),
         httponly=True,
         secure=request_is_https(request),
         samesite="lax",
@@ -30,7 +36,9 @@ def set_sso_state_cookie(response: JSONResponse, request: Request, state: str) -
 
 
 def delete_sso_state_cookie(response: Response, request: Request) -> None:
-    response.delete_cookie(SSO_STATE_COOKIE, path=SSO_COOKIE_PATH, secure=request_is_https(request))
+    response.delete_cookie(
+        SSO_STATE_COOKIE, path=_cookie_path(request), secure=request_is_https(request)
+    )
 
 
 def cookie_state(request: Request) -> str | None:
