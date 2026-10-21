@@ -164,21 +164,22 @@ class SsoService:
             agent_raw = extra.get("agent_id", "")
             agent_id = str(agent_raw).strip() if agent_raw is not None else ""
             extra = {"agent_id": agent_id}
-        elif kind == "dingtalk":
+        elif kind in {"dingtalk", "wechat_open"}:
             extra = {}
 
         dashboard_origin = self._nullable_string(body, "dashboard_origin", current)
-        if kind in {"feishu", "dingtalk", "wecom"}:
+        if kind in {"feishu", "dingtalk", "wecom", "wechat_open"}:
             dashboard_origin = parse_strict_origin(dashboard_origin)
 
         issuer = self._string(body, "issuer", current, "")
-        if kind in {"feishu", "dingtalk", "wecom"}:
+        if kind in {"feishu", "dingtalk", "wecom", "wechat_open"}:
             issuer = ""
 
         default_names = {
             "feishu": "Feishu",
             "dingtalk": "DingTalk",
             "wecom": "WeCom",
+            "wechat_open": "微信",
         }
         provider = self._services.sso_repo.upsert_by_kind(
             kind,
