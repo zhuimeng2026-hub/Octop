@@ -106,7 +106,6 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
   "default_timezone": "Asia/Shanghai",
   "enable_dashboard": true,
   "enable_api_docs": false,
-  "base_path": "",
   "require_setup_password": true,
   "max_upload_mb": 100,
   "database": {
@@ -191,6 +190,10 @@ BASE_URL=/videogen npm run build     # → src/octop/dashboard/
 
 or, from the repo root, `make build-frontend BASE_URL=/videogen`.
 
+> **Mismatching the two is the #1 deployment trap**: setting `base_path` without
+> rebuilding the dashboard with the same `BASE_URL` serves a blank page (the
+> SPA requests `/assets/…` and gets a 404). Symptom, verification one-liner
+> and fix: [deployment-pitfalls.md](deployment-pitfalls.md#1-面板白屏配了-base_path前端却没用-base_url-构建-).
 With TLS terminated by an outer proxy, `config.json → tls` stays empty
 (`enabled: false`, no `cert_file` / `key_file`) and the proxy must forward
 `X-Forwarded-Proto` / `X-Forwarded-Host` so OAuth callbacks and secure
