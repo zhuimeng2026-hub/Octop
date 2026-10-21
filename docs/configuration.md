@@ -185,6 +185,8 @@ cd dashboard
 BASE_URL=/videogen npm run build     # → src/octop/dashboard/
 ```
 
+or, from the repo root, `make build-frontend BASE_URL=/videogen`.
+
 `BASE_URL` may also be an absolute origin (`https://api.example.com`) for a
 split dashboard/API deployment; the path prefix is then not applied to the
 router.

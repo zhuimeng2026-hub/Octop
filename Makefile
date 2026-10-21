@@ -31,6 +31,10 @@ PIP  := $(if $(UV),uv pip,python3 -m pip)
 # Parallel workers for make test / make test-fast (override: make test PYTEST_JOBS=4)
 PYTEST_JOBS ?= auto
 
+# Public base path of the built dashboard, e.g. BASE_URL=/videogen when the app
+# is served under a URL path prefix. Empty = origin root.
+BASE_URL ?=
+
 # ─── Help ────────────────────────────────────────────────────────────────────
 
 .PHONY: help
@@ -42,6 +46,7 @@ help:
 	@echo "Build targets:"
 	@echo "  build            Build frontend + Python wheel (full package)"
 	@echo "  build-frontend   Build React dashboard only → $(DASHBOARD_DEST)"
+	@echo "                    (prefixed deployment: make build-frontend BASE_URL=/videogen)"
 	@echo "  build-wheel      Build Python wheel only (assumes frontend built)"
 	@echo ""
 	@echo "Publish targets:"
@@ -97,7 +102,7 @@ build-frontend:
 	@echo "[build-frontend] Installing npm dependencies..."
 	cd $(DASHBOARD_DIR) && npm ci
 	@echo "[build-frontend] Building dashboard (output: $(DASHBOARD_DEST))..."
-	cd $(DASHBOARD_DIR) && NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" npm run build
+	cd $(DASHBOARD_DIR) && MSYS_NO_PATHCONV=1 BASE_URL="$(BASE_URL)" NODE_ENV=production NODE_OPTIONS="--max-old-space-size=2048" npm run build
 	@echo "[build-frontend] Done."
 
 .PHONY: build-wheel
