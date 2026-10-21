@@ -65,16 +65,25 @@ node sync.mjs \
 
 - `--once`：只跑一轮（适合 cron / 手工触发）
 - `--work ./work`：本地工作目录（默认 `remotion/work`）
-- `--no-upload`：**本地模式**——只从服务器取任务、渲染后**不回传**，成片留在本机
-  （`work/<job>/project/out/final.mp4`）。只读 token 就够。
+- `--deliver auto|server|local`：成片去向（默认 `auto`，见下）
+- `--no-upload`：`--deliver local` 的别名
 - 任务处理记录在 `work/state.json`，已完成的 job 不会重复渲染
 
-### 两种交付方式
+### 成片去向：自动，不必手工切模式
 
-| 模式 | 成片在哪 | 需要的权限 |
-|------|---------|-----------|
-| 默认（回传） | 本机 + 服务器 workspace 的 `render-jobs/<job>/final.mp4` | 读 + 写 |
-| `--no-upload`（本地） | 只在本机 `work/<job>/project/out/final.mp4` | 只读 |
+| 模式 | 行为 | 需要的权限 |
+|------|------|-----------|
+| `auto`（默认） | 本机渲染后**自动尝试回传**；回传失败（如只读凭证）就留在本机，成片不会丢 | 只读即可 |
+| `server` | 一定回传服务器，回传失败则该任务报错 | 读 + 写 |
+| `local` | 只留本机 `work/<job>/project/out/final.mp4` | 只读 |
+
+单个任务还能自己带指令，优先级高于上面的默认值：
+
+- `script.json` 顶层的 `"deliver": "server" | "local"`（服务器上的模型写的）
+- 或任务目录里一个 `deliver` 文件，内容为 `server` / `local`
+
+所以「界面上自动切换」的做法是：用户在对话里说「成片发我」，模型就在 `script.json`
+里写 `"deliver": "server"`；本机下一轮轮询就会把成片传回服务器，用户在聊天里就能看到。
 
 ### token 怎么拿
 

@@ -109,7 +109,29 @@ location /videogen/ { proxy_pass http://127.0.0.1:8088; }
 
 ---
 
-## 5. 同步器「已处理」但任务没渲染
+## 5. 成片回传失败：任务不会失败，但视频也没在服务器上
+
+**症状**：本机日志出现
+
+```
+[sync] job 20261021-1430-x: publish failed (403 Forbidden …) — kept locally → …inal.mp4
+```
+
+而服务器 workspace 里没有 `final.mp4`。
+
+**原因**：同步器的默认模式是 `auto`——渲染完**自动尝试回传**，回传失败就保留在本机，
+不抛错、不丢片。失败的常见原因：token 过期（401）、token 只有读权限（403）、agent
+没在运行（`require_running_workspace`）、服务器磁盘满。
+
+**修法**：看日志里的状态码。401 → 换 token；403 → 确认该 token 对目标 agent 有写
+权限；其它 → 先看服务器侧 agent 状态和 `/api/health`。想让发布失败时把任务标成失败
+（而不是降级留本机），用 `--deliver server`。
+
+**为什么默认不直接失败**：回传只是「把成片放到聊天里」这个附加动作，不该因为它
+失败就丢掉已经渲染好的片子——所以默认降级留本机。逐条任务的去向由服务器上的模型
+在 `script.json` 里用 `"deliver": "server" | "local"` 决定。
+
+## 6. 同步器「已处理」但任务没渲染
 
 `remotion/work/state.json` 记录了已完成的 job。手工删掉某个条目即可重跑：
 
@@ -119,7 +141,7 @@ node -e "const f='remotion/work/state.json';const s=require('fs');s.writeFileSyn
 
 ---
 
-## 6. 本机渲染卡在「downloading chromium」几小时
+## 7. 本机渲染卡在「downloading chromium」几小时
 
 **症状**：`[render] ensuring chromium…` 之后几乎不动，下载进度个位数百分比
 爬几小时。
@@ -144,7 +166,7 @@ npx playwright install chromium
 
 ---
 
-## 7. 改了 `base_path` 但 OAuth 回调 / SSO cookie 指向旧路径
+## 8. 改了 `base_path` 但 OAuth 回调 / SSO cookie 指向旧路径
 
 `base_path` 已经同时作用于 `resolve_public_base()`（外部可见 origin）和
 SSO 状态 cookie 的 path（`api/common/sso_cookie.py`），所以 OAuth 回调会带上

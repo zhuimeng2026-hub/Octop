@@ -12,6 +12,7 @@
 | `height` | int | `1080` | 画面高 |
 | `theme` | object | 见下 | 配色与字体 |
 | `scenes` | array | 必填 | 场景列表，顺序即时间轴 |
+| `deliver` | string | 省略 | 成片去向：`server` 回传服务器 / `local` 只留本机 / 省略=自动（能回传就回传，否则留本机） |
 
 ## theme
 

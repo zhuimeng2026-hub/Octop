@@ -37,9 +37,12 @@ function parseArgs(argv) {
     interval: 30,
     once: false,
     quality: "prod",
-    // Local-only mode: keep the rendered video on this machine and never
-    // write back to the server (read-only token is enough).
-    upload: true,
+    // Where the finished video goes:
+    //   auto   — render locally, then try to publish it back to the server;
+    //            if the token cannot write, the video simply stays local
+    //   server — always publish back (fail the job if that is not allowed)
+    //   local  — never publish, keep the video on this machine
+    deliver: "auto",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -52,7 +55,8 @@ function parseArgs(argv) {
     else if (arg === "--interval") args.interval = Number(next());
     else if (arg === "--quality") args.quality = next();
     else if (arg === "--once") args.once = true;
-    else if (arg === "--no-upload") args.upload = false;
+    else if (arg === "--deliver") args.deliver = next();
+    else if (arg === "--no-upload") args.deliver = "local";
   }
   return args;
 }
@@ -140,6 +144,26 @@ function runRender(projectDir, outFile, quality) {
   });
 }
 
+/**
+ * Where should this job's video go?
+ *
+ * The job may carry its own directive — `deliver` in script.json (written by
+ * the model on the server, e.g. when the user asks for the video to show up in
+ * the chat) or a `deliver` file next to it. It wins over the daemon default.
+ */
+function resolveDeliver(jobDir, script, fallback) {
+  const fromScript = script && typeof script.deliver === "string" ? script.deliver : "";
+  let fromFile = "";
+  try {
+    fromFile = fs.readFileSync(path.join(jobDir, "deliver"), "utf-8").trim();
+  } catch {
+    // no directive file
+  }
+  const chosen = (fromScript || fromFile || fallback || "auto").toLowerCase();
+  if (["server", "local", "auto"].includes(chosen)) return chosen;
+  return "auto";
+}
+
 async function handleJob(client, jobName, args, state, statePath) {
   const jobDir = `${args.queue}/${jobName}`;
   const localDir = path.join(args.work, jobName);
@@ -148,7 +172,16 @@ async function handleJob(client, jobName, args, state, statePath) {
   fs.mkdirSync(localAssets, { recursive: true });
 
   console.log(`[sync] job ${jobName}: downloading…`);
-  await client.downloadFile(`${jobDir}/script.json`, path.join(localProject, "script.json"));
+  const scriptPath = path.join(localProject, "script.json");
+  await client.downloadFile(`${jobDir}/script.json`, scriptPath);
+
+  let script = null;
+  try {
+    script = JSON.parse(fs.readFileSync(scriptPath, "utf-8"));
+  } catch {
+    // the renderer validates the script and reports the real problem
+  }
+  const deliver = resolveDeliver(jobDir, script, args.deliver);
 
   let assets = [];
   try {
@@ -168,11 +201,21 @@ async function handleJob(client, jobName, args, state, statePath) {
   console.log(`[sync] job ${jobName}: rendering (${args.quality})…`);
   await runRender(localProject, outFile, args.quality);
 
-  if (args.upload) {
-    console.log(`[sync] job ${jobName}: uploading result…`);
-    await client.uploadFile(outFile, `${jobDir}/final.mp4`);
-  } else {
+  if (deliver === "local") {
     console.log(`[sync] job ${jobName}: kept locally → ${outFile}`);
+  } else {
+    try {
+      console.log(`[sync] job ${jobName}: publishing to server…`);
+      await client.uploadFile(outFile, `${jobDir}/final.mp4`);
+      console.log(`[sync] job ${jobName}: published → ${jobDir}/final.mp4`);
+    } catch (err) {
+      if (deliver === "server") throw err;
+      // auto: publishing is best-effort — a read-only token must not lose
+      // the rendered video, it just stays on this machine.
+      console.log(
+        `[sync] job ${jobName}: publish failed (${err.message}) — kept locally → ${outFile}`,
+      );
+    }
   }
 
   state.done.push({ job: jobName, at: new Date().toISOString() });
