@@ -7,6 +7,7 @@ import {
   stripVirtualWorkspaceRoot,
   toWorkspaceApiPath,
 } from "./workspaceIoPath";
+import { rootPath, withBase } from "./basePath";
 
 export type ToolMediaItem = {
   url: string;
@@ -26,9 +27,9 @@ export function isDataUrl(url: string): boolean {
 
 /** URLs that require Authorization and must be fetched via requestBlob. */
 export function needsAuthBlobFetch(url: string): boolean {
-  const path = url.startsWith("http")
-    ? new URL(url).pathname
-    : url.split("?")[0];
+  // Compare against the backend path: the deployment sub-path ("/videogen")
+  // is part of the browser URL, not of the API route.
+  const path = rootPath(url);
   if (path === "/api/workspace/media") return true;
   // Bridge agent ids contain ``:`` (or ``%3A``); ``[^/]+`` still matches.
   if (/^\/api\/agents\/[^/]+\/avatar$/.test(path)) return true;
@@ -56,9 +57,11 @@ export function agentMediaPreviewUrl(
     source: toMediaPreviewSource(source, { agentId, fromWorkspace: false }),
   });
   if (mimeType) params.set("mime_type", mimeType);
-  return `/api/agents/${encodeURIComponent(
-    agentId,
-  )}/media/preview?${params.toString()}`;
+  return withBase(
+    `/api/agents/${encodeURIComponent(
+      agentId,
+    )}/media/preview?${params.toString()}`,
+  );
 }
 
 /** Extract ``inbound/…`` or ``outbound/…`` from a filesystem / API path. */
@@ -223,9 +226,11 @@ export function workspaceDownloadUrl(
       pathParam = toWorkspaceRel(raw) || "";
     }
   }
-  return `/api/agents/${encodeURIComponent(
-    agentId,
-  )}/workspace/download?path=${encodeURIComponent(pathParam)}`;
+  return withBase(
+    `/api/agents/${encodeURIComponent(
+      agentId,
+    )}/workspace/download?path=${encodeURIComponent(pathParam)}`,
+  );
 }
 
 /** True when *path* looks like a host filesystem absolute (or ``file://``). */
@@ -282,7 +287,9 @@ export function canonicalizeMediaApiUrl(
     const parsed = url.startsWith("http")
       ? new URL(url)
       : new URL(url, "http://octop.local");
-    const pathMatch = parsed.pathname.match(
+    // Match on the backend path so a deployment sub-path does not hide the
+    // route from the pattern.
+    const pathMatch = rootPath(parsed.pathname).match(
       /^\/api\/agents\/([^/]+)\/(media\/preview|workspace\/download)$/,
     );
     if (!pathMatch) return url;
@@ -362,7 +369,7 @@ export function resolveToolMediaUrl(
         )
       : canonicalizeMediaApiUrl(preview);
     if (
-      normalized.startsWith("/api/") ||
+      rootPath(normalized).startsWith("/api/") ||
       normalized.startsWith("http") ||
       isDataUrl(normalized)
     ) {
@@ -381,8 +388,8 @@ export function resolveToolMediaUrl(
     return url;
   }
 
-  if (url.startsWith("/api/agents/")) {
-    return url;
+  if (rootPath(url).startsWith("/api/agents/")) {
+    return withBase(url);
   }
 
   if (

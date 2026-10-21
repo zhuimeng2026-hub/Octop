@@ -54,13 +54,15 @@ function _notify() {
 
 function _refreshSwReady(): void {
   if (!("serviceWorker" in navigator)) return;
-  void navigator.serviceWorker.getRegistration("/").then((reg) => {
-    const ready = !!(reg?.active || navigator.serviceWorker.controller);
-    if (ready !== _swReady) {
-      _swReady = ready;
-      _notify();
-    }
-  });
+  void navigator.serviceWorker
+    .getRegistration(import.meta.env.BASE_URL || "/")
+    .then((reg) => {
+      const ready = !!(reg?.active || navigator.serviceWorker.controller);
+      if (ready !== _swReady) {
+        _swReady = ready;
+        _notify();
+      }
+    });
 }
 
 // Capture the event synchronously as early as possible.

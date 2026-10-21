@@ -13,6 +13,7 @@ from urllib.parse import quote, unquote
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 
+from octop.api.deps import request_route_path
 from octop.infra.bridge.ids import (
     BridgeAgentRef,
     parse_bridge_agent_id,
@@ -213,7 +214,7 @@ def install(app: Any, server: Any) -> None:
         request: Request,
         call_next: Callable[[Request], Awaitable[Any]],
     ) -> Any:
-        path = request.url.path
+        path = request_route_path(request)
         target = resolve_tunnel_target(
             path,
             request.headers.get("x-octop-agent-id"),

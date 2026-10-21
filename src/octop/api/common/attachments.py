@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import quote
 
+from octop.infra.base_path import apply_base_path
 from octop.infra.gateway.media.attachment_hints import is_preview_media_type
 from octop.infra.gateway.media.inbound_store import InboundFile, write_inbound
 
@@ -45,8 +46,10 @@ def dashboard_inbound_preview_url(
         params = f"source={quote(rel, safe='')}"
         if media_type:
             params += f"&mime_type={quote(media_type, safe='')}"
-        return f"/api/agents/{aid}/media/preview?{params}"
-    return f"/api/agents/{aid}/workspace/download?path={quote(rel, safe='')}"
+        path = f"/api/agents/{aid}/media/preview?{params}"
+    else:
+        path = f"/api/agents/{aid}/workspace/download?path={quote(rel, safe='')}"
+    return apply_base_path(path)
 
 
 async def save_attachment(

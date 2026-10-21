@@ -19,8 +19,8 @@ import {
   isAuthDownloadHref,
 } from "../AuthFileDownloadLink";
 import { isShellLanguage } from "../../utils/shellCodeBlock";
-import { getApiUrl } from "../../api/config";
 import { copyText } from "../../utils/copyText";
+import { rootPath, withBase } from "../../utils/basePath";
 import { loadMermaid } from "./mermaidLoader";
 import { HighlightedCode } from "./syntaxHighlight";
 import { useMathPlugins } from "./mathPlugins";
@@ -131,7 +131,7 @@ function resolveImageSrc(src: string): string {
   if (
     /^https?:\/\//i.test(src) ||
     src.startsWith("data:") ||
-    src.startsWith("/api/")
+    rootPath(src).startsWith("/api/")
   ) {
     return src;
   }
@@ -150,9 +150,7 @@ function resolveImageSrc(src: string): string {
   const workspaceMatch = filePath.match(/[/\\]\.octop[/\\]workspace[/\\](.*)/);
   if (workspaceMatch) {
     const relPath = workspaceMatch[1].replace(/\\/g, "/");
-    return getApiUrl(
-      `/workspace/media?path=${encodeURIComponent(relPath)}`,
-    );
+    return withBase(`/api/workspace/media?path=${encodeURIComponent(relPath)}`);
   }
 
   return src;

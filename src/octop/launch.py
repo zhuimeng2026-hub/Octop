@@ -8,10 +8,36 @@ import sys
 from contextlib import suppress
 from typing import Any
 
+from starlette.types import ASGIApp
+
+from octop.config import OctopConfig
+from octop.infra.base_path import BasePathApp, normalize_base_path, set_base_path
 from octop.infra.server import OctopServer
 from octop.infra.utils.accept_errors import coalesce_accept_errors
 
 logger = logging.getLogger(__name__)
+
+
+def build_asgi_app(server: OctopServer, cfg: OctopConfig) -> ASGIApp:
+    """Build the HTTP app, wrapped for sub-path deployment when configured.
+
+    ``cfg.base_path`` (config.json → ``base_path``, env → ``OCTOP_BASE_PATH``)
+    mounts the whole app under that prefix: ``/videogen/api/health`` is served,
+    ``/api/health`` is not. An empty base path keeps the root deployment
+    behaviour byte-for-byte.
+    """
+    from octop.api.app import build_app
+
+    app = build_app(server)
+    try:
+        base_path = normalize_base_path(cfg.base_path)
+    except ValueError:
+        logger.error("invalid base_path %r; serving at the root path", cfg.base_path)
+        base_path = ""
+    set_base_path(base_path)
+    if not base_path:
+        return app
+    return BasePathApp(app, base_path)
 
 
 def _ensure_linux_bubblewrap() -> None:
@@ -67,7 +93,6 @@ async def run_foreground(
     """Boot the domain server, serve the HTTP API, then shut down cleanly."""
     import uvicorn
 
-    from octop.api.app import build_app
     from octop.infra.bridge.transport import BRIDGE_WS_MAX_BYTES
     from octop.infra.setup.tls.http_companion import build_http_companion_app
     from octop.infra.setup.tls.listeners import build_listen_plan
@@ -99,7 +124,7 @@ async def run_foreground(
         )
         reload = False
 
-    app = build_app(srv)
+    app = build_asgi_app(srv, cfg)
     servers: list[uvicorn.Server] = []
 
     if plan.dual_listeners:

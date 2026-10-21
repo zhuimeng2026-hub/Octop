@@ -18,6 +18,7 @@ from octop.api.common.public_base import resolve_public_base
 from octop.api.deps import current_user, get_server, require_permission
 from octop.i18n import tr
 from octop.infra.auth.sso.redirect_after import sanitize_redirect_after
+from octop.infra.base_path import apply_base_path
 from octop.infra.connectors.builder import (
     mcp_server_name,
     normalize_weiyun_mcp_token,
@@ -231,7 +232,7 @@ async def _begin_oauth_flow(
     state = secrets.token_urlsafe(24)
     state_id = new_ulid()
     base = resolve_public_base(request)
-    redirect_uri = f"{base}/api/connectors/oauth/callback"
+    redirect_uri = f"{base}{apply_base_path('/api/connectors/oauth/callback')}"
     if oauth_target_requires_https(target) and _is_public_http_uri(redirect_uri):
         label = str(target.get("kind") or target.get("server_name") or "MCP")
         raise OctopError(
@@ -1472,7 +1473,7 @@ async def oauth_callback(
         )
 
     base = resolve_public_base(request)
-    redirect_uri = f"{base}/api/connectors/oauth/callback"
+    redirect_uri = f"{base}{apply_base_path('/api/connectors/oauth/callback')}"
 
     try:
         tokens = await exchange_oauth_code(

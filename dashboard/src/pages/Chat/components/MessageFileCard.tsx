@@ -1,3 +1,4 @@
+import { rootPath, withBase } from "../../../utils/basePath";
 import { useCallback, useState } from "react";
 import { Download, Eye, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -66,7 +67,7 @@ export function MessageFileCard({
         return;
       }
       const a = document.createElement("a");
-      a.href = url;
+      a.href = rootPath(url).startsWith("/api/") ? withBase(url) : url;
       a.download = filename || "download";
       a.target = "_blank";
       a.rel = "noreferrer";

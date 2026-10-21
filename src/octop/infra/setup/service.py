@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 from octop.config import load_config
+from octop.infra.base_path import apply_base_path
 from octop.infra.errors import corrupt_config_error
 from octop.infra.utils import posix_compat as pwd
 from octop.infra.utils.json_file import (
@@ -880,7 +881,7 @@ def _launchd_status(scope: ServiceScope) -> tuple[bool, bool | None, str]:
 def probe_health(host: str, port: int) -> tuple[bool, str]:
     import httpx
 
-    url = f"http://{host}:{port}/api/health"
+    url = f"http://{host}:{port}{apply_base_path('/api/health')}"
     try:
         response = httpx.get(url, timeout=3)
         response.raise_for_status()

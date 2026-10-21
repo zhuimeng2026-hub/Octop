@@ -126,6 +126,8 @@ class OctopConfig:
     bind_host: str = "127.0.0.1"
     port: int = 8088
     # URL path prefix the app is mounted under, e.g. "/videogen" (empty = root).
+    # Normalized here; ``launch.py`` re-normalizes with the stricter
+    # ``octop.infra.base_path`` rules before the app starts serving.
     base_path: str = ""
     log_level: str = "info"
     access_token_ttl_seconds: int = 86400
@@ -498,6 +500,8 @@ def load_config(path: Path) -> OctopConfig:
         merged["default_timezone"] = v
     if v := os.environ.get("OCTOP_CORS_ORIGINS"):
         merged["cors_origins"] = [s.strip() for s in v.split(",") if s.strip()]
+    if v := os.environ.get("OCTOP_BASE_PATH"):
+        merged["base_path"] = v
     if v := os.environ.get("OCTOP_ENABLE_DASHBOARD"):
         merged["enable_dashboard"] = _coerce_bool(
             "OCTOP_ENABLE_DASHBOARD", v, bool(merged["enable_dashboard"])
@@ -614,9 +618,7 @@ def load_config(path: Path) -> OctopConfig:
     return OctopConfig(
         bind_host=merged["bind_host"],
         port=int(merged["port"]),
-        base_path=_normalize_base_path(
-            os.environ.get("OCTOP_BASE_PATH") or merged.get("base_path") or ""
-        ),
+        base_path=_normalize_base_path(str(merged.get("base_path") or "")),
         log_level=merged["log_level"],
         access_token_ttl_seconds=int(merged["access_token_ttl_seconds"]),
         login_max_attempts=int(merged.get("login_max_attempts", 5)),

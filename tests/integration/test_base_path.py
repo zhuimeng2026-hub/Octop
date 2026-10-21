@@ -11,14 +11,14 @@ import pytest
 from tests.support.app import octop_client, write_octop_config
 
 
-async def test_api_answers_under_prefix_and_at_root(tmp_octop_home: Any) -> None:
-    """A prefixed deployment answers both ``/videogen/api/…`` and ``/api/…``."""
+async def test_api_answers_only_under_the_prefix(tmp_octop_home: Any) -> None:
+    """A prefixed deployment serves the API under the prefix, 404s elsewhere."""
     write_octop_config(tmp_octop_home, base_path="/videogen")
     async with octop_client(tmp_octop_home) as (client, _srv):
         prefixed = await client.get("/videogen/api/health")
         root = await client.get("/api/health")
         assert prefixed.status_code == 200
-        assert root.status_code == 200
+        assert root.status_code == 404
 
 
 async def test_prefix_routes_to_the_api_not_the_spa(tmp_octop_home: Any) -> None:

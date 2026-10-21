@@ -9,6 +9,7 @@ import {
   DesktopInstallGuide,
   IosGuide,
 } from "../../components/PwaInstallPrompt";
+import { withBase } from "../../utils/basePath";
 import { copyText } from "../../utils/copyText";
 
 interface CheckItem {
@@ -99,7 +100,7 @@ export default function PwaDebugPage() {
     // ── 3. SW registration state ─────────────────────────────────
     if (swSupported) {
       navigator.serviceWorker
-        .getRegistration("/")
+        .getRegistration(import.meta.env.BASE_URL || "/")
         .then((reg) => {
           if (!reg) {
             setChecks((prev) => [
@@ -166,7 +167,7 @@ export default function PwaDebugPage() {
     }
 
     // ── 5. Manifest fetch ────────────────────────────────────────
-    fetch("/manifest.json")
+    fetch(withBase("/manifest.json"))
       .then(async (res) => {
         const ct = res.headers.get("content-type") ?? "";
         let detail = `HTTP ${res.status}  Content-Type: ${ct}`;
@@ -205,7 +206,7 @@ export default function PwaDebugPage() {
                   const loaded = await new Promise<boolean>((resolve) => {
                     img.onload = () => resolve(true);
                     img.onerror = () => resolve(false);
-                    img.src = src.startsWith("/") ? src : `/${src}`;
+                    img.src = src.startsWith("/") ? src : withBase(`/${src}`);
                   });
                   if (!loaded) {
                     return `${src}: 加载失败`;
@@ -280,7 +281,7 @@ export default function PwaDebugPage() {
     // ── 6. sw.js fetch ───────────────────────────────────────────
     // Use GET + abort so HEAD 405 (some servers block HEAD) doesn't cause false fail.
     const swAbort = new AbortController();
-    fetch("/sw.js", { signal: swAbort.signal })
+    fetch(withBase("/sw.js"), { signal: swAbort.signal })
       .then((res) => {
         swAbort.abort();
         const cc = res.headers.get("cache-control") ?? "(none)";

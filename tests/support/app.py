@@ -12,6 +12,7 @@ import httpx
 
 from octop.api.app import build_app
 from octop.config import DatabaseConfig, load_config
+from octop.infra.base_path import BasePathApp
 from octop.infra.db.rebind import persist_database_config
 from octop.infra.server import OctopServer
 from tests.support.harness import patch_harness
@@ -41,12 +42,14 @@ async def octop_client(
     fake_agent: Any | None = None,
     patch_llm: bool = True,
     bind_database: bool = True,
+    base_path: str = "",
 ) -> AsyncIterator[tuple[httpx.AsyncClient, OctopServer]]:
     """Start OctopServer, yield ``(httpx client, server)``, then stop.
 
     Greenfield starts defer the control-plane DB until ``/setup/database``.
     Most tests set ``bind_database=True`` (default) to bind SQLite immediately.
     Pass ``bind_database=False`` to exercise deferred password / status paths.
+    ``base_path`` mounts the app under a URL sub-path (e.g. ``/videogen``).
     """
     ctx = patch_harness(fake_agent) if patch_llm else nullcontext(fake_agent)
     with ctx:
@@ -61,6 +64,11 @@ async def octop_client(
             await srv.app_runtime.proactive_scheduler.shutdown()
             srv.app_runtime.proactive_scheduler.suspend()
         app = build_app(srv)
+        # Fall back to the deployed base path from config.json, like launch.py.
+        cfg = srv.services.config if srv.services else srv.config
+        prefix = base_path or (cfg.base_path if cfg else "")
+        if prefix:
+            app = BasePathApp(app, prefix)
         try:
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app),

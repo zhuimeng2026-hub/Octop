@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.base_path import apply_base_path
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import PERMISSIONS, effective_permissions
@@ -123,7 +124,7 @@ def _user_avatar_url(server: Any, user_id: int) -> str | None:
     return profile_avatar_url(
         server.services.paths.user_avatars_dir,
         str(user_id),
-        f"/api/users/{user_id}/avatar",
+        apply_base_path(f"/api/users/{user_id}/avatar"),
     )
 
 

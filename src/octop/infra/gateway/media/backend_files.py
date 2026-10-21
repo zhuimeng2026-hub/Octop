@@ -28,6 +28,7 @@ import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from octop.infra.base_path import apply_base_path
 from octop.infra.gateway.media.attachment_hints import is_preview_media_type
 from octop.infra.gateway.media.constants import OUTBOUND_DIR
 from octop.infra.utils.browser_media import legacy_harness_screenshots_dir
@@ -219,7 +220,7 @@ def workspace_download_url(agent_id: str, workspace_path: str) -> str:
     else:
         rel = extract_workspace_rel(raw) or raw.lstrip("/")
         path_param = rel
-    return (
+    return apply_base_path(
         f"/api/agents/{agent_id}/workspace/download?path={urllib.parse.quote(path_param, safe='')}"
     )
 
@@ -228,7 +229,7 @@ def media_preview_url(agent_id: str, source: str, mime_hint: str = "") -> str:
     params: dict[str, str] = {"source": source}
     if mime_hint:
         params["mime_type"] = mime_hint
-    return f"/api/agents/{agent_id}/media/preview?{urllib.parse.urlencode(params)}"
+    return apply_base_path(f"/api/agents/{agent_id}/media/preview?{urllib.parse.urlencode(params)}")
 
 
 def backend_workspace_path(source: str) -> str | None:

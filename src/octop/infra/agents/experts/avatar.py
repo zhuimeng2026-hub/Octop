@@ -10,6 +10,7 @@ from typing import Any, Protocol
 
 from octop_harness.backends.utils import BackendOperationNotSupportedError
 
+from octop.infra.base_path import apply_base_path, strip_current_base_path
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.attachment_hints import sniff_image_media_type
 
@@ -42,11 +43,11 @@ class WorkspaceAvatarIO(Protocol):
 
 
 def agent_avatar_api_path(agent_id: str) -> str:
-    return f"/api/agents/{agent_id}/avatar"
+    return apply_base_path(f"/api/agents/{agent_id}/avatar")
 
 
 def published_expert_avatar_api_path(expert_id: str) -> str:
-    return f"/api/experts/published/{expert_id}/avatar"
+    return apply_base_path(f"/api/experts/published/{expert_id}/avatar")
 
 
 def _icon_cache_version(updated_at: int | str | None) -> int:
@@ -189,7 +190,7 @@ def public_portrait_icon_url(stored: str | None) -> str | None:
     text = str(stored or "").strip()
     if not text:
         return None
-    path = text.split("?", 1)[0]
+    path = strip_current_base_path(text.split("?", 1)[0])
     if path.startswith("/api/agents/") and path.endswith("/avatar"):
         return None
     return text

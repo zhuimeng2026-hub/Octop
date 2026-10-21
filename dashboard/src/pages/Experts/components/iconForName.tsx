@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import { needsAuthBlobFetch } from "../../../utils/toolMediaBlocks";
+import { rootPath, withBase } from "../../../utils/basePath";
 
 const iconMap: Record<string, (size: number) => ReactNode> = {
   sparkles: (size) => <Sparkles size={size} />,
@@ -155,7 +156,11 @@ export function normalizeAgentScopedApiUrl(url: string): string {
     const abs = trimmed.startsWith("http")
       ? new URL(trimmed)
       : new URL(trimmed, "http://octop.local");
-    const match = abs.pathname.match(/^(\/api\/agents\/)([^/]+)(\/.*)?$/);
+    // Match on the backend path so a deployment sub-path does not hide the
+    // route from the pattern.
+    const rawPath = abs.pathname;
+    const path = rootPath(rawPath);
+    const match = path.match(/^(\/api\/agents\/)([^/]+)(\/.*)?$/);
     if (!match) return trimmed;
     let agentId = match[2];
     try {
@@ -163,12 +168,16 @@ export function normalizeAgentScopedApiUrl(url: string): string {
     } catch {
       /* keep raw */
     }
-    const path = `${match[1]}${encodeURIComponent(agentId)}${match[3] || ""}`;
+    // Keep whatever prefix the incoming URL carried (deployment sub-path).
+    const prefix = rawPath.slice(0, rawPath.length - path.length);
+    const rebuilt = `${prefix}${match[1]}${encodeURIComponent(agentId)}${
+      match[3] || ""
+    }`;
     if (trimmed.startsWith("http")) {
-      abs.pathname = path;
+      abs.pathname = rebuilt;
       return abs.toString();
     }
-    return `${path}${abs.search}${abs.hash}`;
+    return `${withBase(rebuilt)}${abs.search}${abs.hash}`;
   } catch {
     return trimmed;
   }
@@ -178,7 +187,7 @@ export function normalizeAgentScopedApiUrl(url: string): string {
 export function resolveExpertAvatarUrl(iconUrl?: string | null): string | null {
   const url = iconUrl?.trim() || "";
   if (!url) return null;
-  if (url.startsWith("/api/agents/")) {
+  if (rootPath(url).startsWith("/api/agents/")) {
     return normalizeAgentScopedApiUrl(url);
   }
   return url;

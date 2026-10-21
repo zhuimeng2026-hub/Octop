@@ -1,3 +1,4 @@
+import { withBase } from "../../../../utils/basePath";
 import { useState, useEffect, useCallback } from "react";
 import { Spin, Modal } from "antd";
 import { message } from "@/utils/antdMessage";
@@ -517,7 +518,7 @@ export default function MBTISelector({
                       <div className={styles.typeCardHeader}>
                         <img
                           className={styles.typeAvatar}
-                          src={`/assets/mbti/${code}.svg`}
+                          src={withBase(`/assets/mbti/${code}.svg`)}
                           alt={code}
                           style={{ background: `${type.color}14` }}
                         />
@@ -594,7 +595,7 @@ export default function MBTISelector({
               <div className={styles.modalHeaderInner}>
                 <img
                   className={styles.modalAvatar}
-                  src={`/assets/mbti/${selectedType.code}.svg`}
+                  src={withBase(`/assets/mbti/${selectedType.code}.svg`)}
                   alt={selectedType.code}
                 />
                 <div>

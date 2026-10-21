@@ -5,6 +5,7 @@ from __future__ import annotations
 from urllib.parse import urlsplit
 
 from octop.infra.agents.experts.avatar import agent_avatar_api_path
+from octop.infra.base_path import apply_base_path, strip_current_base_path
 
 
 def bridge_avatar_api_path(bridge_agent_id: str) -> str:
@@ -39,15 +40,15 @@ def rewrite_remote_icon_url(
     query = ""
     if text.startswith("http://") or text.startswith("https://"):
         parts = urlsplit(text)
-        path = parts.path or "/"
+        path = strip_current_base_path(parts.path or "/")
         query = parts.query or ""
         # External portraits (CDN) — browser can fetch directly.
         if not path.startswith("/api/agents/") and not path.startswith("/experts/"):
             return text
 
-    path_only = path.split("?", 1)[0]
+    path_only = strip_current_base_path(path.split("?", 1)[0])
     if path_only.startswith("/experts/"):
-        return path_only + (f"?{query}" if query else "")
+        return apply_base_path(path_only + (f"?{query}" if query else ""))
 
     # Uploaded workspace avatar (or legacy ``/icon``) → tunnel via Bridge proxy.
     if path_only.endswith("/avatar") or path_only.endswith("/icon"):
@@ -57,6 +58,6 @@ def rewrite_remote_icon_url(
 
     # Rare relative path — keep so we do not force a Lucide fallback incorrectly.
     if path_only.startswith("/"):
-        return path_only
+        return apply_base_path(path_only)
     _ = remote_agent_id  # reserved for future peer-id-specific rewrites
     return None

@@ -2,12 +2,13 @@ import { useLayoutEffect, useState } from "react";
 import { Image } from "antd";
 import { useTranslation } from "react-i18next";
 import { requestBlob, getAuthToken } from "../../../api/request";
-import { getApiUrl } from "../../../api/config";
+import { getApiUrl, toApiRequestPath } from "../../../api/config";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import {
   needsAuthBlobFetch,
   type ToolMediaItem,
 } from "../../../utils/toolMediaBlocks";
+import { rootPath } from "../../../utils/basePath";
 import { MessageFileCard } from "./MessageFileCard";
 import styles from "../index.module.less";
 
@@ -53,16 +54,16 @@ function RefreshableVideo({ item }: { item: ToolMediaItem }) {
 
     const load = async () => {
       if (needsAuthBlobFetch(item.url)) {
-        const apiPath = item.url.replace(/^\/api/, "");
+        const apiPath = toApiRequestPath(item.url);
         const blob = await requestBlob(apiPath);
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
         setSrc(objectUrl);
         return;
       }
-      if (item.url.startsWith("/api/")) {
+      if (rootPath(item.url).startsWith("/api/")) {
         const token = getAuthToken();
-        const base = getApiUrl(item.url.replace(/^\/api/, ""));
+        const base = getApiUrl(toApiRequestPath(item.url));
         setSrc(
           token
             ? `${base}${

@@ -58,12 +58,21 @@ _JWT_EXEMPT_EXACT = (
 )
 
 
+def request_route_path(request: Request) -> str:
+    """Request path relative to the app — the deployment base path is stripped.
+
+    Compare routes against this, never against ``request.url.path``: the base
+    path prefix lives in ``scope["root_path"]`` only.
+    """
+    return str(request.scope.get("path") or "")
+
+
 def is_jwt_exempt_path(path: str) -> bool:
     return path in _JWT_EXEMPT_EXACT or any(path.startswith(p) for p in _JWT_EXEMPT_PREFIXES)
 
 
 def is_jwt_exempt_request(request: Request) -> bool:
-    return is_jwt_exempt_path(request.url.path)
+    return is_jwt_exempt_path(request_route_path(request))
 
 
 def get_server(request: Request) -> OctopServer:

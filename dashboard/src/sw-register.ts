@@ -12,8 +12,6 @@
  *     so Vite HMR and an old worker do not fight over navigations.
  */
 
-import { getBasePath } from "./api/config";
-
 let pendingRegistration: ServiceWorkerRegistration | null = null;
 let applyingUpdate = false;
 
@@ -66,13 +64,17 @@ export async function applyUpdate(): Promise<void> {
 
 /** Production registration. Exported for unit tests (vitest always sets DEV). */
 export async function registerProductionSW(): Promise<void> {
-  // Under a mount prefix (e.g. "/videogen") the worker must be registered
-  // under that prefix too, otherwise it would claim the whole origin.
-  const base = getBasePath();
-  const registration = await navigator.serviceWorker.register(`${base}/sw.js`, {
-    scope: `${base}/`,
-    updateViaCache: "none",
-  });
+  // `import.meta.env.BASE_URL` is vite's public base and always ends with a
+  // slash ("/" for a root deployment, "/videogen/" for a sub-path one), so
+  // the worker script and its scope stay inside the deployment sub-path.
+  const swBase = import.meta.env.BASE_URL || "/";
+  const registration = await navigator.serviceWorker.register(
+    `${swBase}sw.js`,
+    {
+      scope: swBase,
+      updateViaCache: "none",
+    },
+  );
 
   // Intentionally no controllerchange → location.reload() listener.
   // Chrome and Safari both pick up new assets via applyUpdate() instead.

@@ -22,6 +22,7 @@ from octop.api.deps import (
     extract_raw_token,
     is_jwt_exempt_request,
     maybe_sliding_renew_token,
+    request_route_path,
 )
 from octop.infra.errors import OctopError
 
@@ -39,7 +40,7 @@ def install(app: Any, server: Any) -> None:
         request: Request,
         call_next: Callable[[Request], Awaitable[Any]],
     ) -> Any:
-        path = request.url.path
+        path = request_route_path(request)
         if not path.startswith("/api/") or is_jwt_exempt_request(request):
             return await call_next(request)
 

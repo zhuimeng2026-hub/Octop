@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_permission
 from octop.api.routers.users import _assert_can_assign
+from octop.infra.base_path import apply_base_path
 from octop.infra.db.repos.user_roles import (
     BUILTIN_USER_ROLE_IDS,
     UserRoleRepo,
@@ -84,7 +85,7 @@ def _public(server: Any, row: UserRoleRow) -> dict[str, Any]:
         avatar_url=profile_avatar_url(
             server.services.paths.role_avatars_dir,
             row.user_role_id,
-            f"/api/users/roles/{row.user_role_id}/avatar",
+            apply_base_path(f"/api/users/roles/{row.user_role_id}/avatar"),
         ),
     )
 

@@ -12,7 +12,6 @@ import {
 } from "./hooks/useDesktopChrome";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { getBasePath } from "./api/config";
 import MainLayout from "./layouts/MainLayout";
 import LoginPage from "./pages/Login";
 import OidcComplete from "./pages/Login/OidcComplete";
@@ -29,6 +28,7 @@ import { VoiceOutputProvider } from "./context/VoiceOutputContext";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useUnauthorizedRedirect } from "./hooks/useUnauthorizedRedirect";
 import { installDesktopExternalLinks } from "./utils/desktopExternalLinks";
+import { BASE_PATH } from "./utils/basePath";
 import { brandTokensFor } from "./styles/themePalettes";
 import "./styles/theme-vars.css";
 import "./styles/layout.css";
@@ -163,9 +163,7 @@ function App() {
     // `useTransitions` off: with router transitions on, React keeps the old
     // page mounted while a lazy route chunk downloads and never renders the
     // Suspense fallback, so a nav click looks like it did nothing.
-    // `basename`: when the app is mounted under a path prefix (e.g.
-    // "/videogen"), React Router must strip it before matching routes.
-    <BrowserRouter basename={getBasePath() || "/"} useTransitions={false}>
+    <BrowserRouter basename={BASE_PATH || "/"} useTransitions={false}>
       <GlobalErrorBoundary>
         <GlobalStyle />
         <ThemeProvider>

@@ -7,6 +7,7 @@ import { shareDownloadLink } from "./downloadLink";
 
 vi.mock("../api/config", () => ({
   getApiUrl: (path: string) => `/api${path}`,
+  toApiRequestPath: (url: string) => url.replace(/^\/api/, ""),
 }));
 vi.mock("../api/request", () => ({ requestUpload: vi.fn() }));
 vi.mock("./antdModal", () => ({ modal: { confirm: vi.fn() } }));

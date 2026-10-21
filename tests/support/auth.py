@@ -35,20 +35,25 @@ async def bootstrap_admin(
     *,
     username: str = "admin",
     password: str = TEST_PASSWORD,
+    prefix: str = "",
 ) -> httpx.Response:
-    """Run verify-password → initial-admin → finish (creates default ``main`` agent)."""
+    """Run verify-password → initial-admin → finish (creates default ``main`` agent).
+
+    ``prefix`` is the deployment base path (e.g. ``"/videogen"``) — the wizard
+    routes live under it.
+    """
     pw = read_password(_wizard_password_home(home))
     assert pw is not None, "wizard password file missing"
-    tok_resp = await client.post("/api/setup/verify-password", json={"password": pw})
+    tok_resp = await client.post(f"{prefix}/api/setup/verify-password", json={"password": pw})
     tok = tok_resp.json()["wizard_token"]
     r = await client.post(
-        "/api/setup/initial-admin",
+        f"{prefix}/api/setup/initial-admin",
         json={"username": username, "password": password},
         headers={"Authorization": f"Bearer {tok}"},
     )
     r.raise_for_status()
     finish = await client.post(
-        "/api/setup/finish",
+        f"{prefix}/api/setup/finish",
         json={"provider_draft": None},
         headers={"Authorization": f"Bearer {tok}"},
     )

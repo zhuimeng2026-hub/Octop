@@ -23,6 +23,7 @@ import {
   type ContentBlock,
 } from "../../../utils/messageParser";
 import { normalizeComposerContext } from "../utils/chatMessages";
+import { rootPath } from "../../../utils/basePath";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import {
@@ -143,7 +144,7 @@ export function stripInlineImageMarkdown(
 ): string {
   if (!text || attachments.length === 0) return text;
 
-  const attachmentUrls = new Set(attachments.map((a) => a.url));
+  const attachmentUrls = new Set(attachments.map((a) => rootPath(a.url)));
   const attachmentFilenames = new Set(
     attachments.map((a) => a.filename).filter(Boolean) as string[],
   );
@@ -152,14 +153,15 @@ export function stripInlineImageMarkdown(
     /!\[([^\]]*)\]\(([^)]+)\)/g,
     (match, alt: string, url: string) => {
       const trimmedUrl = url.trim();
-      if (attachmentUrls.has(trimmedUrl)) return "";
+      if (attachmentUrls.has(rootPath(trimmedUrl))) return "";
       if (alt && attachmentFilenames.has(alt)) return "";
       // Workspace/file URLs are always served via attachments
+      const trimmedPath = rootPath(trimmedUrl);
       if (
-        trimmedUrl.startsWith("/api/workspace/") ||
-        (trimmedUrl.startsWith("/api/agents/") &&
-          (trimmedUrl.includes("/media/preview") ||
-            trimmedUrl.includes("/workspace/download")))
+        trimmedPath.startsWith("/api/workspace/") ||
+        (trimmedPath.startsWith("/api/agents/") &&
+          (trimmedPath.includes("/media/preview") ||
+            trimmedPath.includes("/workspace/download")))
       ) {
         return "";
       }
@@ -176,7 +178,7 @@ function isRenderableAttachmentUrl(url: string | undefined): boolean {
   if (trimmed.startsWith("workspace://")) return false;
   if (trimmed.startsWith("data:")) return true;
   if (trimmed.startsWith("blob:")) return true;
-  if (trimmed.startsWith("/api/")) return true;
+  if (rootPath(trimmed).startsWith("/api/")) return true;
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://"))
     return true;
   return false;

@@ -106,6 +106,7 @@ on each start. Schema (`OctopConfig` in `octop/config.py`):
   "default_timezone": "Asia/Shanghai",
   "enable_dashboard": true,
   "enable_api_docs": false,
+  "base_path": "",
   "require_setup_password": true,
   "max_upload_mb": 100,
   "database": {
@@ -146,6 +147,10 @@ Notes:
   same-named setting in the file.
 - `enable_api_docs=false` keeps `/api/docs` (Scalar) off in production
   while still serving `/api/openapi.json` to the dashboard.
+- `base_path` mounts the whole server under a URL sub-path, e.g. `"/videogen"`
+  serves the API at `/videogen/api/...` and answers `/api/...` with 404.
+  Empty (default) = root deployment. Env override: `OCTOP_BASE_PATH`.
+  See [base-path-deployment.md](base-path-deployment.md).
 - `require_setup_password=true` adds the wizard password gate to the
   first-run setup flow; set `false` for unattended bootstraps via
   `OCTOP_ADMIN_USERNAME` / `OCTOP_ADMIN_PASSWORD`.
@@ -160,10 +165,6 @@ Notes:
   Plugins). Bundled plugins are copied into `~/.octop/plugins/` on init and
   server start with `enabled: false`. `bundled_plugins_seeded` lists ids
   already offered so uninstall does not come back on the next start.
-- `base_path` mounts the whole app under a URL path prefix (e.g.
-  `/videogen`). Empty (default) = the origin root. See
-  [Deploying under a path prefix](#deploying-under-a-path-prefix).
-
 ## Deploying under a path prefix
 
 Set `base_path` (or `OCTOP_BASE_PATH`) to serve the dashboard and the API
@@ -173,8 +174,11 @@ under a sub-path instead of the origin root:
 { "bind_host": "0.0.0.0", "port": 8088, "base_path": "/videogen" }
 ```
 
-The API then answers on both `/api/…` and `/videogen/api/…`, so a reverse
-proxy may either forward the prefix unchanged or strip it — both work.
+The server then answers **only** under that prefix: `/videogen/api/…` is
+served, a request to `/api/…` gets a 404. A reverse proxy must forward the
+prefix unchanged — in nginx that means `proxy_pass http://127.0.0.1:8088;`
+*without* a trailing slash (a trailing slash would strip the prefix before
+the app sees it).
 
 **The dashboard must be built with the same prefix.** The SPA bundle carries
 the prefix in its asset URLs, its API base, its router basename and its
@@ -186,10 +190,6 @@ BASE_URL=/videogen npm run build     # → src/octop/dashboard/
 ```
 
 or, from the repo root, `make build-frontend BASE_URL=/videogen`.
-
-`BASE_URL` may also be an absolute origin (`https://api.example.com`) for a
-split dashboard/API deployment; the path prefix is then not applied to the
-router.
 
 With TLS terminated by an outer proxy, `config.json → tls` stays empty
 (`enabled: false`, no `cert_file` / `key_file`) and the proxy must forward

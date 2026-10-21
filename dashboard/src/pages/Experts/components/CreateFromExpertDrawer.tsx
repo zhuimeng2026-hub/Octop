@@ -1,4 +1,5 @@
 // dashboard/src/pages/Experts/components/CreateFromExpertDrawer.tsx
+import { withBase } from "../../../utils/basePath";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -643,7 +644,10 @@ export default function CreateFromExpertDrawer({
           showIcon
           message={t("experts.noModelsWarning")}
           action={
-            <a href="/admin/models" style={{ whiteSpace: "nowrap" }}>
+            <a
+              href={withBase("/admin/models")}
+              style={{ whiteSpace: "nowrap" }}
+            >
               {t("experts.goToAdmin")}
             </a>
           }

@@ -1,8 +1,12 @@
-/** Lucide fallback when the cartoon portrait is missing. */
+/** Lucide fallback when the cartoon portrait is missing. */ import {
+  rootPath,
+  withBase,
+} from "./basePath";
+
 export const TEAM_ICON_NAME = "users";
 
 /** Bundled cartoon portrait, same style as expert avatars. */
-export const TEAM_AVATAR_URL = "/experts/avatars/team-host.svg";
+export const TEAM_AVATAR_URL = withBase("/experts/avatars/team-host.svg");
 
 /** True when this agent is a team host (group chat), not a solo expert. */
 export function isTeamAgent(
@@ -26,7 +30,10 @@ export function isTeamHostSpeaker(
 /** Team card / chat portrait; falls back to the bundled cartoon. */
 export function teamPortraitUrl(iconUrl?: string | null): string {
   const url = iconUrl?.trim() || "";
-  if (!url || url === "/experts/avatars/multi-agent-orchestrator.svg") {
+  if (
+    !url ||
+    rootPath(url) === "/experts/avatars/multi-agent-orchestrator.svg"
+  ) {
     return TEAM_AVATAR_URL;
   }
   return url;

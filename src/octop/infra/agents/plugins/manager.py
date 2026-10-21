@@ -26,6 +26,7 @@ from octop_harness.plugins import (
 )
 
 from octop.infra.agents.plugins.legacy_imports import ensure_legacy_harness_agent_alias
+from octop.infra.base_path import apply_base_path
 from octop.infra.errors import ErrorCode, OctopError, corrupt_config_error
 from octop.infra.utils.json_file import (
     JsonFileCorruptError,
@@ -233,7 +234,8 @@ def parse_plugin_icon(
     if not icon or len(icon) > 2048:
         return None
     if icon.startswith(("http://", "https://", "/api/", "data:image/")) or icon.startswith("//"):
-        return icon
+        # A plugin may point at an API path — keep the deployment base path.
+        return apply_base_path(icon) if icon.startswith("/api/") else icon
     # Relative image file shipped with the plugin package.
     cleaned = icon.lstrip("/").replace("\\", "/")
     if (
@@ -249,7 +251,7 @@ def parse_plugin_icon(
         if target.is_file():
             plugin_id = str(data.get("id") or plugin_dir.name).strip() or plugin_dir.name
             prefix = (asset_prefix or f"/api/plugins/{plugin_id}/ui").rstrip("/")
-            return f"{prefix}/{cleaned}"
+            return apply_base_path(f"{prefix}/{cleaned}")
     return icon
 
 

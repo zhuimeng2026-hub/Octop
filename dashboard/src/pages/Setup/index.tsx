@@ -1,3 +1,4 @@
+import { withBase } from "../../utils/basePath";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Segmented, Steps, Typography } from "antd";
@@ -259,8 +260,8 @@ export default function SetupPage() {
               <img
                 src={
                   isDark
-                    ? "/logo_horizontal_white.png"
-                    : "/logo_horizontal_dark.png"
+                    ? withBase("/logo_horizontal_white.png")
+                    : withBase("/logo_horizontal_dark.png")
                 }
                 alt="Octop"
                 className={styles.wizardHeaderLogo}

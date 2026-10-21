@@ -54,48 +54,49 @@ function suppressViteDisconnectReload(): Plugin {
 }
 
 /**
- * Rewrite the static PWA manifest so it points at the public base path.
+ * Rewrite the PWA manifest for a sub-path deployment.
  *
- * `public/manifest.json` is copied verbatim by Vite, so under a mount prefix
- * (e.g. "/videogen") `start_url` / `scope` would still point at the origin
- * root and the installed shortcut would open a 404.
+ * `public/manifest.json` is copied verbatim by vite, so its root-absolute
+ * `id` / `start_url` / `scope` / icon paths would point outside the
+ * deployment sub-path. Patch the emitted file when a sub-path is configured.
  */
-function prefixWebManifest(base: string): Plugin {
+function rewriteManifestForBase(outDir: string, basePath: string): Plugin {
   return {
-    name: "octop-prefix-web-manifest",
+    name: "octop-rewrite-manifest-base",
     apply: "build",
     closeBundle() {
-      if (base === "/") return;
-      const manifestPath = path.resolve(
-        __dirname,
-        "../src/octop/dashboard/manifest.json",
-      );
+      if (!basePath) return;
+      const manifestPath = path.resolve(outDir, "manifest.json");
       if (!fs.existsSync(manifestPath)) return;
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as {
-        id?: string;
-        start_url?: string;
-        scope?: string;
-      };
-      const prefix = base.replace(/\/+$/, "");
-      manifest.id = prefix;
-      manifest.start_url = prefix;
-      manifest.scope = prefix;
-      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      manifest.id = `${basePath}/`;
+      manifest.start_url = `${basePath}/`;
+      manifest.scope = `${basePath}/`;
+      manifest.icons = (manifest.icons ?? []).map((icon: { src: string }) =>
+        icon.src.startsWith("/")
+          ? { ...icon, src: `${basePath}${icon.src}` }
+          : icon,
+      );
+      fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     },
   };
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  // Empty = same-origin; frontend and backend served together, no hardcoded host.
-  const apiBaseUrl = env.BASE_URL ?? "";
-  // Public base path of the built SPA. When the app is mounted under a path
-  // prefix (e.g. "/videogen"), Vite must emit asset URLs under that prefix
-  // too — otherwise index.html points at "/assets/…" and 404s.
-  const publicBase =
-    apiBaseUrl && !/^[a-z][a-z0-9+.-]*:\/\//i.test(apiBaseUrl)
-      ? `${apiBaseUrl.replace(/\/+$/, "")}/`
-      : "/";
+  // Deployment sub-path, e.g. "/videogen". Empty = served from the server
+  // root, which must keep working exactly as before.
+  // Normalized to a leading slash and NO trailing slash: the trailing slash
+  // would produce "//api/…" once concatenated with the API prefix.
+  const basePath = (env.BASE_URL ?? "").trim().replace(/\/+$/, "");
+  const normalizedBasePath =
+    basePath && !basePath.startsWith("/") ? `/${basePath}` : basePath;
+  // vite's `base` always wants a trailing slash.
+  const viteBase = normalizedBasePath ? `${normalizedBasePath}/` : "/";
   // Allow overriding the backend port via VITE_API_PORT env variable (default: 8088)
   const apiPort = process.env.VITE_API_PORT ?? env.VITE_API_PORT ?? "8088";
 
@@ -127,10 +128,14 @@ export default defineConfig(({ mode }) => {
     }
   }
 
+  const outDir = path.resolve(__dirname, "../src/octop/dashboard");
+
   return {
-    base: publicBase,
+    // Public base path. "/" for a root deployment, "/videogen/" for a
+    // sub-path deployment.
+    base: viteBase,
     build: {
-      outDir: path.resolve(__dirname, "../src/octop/dashboard"),
+      outDir,
       emptyOutDir: true,
       chunkSizeWarningLimit: 1600,
       // Limit Rollup worker concurrency to prevent OOM on memory-constrained hosts.
@@ -206,13 +211,14 @@ export default defineConfig(({ mode }) => {
       minifyIdentifiers: false,
     },
     define: {
-      BASE_URL: JSON.stringify(apiBaseUrl),
+      // No trailing slash — the frontend concatenates "/api" onto this.
+      BASE_URL: JSON.stringify(normalizedBasePath),
       MOBILE: false,
     },
     plugins: [
       suppressViteDisconnectReload(),
-      prefixWebManifest(publicBase),
       react(),
+      rewriteManifestForBase(outDir, normalizedBasePath),
       VitePWA({
         // prompt: new SW stays in waiting until the user accepts via
         // PwaUpdatePrompt → applyUpdate() → SKIP_WAITING. Avoid autoUpdate
@@ -294,7 +300,14 @@ export default defineConfig(({ mode }) => {
             {
               // Read-only API calls (chat history, files, config).
               // NetworkFirst ensures fresh data when online; cache used offline.
-              urlPattern: /^\/api\/(chats|agent\/files|agent\/memory)/,
+              // The pattern is anchored, so it must carry the deployment
+              // sub-path ("/videogen/api/…") when the app is not served from
+              // the server root.
+              urlPattern: new RegExp(
+                `^${escapeRegExp(
+                  normalizedBasePath,
+                )}/api/(chats|agent/files|agent/memory)`,
+              ),
               handler: "NetworkFirst",
               options: {
                 cacheName: "api-readonly",
@@ -355,6 +368,23 @@ export default defineConfig(({ mode }) => {
         usePolling: false,
       },
       proxy: {
+        // Sub-path deployment: the dashboard calls "/<base>/api/…", so the
+        // dev proxy has to strip the base before forwarding to the backend.
+        ...(normalizedBasePath
+          ? {
+              [`${normalizedBasePath}/api`]: {
+                target: `http://127.0.0.1:${apiPort}`,
+                changeOrigin: true,
+                xfwd: true,
+                ws: true,
+                rewrite: (requestPath: string) =>
+                  requestPath.replace(
+                    new RegExp(`^${escapeRegExp(normalizedBasePath)}`),
+                    "",
+                  ),
+              },
+            }
+          : {}),
         "/api": {
           target: `http://127.0.0.1:${apiPort}`,
           changeOrigin: true,

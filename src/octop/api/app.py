@@ -311,9 +311,12 @@ def build_app(server: OctopServer) -> FastAPI:
     if enable_api_docs:
 
         @app.get("/api/docs", include_in_schema=False)
-        async def api_docs() -> HTMLResponse:
+        async def api_docs(request: Request) -> HTMLResponse:
+            # ``root_path`` carries the deployment base path ("" at the root),
+            # so the docs page keeps working behind a sub-path deployment.
+            root_path = str(request.scope.get("root_path") or "")
             return get_scalar_api_reference(
-                openapi_url=app.openapi_url,
+                openapi_url=f"{root_path}{app.openapi_url or ''}",
                 title="Octop API",
             )
 

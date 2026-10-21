@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from octop.api.common.client_ip import resolve_client_ip
 from octop.api.deps import current_user, get_server, sign_token
 from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
+from octop.infra.base_path import apply_base_path
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.email import normalize_email
 from octop.infra.users.permissions import effective_permissions
@@ -55,7 +56,7 @@ def me_payload(user: Any, server: Any) -> dict[str, Any]:
     payload["avatar_url"] = profile_avatar_url(
         server.services.paths.user_avatars_dir,
         str(user.id),
-        f"/api/users/{user.id}/avatar",
+        apply_base_path(f"/api/users/{user.id}/avatar"),
     )
     return payload
 
@@ -283,7 +284,7 @@ async def upload_my_avatar(
         "avatar_url": profile_avatar_url(
             server.services.paths.user_avatars_dir,
             str(user.id),
-            f"/api/users/{user.id}/avatar",
+            apply_base_path(f"/api/users/{user.id}/avatar"),
         )
     }
 

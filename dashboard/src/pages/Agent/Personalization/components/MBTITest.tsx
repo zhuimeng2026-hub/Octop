@@ -1,3 +1,4 @@
+import { withBase } from "../../../../utils/basePath";
 import { useState, useEffect, useCallback } from "react";
 import { Modal } from "antd";
 import { message } from "@/utils/antdMessage";
@@ -61,7 +62,7 @@ function ResultCard({
       >
         <img
           className={styles.resultAvatar}
-          src={`/assets/mbti/${code}.svg`}
+          src={withBase(`/assets/mbti/${code}.svg`)}
           alt={code}
         />
         <div className={styles.resultCode}>{code}</div>

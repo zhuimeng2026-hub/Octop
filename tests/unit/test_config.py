@@ -432,29 +432,36 @@ def test_non_object_config_raises(tmp_path: Path):
     assert cfg_path.read_text(encoding="utf-8") == "[1, 2]"
 
 
-def test_base_path_defaults_to_empty(tmp_path: Path):
-    cfg_path = tmp_path / "config.json"
-    cfg = load_config(cfg_path)
+def test_base_path_defaults_to_root_deployment(tmp_path: Path):
+    cfg = load_config(tmp_path / "config.json")
     assert cfg.base_path == ""
 
 
-def test_base_path_read_from_file_and_normalized(tmp_path: Path):
+def test_base_path_from_file_is_normalized(tmp_path: Path):
     cfg_path = tmp_path / "config.json"
-    cfg_path.write_text(json.dumps({"base_path": "videogen/"}), encoding="utf-8")
-    cfg = load_config(cfg_path)
-    assert cfg.base_path == "/videogen"
+    load_config(cfg_path)
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    data["base_path"] = "videogen/"
+    cfg_path.write_text(json.dumps(data), encoding="utf-8")
+    assert load_config(cfg_path).base_path == "/videogen"
 
 
 def test_base_path_root_slash_is_empty(tmp_path: Path):
     cfg_path = tmp_path / "config.json"
-    cfg_path.write_text(json.dumps({"base_path": "/"}), encoding="utf-8")
-    cfg = load_config(cfg_path)
-    assert cfg.base_path == ""
+    load_config(cfg_path)
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    data["base_path"] = "/"
+    cfg_path.write_text(json.dumps(data), encoding="utf-8")
+    assert load_config(cfg_path).base_path == ""
 
 
-def test_base_path_env_overrides_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_base_path_comes_from_file_and_env_overrides_it(tmp_path: Path, monkeypatch):
     cfg_path = tmp_path / "config.json"
-    cfg_path.write_text(json.dumps({"base_path": "/from-file"}), encoding="utf-8")
-    monkeypatch.setenv("OCTOP_BASE_PATH", "/from-env/")
-    cfg = load_config(cfg_path)
-    assert cfg.base_path == "/from-env"
+    load_config(cfg_path)
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    data["base_path"] = "/from-file"
+    cfg_path.write_text(json.dumps(data), encoding="utf-8")
+    assert load_config(cfg_path).base_path == "/from-file"
+
+    monkeypatch.setenv("OCTOP_BASE_PATH", "/from-env")
+    assert load_config(cfg_path).base_path == "/from-env"

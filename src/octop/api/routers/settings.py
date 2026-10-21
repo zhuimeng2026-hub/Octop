@@ -15,6 +15,7 @@ from octop.api.deps import current_user, get_server, require_permission
 from octop.config import OctopConfig
 from octop.infra.agents.security import tool_execution_may_pause
 from octop.infra.auth.captcha import current_env, load_view, save_settings
+from octop.infra.base_path import apply_base_path
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.utils.download_links import DownloadLinkStore
@@ -157,7 +158,7 @@ async def create_download_link(
     filename = sanitize_download_filename(file.filename)
     link = await asyncio.to_thread(_download_links.create, filename, data, owner_id=user.id)
     return DownloadLinkResponse(
-        url=f"/api/downloads/link/{link.token}",
+        url=apply_base_path(f"/api/downloads/link/{link.token}"),
         filename=filename,
         expires_in=_download_links.ttl_seconds,
     )

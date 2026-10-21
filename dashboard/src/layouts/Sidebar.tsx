@@ -6,6 +6,7 @@ import AvatarDropdown from "../components/AvatarDropdown";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
 import { ArrowRightLeft, ChevronDown, X } from "lucide-react";
+import { stripBase, withBase } from "../utils/basePath";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
 import { useUserRole } from "../hooks/useUserRole";
@@ -440,8 +441,8 @@ export default function Sidebar({
 
   const isRailCollapsed = collapsed && !isMobile;
   const wordmarkSrc = isDark
-    ? "/logo_horizontal_white.png"
-    : "/logo_horizontal_dark.png";
+    ? withBase("/logo_horizontal_white.png")
+    : withBase("/logo_horizontal_dark.png");
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
@@ -472,7 +473,10 @@ export default function Sidebar({
     // When navigating to /chat, preserve the current chatId in the URL so the
     // Chat component is not remounted (key stays the same) and the user stays
     // on their most recent conversation instead of seeing a blank welcome screen.
-    if (path === "/chat" && window.location.pathname.startsWith("/chat/")) {
+    if (
+      path === "/chat" &&
+      stripBase(window.location.pathname).startsWith("/chat/")
+    ) {
       if (isMobile) onToggle();
       return;
     }
@@ -509,7 +513,7 @@ export default function Sidebar({
   const brandInner = (
     <>
       <img
-        src={isRailCollapsed ? "/pwa-192.png" : wordmarkSrc}
+        src={isRailCollapsed ? withBase("/pwa-192.png") : wordmarkSrc}
         alt="Octop"
         style={{
           height: isRailCollapsed ? 32 : isMobile ? 38 : 36,

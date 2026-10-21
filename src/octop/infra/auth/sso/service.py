@@ -23,6 +23,7 @@ from octop.infra.auth.sso.providers import build_adapters
 from octop.infra.auth.sso.providers.base import SSO_KINDS, IdentityProvider
 from octop.infra.auth.sso.public_base import build_redirect_uri, parse_strict_origin
 from octop.infra.auth.sso.redirect_after import sanitize_redirect_after
+from octop.infra.base_path import current_base_path
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.sso import SsoProviderRow
 from octop.infra.db.services import SharedServices
@@ -384,7 +385,9 @@ class SsoService:
         for row in self._services.sso_repo.list():
             if row.enabled and row.dashboard_origin:
                 return row.dashboard_origin.rstrip("/")
-        return public_base.rstrip("/")
+        # No explicit dashboard origin — the dashboard lives next to the API,
+        # i.e. under the deployment base path.
+        return f"{public_base.rstrip('/')}{current_base_path()}"
 
     def login_error_frontend(self, public_base: str) -> str:
         """Resolve where OIDC error redirects should land (dashboard_origin when set)."""
