@@ -187,6 +187,11 @@ BASE_URL=/videogen npm run build     # → src/octop/dashboard/
 
 or, from the repo root, `make build-frontend BASE_URL=/videogen`.
 
+> **Mismatching the two is the #1 deployment trap**: setting `base_path` without
+> rebuilding the dashboard with the same `BASE_URL` serves a blank page (the
+> SPA requests `/assets/…` and gets a 404). Symptom, verification one-liner
+> and fix: [deployment-pitfalls.md](deployment-pitfalls.md#1-面板白屏配了-base_path前端却没用-base_url-构建-).
+
 `BASE_URL` may also be an absolute origin (`https://api.example.com`) for a
 split dashboard/API deployment; the path prefix is then not applied to the
 router.

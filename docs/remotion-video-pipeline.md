@@ -93,3 +93,5 @@ JWT 取自服务器 Dashboard 的 Local Storage `auth_token`（或服务器上
 - 渲染是逐帧的，1080p 30fps 一分钟片子在本机通常要几分钟；先用 `--quality draft` 验脚本。
 - 视频片段建议 h264 + yuv420p 的 mp4；其他编码需要先转码。
 - 同步器不处理鉴权过期：JWT 失效后请求返回 401，需换新 token 重启同步器。
+- 渲染卡在下载 Chromium、面板白屏、`X-Forwarded-For` 不生效等部署问题，见
+  [deployment-pitfalls.md](deployment-pitfalls.md)。
