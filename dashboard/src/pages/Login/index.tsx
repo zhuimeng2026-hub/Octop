@@ -29,6 +29,7 @@ import {
 import feishuIcon from "../../assets/channels/feishu.svg";
 import dingtalkIcon from "../../assets/channels/dingtalk.svg";
 import wecomIcon from "../../assets/channels/wecom.svg";
+import wechatIcon from "../../assets/channels/weixin.svg";
 import googleIcon from "../../assets/providers/google.svg";
 import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
 import ForgotPasswordModal from "./ForgotPasswordModal";
@@ -54,6 +55,11 @@ function providerIcon(provider: OauthProviderStatus): ReactNode {
   if (provider.kind === "dingtalk") {
     return (
       <img src={dingtalkIcon} alt="" width={18} height={18} draggable={false} />
+    );
+  }
+  if (provider.kind === "wechat_open") {
+    return (
+      <img src={wechatIcon} alt="" width={18} height={18} draggable={false} />
     );
   }
   if (provider.kind === "wecom") {

@@ -86,6 +86,7 @@ export const USERS_TAB_PERMISSIONS = {
   feishu: "sso",
   wecom: "sso",
   dingtalk: "sso",
+  wechat_open: "sso",
   oidc: "sso",
   ldap: "sso",
 } as const;

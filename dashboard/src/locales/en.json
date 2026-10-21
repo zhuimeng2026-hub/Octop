@@ -5681,7 +5681,8 @@
       "oidc": "SSO",
       "feishu": "Feishu",
       "dingtalk": "DingTalk",
-      "wecom": "WeCom"
+      "wecom": "WeCom",
+      "wechat_open": "WeChat"
     },
     "oidcComplete": {
       "title": "Completing single sign-on",
@@ -5944,7 +5945,8 @@
       "delete": "Delete",
       "set_token_quota": "Set token limit",
       "set_max_agents": "Set expert limit"
-    }
+    },
+    "tabWechatOpen": "WeChat Login"
   },
   "adminSso": {
     "panelTitle": "Single sign-on",
@@ -6160,7 +6162,11 @@
         "identity_key_is_dn": "No identity key attribute is set while automatic account creation is on, so new accounts are keyed on their entry DN — renaming or moving a user in the directory creates a second Octop account."
       },
       "subjectAttributeDetected": "Detected {{name}} on this directory — set it as the identity key so renames keep the same account."
-    }
+    },
+    "wechatTitle": "WeChat",
+    "wechatDesc": "WeChat Open Platform website-app QR sign-in. Use the open platform's AppID and Secret; the callback domain must be registered there, local addresses cannot be used.",
+    "wechatEnabled": "Enable WeChat login",
+    "wechatRedirectHint": "Register this site's callback domain in the WeChat Open Platform website app (the domain must be filed/registered), then paste the full callback URL below."
   },
   "adminAudit": {
     "loadFailed": "Load failed",

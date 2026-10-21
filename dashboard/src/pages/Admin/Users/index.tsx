@@ -17,6 +17,7 @@ import { USERS_TAB_PERMISSIONS } from "../../../utils/permissions";
 import feishuIcon from "../../../assets/channels/feishu.svg";
 import wecomIcon from "../../../assets/channels/wecom.svg";
 import dingtalkIcon from "../../../assets/channels/dingtalk.svg";
+import wechatIcon from "../../../assets/channels/weixin.svg";
 import openidIcon from "../../../assets/providers/openid.svg";
 import styles from "./index.module.less";
 
@@ -26,6 +27,7 @@ const OAUTH_BRAND_ICONS: Record<OauthAppKind, string> = {
   feishu: feishuIcon,
   wecom: wecomIcon,
   dingtalk: dingtalkIcon,
+  wechat_open: wechatIcon,
 };
 
 function BrandTabIcon({
@@ -57,6 +59,11 @@ const TABS: TabBarItem<TabKey>[] = [
     icon: <BrandTabIcon src={dingtalkIcon} />,
   },
   {
+    key: "wechat_open",
+    labelKey: "adminUsers.tabWechatOpen",
+    icon: <BrandTabIcon src={wechatIcon} />,
+  },
+  {
     key: "oidc",
     labelKey: "adminUsers.tabOidc",
     icon: <BrandTabIcon src={openidIcon} />,
@@ -74,6 +81,7 @@ function parseTab(raw: string | null): TabKey {
     raw === "feishu" ||
     raw === "wecom" ||
     raw === "dingtalk" ||
+    raw === "wechat_open" ||
     raw === "oidc" ||
     raw === "ldap"
   ) {

@@ -1,6 +1,6 @@
 /** Catalog of App-ID OAuth providers shown under the admin SSO OAuth family. */
 
-export type OauthAppKind = "feishu" | "dingtalk" | "wecom";
+export type OauthAppKind = "feishu" | "dingtalk" | "wecom" | "wechat_open";
 
 export interface OauthProviderDef {
   kind: OauthAppKind;
@@ -59,5 +59,15 @@ export const OAUTH_APP_PROVIDERS: OauthProviderDef[] = [
     showCallbackDomain: true,
     redirectHintKey: "adminSso.wecomRedirectHint",
     redirectDocsKey: "adminSso.wecomRedirectDocs",
+  },
+  {
+    kind: "wechat_open",
+    available: true,
+    titleKey: "adminSso.wechatTitle",
+    descKey: "adminSso.wechatDesc",
+    defaultNameKey: "login.providerKind.wechat_open",
+    enabledAriaKey: "adminSso.wechatEnabled",
+    showCallbackDomain: true,
+    redirectHintKey: "adminSso.wechatRedirectHint",
   },
 ];

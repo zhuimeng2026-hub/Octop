@@ -49,6 +49,7 @@ import { userCan } from "../utils/permissions";
 import feishuIcon from "../assets/channels/feishu.svg";
 import dingtalkIcon from "../assets/channels/dingtalk.svg";
 import wecomIcon from "../assets/channels/wecom.svg";
+import wechatIcon from "../assets/channels/weixin.svg";
 import {
   ProfileAvatar,
   ProfileAvatarPicker,
@@ -57,7 +58,7 @@ import styles from "./AvatarDropdown.module.less";
 
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
 const HELP_FEEDBACK_URL = "https://octop.cloud";
-const APP_OAUTH_KINDS = new Set(["feishu", "dingtalk", "wecom"]);
+const APP_OAUTH_KINDS = new Set(["feishu", "dingtalk", "wecom", "wechat_open"]);
 
 const PASSWORD_FIELD_ICON_PROPS = {
   size: 14 as const,
@@ -72,6 +73,8 @@ function oauthProviderIcon(kind: string): ReactNode {
       ? dingtalkIcon
       : kind === "wecom"
       ? wecomIcon
+      : kind === "wechat_open"
+      ? wechatIcon
       : null;
   if (!src) return <KeyRound size={18} />;
   return <img src={src} alt="" width={20} height={20} draggable={false} />;

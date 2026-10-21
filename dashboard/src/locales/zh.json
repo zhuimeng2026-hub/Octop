@@ -5681,7 +5681,8 @@
       "oidc": "SSO",
       "feishu": "飞书",
       "dingtalk": "钉钉",
-      "wecom": "企业微信"
+      "wecom": "企业微信",
+      "wechat_open": "微信"
     },
     "oidcComplete": {
       "title": "正在完成单点登录",
@@ -5944,7 +5945,8 @@
       "delete": "删除",
       "set_token_quota": "设置 Token 上限",
       "set_max_agents": "设置专家上限"
-    }
+    },
+    "tabWechatOpen": "微信登录"
   },
   "adminSso": {
     "panelTitle": "单点登录",
@@ -6160,7 +6162,11 @@
         "identity_key_is_dn": "开启了自动创建账号但未设置身份主键：新账号会绑定到条目 DN，目录里改名或换 OU 会产生第二个 Octop 账号。"
       },
       "subjectAttributeDetected": "检测到该目录提供 {{name}}，建议设为身份主键，这样用户改名后仍对应同一账号。"
-    }
+    },
+    "wechatTitle": "微信",
+    "wechatDesc": "微信开放平台网站应用扫码登录。使用开放平台的 AppID 与 Secret；回调域名必须已在开放平台登记，本地地址不可用。",
+    "wechatEnabled": "启用微信登录",
+    "wechatRedirectHint": "请在微信开放平台网站应用中登记本站的授权回调域（域名需已备案/登记），并把回调地址填为下方完整路径。"
   },
   "adminAudit": {
     "loadFailed": "加载失败",
