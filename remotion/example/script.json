@@ -1,0 +1,55 @@
+{
+  "title": "Octop Remotion 冒烟测试",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "theme": {
+    "bg": "#0F1117",
+    "primary": "#58C4DD",
+    "secondary": "#83C167",
+    "accent": "#FFD93D"
+  },
+  "scenes": [
+    {
+      "id": "s1",
+      "type": "title",
+      "duration": 2,
+      "text": "Octop × Remotion",
+      "subtitle": "脚本驱动的视频生成"
+    },
+    {
+      "id": "s2",
+      "type": "bullets",
+      "duration": 3,
+      "text": "流程",
+      "bullets": ["素材放 assets/", "LLM 产出 script.json", "本机 Remotion 渲染"]
+    },
+    {
+      "id": "s3",
+      "type": "image",
+      "duration": 2,
+      "asset": "cover.png",
+      "caption": "图片场景"
+    },
+    {
+      "id": "s4",
+      "type": "video",
+      "duration": 3,
+      "asset": "clip.mp4",
+      "caption": "基础视频片段"
+    },
+    {
+      "id": "s5",
+      "type": "text",
+      "duration": 2,
+      "text": "文字场景：脚本与渲染器解耦，模型只负责产出结构化描述。"
+    },
+    {
+      "id": "s6",
+      "type": "endcard",
+      "duration": 1.5,
+      "text": "完",
+      "subtitle": "octop.aixifs.com/videogen"
+    }
+  ]
+}

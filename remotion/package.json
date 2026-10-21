@@ -1,0 +1,26 @@
+{
+  "name": "octop-remotion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Script-driven video rendering for Octop — Remotion project + local MCP server",
+  "scripts": {
+    "render": "node src/render.mjs",
+    "render:draft": "node src/render.mjs --quality draft",
+    "mcp": "node mcp/server.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.0",
+    "@remotion/cli": "^4.0.0",
+    "@remotion/renderer": "^4.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.7.0"
+  }
+}
