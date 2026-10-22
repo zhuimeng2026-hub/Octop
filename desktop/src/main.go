@@ -38,6 +38,8 @@ type App struct {
 	trayClickTimer *time.Timer
 	drops          dropServer
 	ownsListenPort bool
+	webviewReady   bool
+	pendingURL     string
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -240,7 +242,7 @@ func (a *App) showDashboard(base string) {
 	if a.window == nil {
 		return
 	}
-	a.window.SetURL(base)
+	a.navigate(base)
 	a.scheduleDragOverlay()
 	s := a.store.get()
 	go func() {
@@ -248,6 +250,38 @@ func (a *App) showDashboard(base string) {
 		a.applyDashboardPrefs(s)
 	}()
 	a.setStatus(desktopText(s.Locale, copyStatusReady))
+}
+
+// navigate points the window at base.
+//
+// The first navigation is deferred until the webview has finished loading:
+// right after start-up the WebView2 controller does not exist yet and SetURL
+// on it dereferences a nil pointer, killing the shell. Later navigations
+// happen long after start-up and go direct.
+func (a *App) navigate(base string) {
+	a.mu.Lock()
+	ready := a.webviewReady
+	if !ready {
+		a.pendingURL = base
+	}
+	a.mu.Unlock()
+	if !ready {
+		return
+	}
+	a.window.SetURL(base)
+}
+
+// markWebviewReady records that the webview completed its first navigation
+// and applies the navigation that was waiting for it.
+func (a *App) markWebviewReady() {
+	a.mu.Lock()
+	a.webviewReady = true
+	base := a.pendingURL
+	a.pendingURL = ""
+	a.mu.Unlock()
+	if base != "" && a.window != nil {
+		a.window.SetURL(base)
+	}
 }
 
 func (a *App) hideToTray() {
@@ -372,6 +406,12 @@ func main() {
 		BackgroundColour:     application.NewRGB(247, 248, 250),
 	})
 	api.window = win
+	// The first navigation is what proves the webview is usable, so the
+	// listener has to be armed before app.Run() — the event is delivered by
+	// the app's event loop, which only starts there. Arming it later (from
+	// boot(), once the dashboard URL is known) misses the completion of the
+	// embedded shell page and the window never leaves it.
+	armWebviewReady(win, api.markWebviewReady)
 	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
 		win.ToggleMaximise()
 	})
