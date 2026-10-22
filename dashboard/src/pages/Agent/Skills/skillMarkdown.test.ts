@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../Workspace/components/FileViewer", () => ({
+  default: () => null,
+}));
+
 import { buildSkillMarkdown } from "./components/SkillDrawer";
 import {
   isSkillManifestPath,

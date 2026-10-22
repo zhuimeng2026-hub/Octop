@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
-import { useEffect } from "react";
 import AuthGuard from "./AuthGuard";
 
 vi.mock("../api/modules/auth", () => ({
@@ -71,10 +70,14 @@ describe("AuthGuard offline boot", () => {
 
     function NavProbe() {
       const navigate = useNavigate();
-      useEffect(() => {
-        navigate("/b");
-      }, [navigate]);
-      return <div>protected-shell</div>;
+      return (
+        <div>
+          <div>protected-shell</div>
+          <button type="button" onClick={() => navigate("/b")}>
+            navigate-to-b
+          </button>
+        </div>
+      );
     }
 
     render(
@@ -82,13 +85,25 @@ describe("AuthGuard offline boot", () => {
         <AuthGuard>
           <Routes>
             <Route path="/a" element={<NavProbe />} />
-            <Route path="/b" element={<div>protected-shell</div>} />
+            <Route
+              path="/b"
+              element={
+                <>
+                  <div>protected-shell</div>
+                  <div>route-b</div>
+                </>
+              }
+            />
           </Routes>
         </AuthGuard>
       </MemoryRouter>,
     );
 
     expect(await screen.findByText("protected-shell")).toBeInTheDocument();
+    await userEvent.setup().click(
+      await screen.findByRole("button", { name: "navigate-to-b" }),
+    );
+    expect(await screen.findByText("route-b")).toBeInTheDocument();
     await waitFor(() => {
       expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     });

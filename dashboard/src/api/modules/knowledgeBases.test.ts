@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { request, requestUpload } = vi.hoisted(() => ({
+const { request, requestUpload, bridgeAgentHeaders } = vi.hoisted(() => ({
   request: vi.fn(),
   requestUpload: vi.fn(),
+  bridgeAgentHeaders: vi.fn(() => undefined),
 }));
 
-vi.mock("../request", () => ({ request, requestUpload }));
+vi.mock("../request", () => ({ request, requestUpload, bridgeAgentHeaders }));
 
 import { knowledgeBasesApi } from "./knowledgeBases";
 
