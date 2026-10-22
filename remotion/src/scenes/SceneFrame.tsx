@@ -17,7 +17,10 @@ export const SceneFrame: React.FC<{
   const { fps, durationInFrames } = useVideoConfig();
   const theme = resolveTheme(script);
   const transition = Math.max(0, Math.min(scene.transition ?? 0.4, 2));
-  const transitionFrames = Math.round(transition * fps);
+  const transitionFrames = Math.min(
+    Math.round(transition * fps),
+    Math.max(0, Math.floor((durationInFrames - 1) / 2)),
+  );
 
   const opacity =
     transitionFrames === 0
@@ -27,9 +30,9 @@ export const SceneFrame: React.FC<{
           1,
           1,
           0,
-        ]);
+        ], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
-  const shift = interpolate(frame, [0, transitionFrames], [18, 0], {
+  const shift = transitionFrames === 0 ? 0 : interpolate(frame, [0, transitionFrames], [18, 0], {
     extrapolateRight: "clamp",
   });
 

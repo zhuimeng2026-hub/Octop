@@ -26,6 +26,7 @@ try {
     scenes: [
       { id: "s1", type: "title", duration: 0.2, text: "Local package" },
       { id: "s2", type: "image", duration: 0.2, asset: "cover.png" },
+      { id: "s3", type: "title", duration: 0.01, transition: 0, text: "Done" },
     ],
   };
   const bytes = Buffer.from(JSON.stringify(script));
