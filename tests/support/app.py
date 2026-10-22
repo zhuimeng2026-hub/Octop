@@ -12,7 +12,7 @@ import httpx
 
 from octop.api.app import build_app
 from octop.config import DatabaseConfig, load_config
-from octop.infra.base_path import BasePathApp
+from octop.infra.base_path import BasePathApp, set_base_path
 from octop.infra.db.rebind import persist_database_config
 from octop.infra.server import OctopServer
 from tests.support.harness import patch_harness
@@ -81,3 +81,7 @@ async def octop_client(
                 yield client, srv
         finally:
             await srv.stop()
+            # ``BasePathApp`` publishes its prefix to the process-global
+            # ``_BASE_PATH``. Reset it, otherwise the next test sharing this
+            # worker inherits the prefix and builds wrong URLs.
+            set_base_path("")

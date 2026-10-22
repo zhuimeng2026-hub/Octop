@@ -27,13 +27,18 @@ def test_chats_send_help_lists_mode() -> None:
 
 
 def test_chats_list_requires_agent(monkeypatch: pytest.MonkeyPatch) -> None:
-    import octop.cli.support.ctx as ctx_mod
+    # Patch the *command module's* binding, not the support module's: the
+    # command modules are imported lazily and ``test_cli_main.py`` drops them
+    # from ``sys.modules``. A patch left on the support module can therefore be
+    # re-bound into the command module by a later re-import and outlive the
+    # test that installed it.
+    import octop.cli.commands.chats as chats_cmd
 
     def _missing(_agent: str | None) -> str:
         click.echo("error: --agent is required", err=True)
         raise SystemExit(2)
 
-    monkeypatch.setattr(ctx_mod, "require_agent", _missing)
+    monkeypatch.setattr(chats_cmd, "require_agent", _missing)
     runner = CliRunner()
     result = runner.invoke(cli, ["chats", "list"])
     assert result.exit_code == 2
