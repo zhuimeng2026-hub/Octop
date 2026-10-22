@@ -1,0 +1,66 @@
+name: Local Studio package
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: local-studio-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  renderer:
+    name: Renderer / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: remotion/package-lock.json
+      - name: Install locked renderer dependencies
+        run: npm ci
+        working-directory: remotion
+      - name: Check renderer types
+        run: npm run typecheck
+        working-directory: remotion
+      - name: Test package loading and launchers
+        run: node --test test/launch.test.mjs
+        working-directory: remotion
+      - name: Open Studio and render a short local video
+        if: runner.os == 'Linux'
+        run: node scripts/local-studio-smoke.mjs
+
+  wheel:
+    name: Packaged renderer resources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - name: Build the installable wheel
+        run: uv build --wheel
+      - name: Verify the wheel includes the complete renderer
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          wheel = next(Path('dist').glob('*.whl'))
+          prefix = 'octop/infra/product_library/render_template/'
+          with ZipFile(wheel) as archive:
+              names = set(archive.namelist())
+              for item in ('package.json', 'package-lock.json', 'launch.mjs', 'project.mjs',
+                           'render.mjs', 'remotion.config.ts', 'tsconfig.json',
+                           'src/index.ts', 'src/Root.tsx', 'src/Video.tsx', 'src/types.ts',
+                           'src/scenes/index.tsx', 'src/scenes/SceneFrame.tsx',
+                           'launchers/preview.cmd', 'launchers/preview.command',
+                           'launchers/render.cmd', 'launchers/render.command'):
+                  assert prefix + item in names, item
+              assert not any('/node_modules/' in name for name in names)
+          PY

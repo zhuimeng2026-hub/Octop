@@ -100,6 +100,29 @@ octop = "octop.cli.main:cli"
 [tool.hatch.build.targets.wheel]
 packages = ["src/octop"]
 
+# Ship only reviewed renderer sources; exclude node_modules, local jobs, and outputs.
+[tool.hatch.build.targets.wheel.force-include]
+"remotion/src" = "octop/infra/product_library/render_template/src"
+"remotion/package.json" = "octop/infra/product_library/render_template/package.json"
+"remotion/package-lock.json" = "octop/infra/product_library/render_template/package-lock.json"
+"remotion/remotion.config.ts" = "octop/infra/product_library/render_template/remotion.config.ts"
+"remotion/tsconfig.json" = "octop/infra/product_library/render_template/tsconfig.json"
+"remotion/render.mjs" = "octop/infra/product_library/render_template/render.mjs"
+"remotion/launch.mjs" = "octop/infra/product_library/render_template/launch.mjs"
+"remotion/project.mjs" = "octop/infra/product_library/render_template/project.mjs"
+"remotion/launchers" = "octop/infra/product_library/render_template/launchers"
+
+[tool.hatch.build.targets.sdist.force-include]
+"remotion/src" = "remotion/src"
+"remotion/package.json" = "remotion/package.json"
+"remotion/package-lock.json" = "remotion/package-lock.json"
+"remotion/remotion.config.ts" = "remotion/remotion.config.ts"
+"remotion/tsconfig.json" = "remotion/tsconfig.json"
+"remotion/render.mjs" = "remotion/render.mjs"
+"remotion/launch.mjs" = "remotion/launch.mjs"
+"remotion/project.mjs" = "remotion/project.mjs"
+"remotion/launchers" = "remotion/launchers"
+
 [tool.hatch.build]
 include = [
     "src/octop/**/*.py",

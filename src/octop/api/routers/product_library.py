@@ -9,6 +9,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 from octop.api.common.content_disposition import content_disposition
 from octop.api.common.upload_limit import read_upload_capped
@@ -16,12 +17,35 @@ from octop.api.common.workspace import require_running_workspace
 from octop.api.deps import current_user, get_server
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.product_library.package_export import export_project_package
 from octop.infra.product_library.service import (
     ProductLibraryService,
     project_payload,
 )
 
 router = APIRouter()
+
+
+@router.get(
+    "/product-library/projects/{project_id}/package",
+    response_class=FileResponse,
+    summary="Download a complete local Studio package",
+    description="Download the current user's project, referenced media, and Studio launcher. No running agent or local business backend is required.",
+)
+async def download_project_package(
+    project_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> FileResponse:
+    project = _service(server).get_project(user.id, project_id)
+    package = await asyncio.to_thread(export_project_package, server.services.paths, project)
+    return FileResponse(
+        package,
+        media_type="application/zip",
+        filename=f"video-project-{project_id}.zip",
+        background=BackgroundTask(package.unlink, missing_ok=True),
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 class ProductBody(BaseModel):

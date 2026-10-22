@@ -69,6 +69,8 @@ export const productLibraryApi = {
     requestBlob(`/product-library/assets/${id}/download`),
   projects: () =>
     request<{ items: ProductProject[] }>("/product-library/projects"),
+  downloadPackage: (projectId: string) =>
+    requestBlob(`/product-library/projects/${projectId}/package`),
   createProject: (body: {
     product_id: string;
     name: string;

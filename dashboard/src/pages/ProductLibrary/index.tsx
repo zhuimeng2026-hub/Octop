@@ -14,6 +14,7 @@ import {
 } from "antd";
 import {
   Archive,
+  Download,
   FilePlus2,
   Package,
   Plus,
@@ -68,6 +69,7 @@ export default function ProductLibraryPage() {
   const [uploadBusy, setUploadBusy] = useState(false);
   const [projectBusy, setProjectBusy] = useState(false);
   const [preparingId, setPreparingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const reload = async () => {
     const [p, pr] = await Promise.all([
@@ -240,6 +242,25 @@ export default function ProductLibraryPage() {
       message.error(t("productLibrary.prepareFailed"));
     } finally {
       setPreparingId(null);
+    }
+  };
+  const downloadPackage = async (project: ProductProject) => {
+    setDownloadingId(project.id);
+    try {
+      const blob = await productLibraryApi.downloadPackage(project.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `video-project-${project.id}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      message.success(t("productLibrary.packageDownloaded"));
+    } catch {
+      message.error(t("productLibrary.packageFailed"));
+    } finally {
+      setDownloadingId(null);
     }
   };
   const previewAsset = async (asset: ProductAsset) => {
@@ -678,6 +699,9 @@ export default function ProductLibraryPage() {
           }
           style={{ gridColumn: "1 / -1" }}
         >
+          <Typography.Paragraph type="secondary">
+            {t("productLibrary.localWorkflow")}
+          </Typography.Paragraph>
           {projects.length ? (
             projects.map((p) => (
               <div
@@ -700,24 +724,39 @@ export default function ProductLibraryPage() {
                   </Tag>{" "}
                   · {p.snapshot.assets.length} {t("productLibrary.assetsCount")}
                 </span>
-                <Select
-                  showSearch
-                  placeholder={t("productLibrary.selectAgent")}
-                  value={agentId || undefined}
-                  onChange={setAgentId}
-                  style={{ width: 220 }}
-                  options={agents.map((a) => ({
-                    value: a.agent_id,
-                    label: a.name,
-                  }))}
-                />
                 <Button
-                  loading={preparingId === p.id}
-                  disabled={!agents.length}
-                  onClick={() => void prepare(p)}
+                  type="primary"
+                  icon={<Download size={16} />}
+                  loading={downloadingId === p.id}
+                  onClick={() => void downloadPackage(p)}
                 >
-                  {t("productLibrary.prepareRender")}
+                  {t("productLibrary.downloadPackage")}
                 </Button>
+                <details>
+                  <summary style={{ cursor: "pointer" }}>
+                    {t("productLibrary.advancedAgentSync")}
+                  </summary>
+                  <Space wrap style={{ marginTop: 8 }}>
+                    <Select
+                      showSearch
+                      placeholder={t("productLibrary.selectAgent")}
+                      value={agentId || undefined}
+                      onChange={setAgentId}
+                      style={{ width: 220 }}
+                      options={agents.map((a) => ({
+                        value: a.agent_id,
+                        label: a.name,
+                      }))}
+                    />
+                    <Button
+                      loading={preparingId === p.id}
+                      disabled={!agents.length}
+                      onClick={() => void prepare(p)}
+                    >
+                      {t("productLibrary.prepareRender")}
+                    </Button>
+                  </Space>
+                </details>
               </div>
             ))
           ) : (

@@ -367,7 +367,12 @@
     "noProjects": "此产品还没有项目快照",
     "selectProduct": "选择或添加产品以开始使用",
     "preview": "预览",
-    "previewLoaded": "已加载预览"
+    "previewLoaded": "已加载预览",
+    "localWorkflow": "下载制作包 → 解压 → 双击 preview 打开预览 → 确认后在本机导出。首次使用需安装 Node.js 22 或更新版本。",
+    "downloadPackage": "下载制作包",
+    "packageDownloaded": "制作包已下载，解压后双击 preview 启动预览。",
+    "packageFailed": "制作包下载失败，请检查素材是否完整后重试。",
+    "advancedAgentSync": "高级：同步到专家工作区"
   },
   "skillPackages": {
     "title": "技能包",
