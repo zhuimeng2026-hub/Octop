@@ -32,6 +32,15 @@ from octop.infra.utils import posix_compat as pwd
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX service management")
 
+# A system unit carries ``User=<account>`` only for a non-root service owner:
+# ``render_systemd_unit`` drops the line when ``run_as_user == "root"`` so
+# restrictive systemd builds do not force a degraded environment. These tests
+# describe the non-root installer path, so they only apply when the ambient
+# account is not root (CI runs as a non-root user; a root shell must skip).
+non_root_only = pytest.mark.skipif(
+    getpass.getuser() == "root", reason="asserts the non-root installer path"
+)
+
 
 def _runtime(tmp_path: Path) -> ServiceRuntime:
     octop_bin = tmp_path / "bin" / "octop"
@@ -76,6 +85,7 @@ def test_render_systemd_unit_user_scope(tmp_path: Path) -> None:
     assert "--host" not in unit
 
 
+@non_root_only
 def test_render_systemd_unit_system_scope(tmp_path: Path) -> None:
     runtime = _runtime(tmp_path)
     unit = render_systemd_unit(runtime, user_unit=False)
@@ -86,6 +96,7 @@ def test_render_systemd_unit_system_scope(tmp_path: Path) -> None:
     assert f"LimitNOFILE={service_mod.SERVICE_NOFILE_LIMIT}" in unit
 
 
+@non_root_only
 def test_render_systemd_unit_system_scope_uses_runtime_scope_by_default(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -895,7 +906,12 @@ def test_write_unit_sudo_path_creates_parent_dir_first(
         return _Proc()
 
     # Force the sudo branch regardless of the on-disk state of ~/Library.
+    # ``_write_managed_file`` gates it on ``geteuid() != 0``, and that name is
+    # bound in this module (it no longer reads ``os.geteuid``), so the stub has
+    # to patch ``service_mod.geteuid`` — patching ``service_mod.os`` alone
+    # leaves a root shell on the direct-write path and the sudo branch untested.
     monkeypatch.setattr(service_mod, "_needs_sudo", lambda _p: True)
+    monkeypatch.setattr(service_mod, "geteuid", lambda: 501)
     monkeypatch.setattr(service_mod, "os", _FakeOs(root=False))
     monkeypatch.setattr(service_mod, "_run_cmd", _fake_run_cmd)
 
