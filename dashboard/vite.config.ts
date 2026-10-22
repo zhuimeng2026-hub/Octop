@@ -99,6 +99,35 @@ export default defineConfig(({ mode }) => {
   const viteBase = normalizedBasePath ? `${normalizedBasePath}/` : "/";
   // Allow overriding the backend port via VITE_API_PORT env variable (default: 8088)
   const apiPort = process.env.VITE_API_PORT ?? env.VITE_API_PORT ?? "8088";
+  // Full proxy target override, e.g. VITE_API_TARGET=https://ocbot.aixifs.com
+  // to develop against a remote deployment instead of a local server. The path
+  // is forwarded AS-IS (no base-path rewrite): the documented sub-path setup
+  // (`location /videogen/` + `proxy_pass` without a trailing slash) passes the
+  // full "/videogen/api/…" path through to the backend.
+  const remoteTarget = (
+    process.env.VITE_API_TARGET ??
+    env.VITE_API_TARGET ??
+    ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  const apiTarget = remoteTarget || `http://127.0.0.1:${apiPort}`;
+
+  // When proxying to a remote deployment, the backend must believe it is being
+  // reached at the remote origin. `resolve_public_base()` builds SSO/OAuth
+  // redirect_uri from X-Forwarded-Proto / X-Forwarded-Host, and the remote IdP
+  // only accepts the exact registered URI — so spoofing the dev origin
+  // (127.0.0.1:5173) would break login with "redirect_uri 参数错误". Forward the
+  // remote origin's scheme/host verbatim instead of the browser-facing one.
+  const remoteForwarded = remoteTarget
+    ? (() => {
+        const { protocol, host } = new URL(remoteTarget);
+        return {
+          "X-Forwarded-Proto": protocol.replace(":", ""),
+          "X-Forwarded-Host": host,
+        };
+      })()
+    : null;
 
   const isProd = mode === "production";
   const analyze = env.ANALYZE === "true";
@@ -368,31 +397,43 @@ export default defineConfig(({ mode }) => {
         usePolling: false,
       },
       proxy: {
-        // Sub-path deployment: the dashboard calls "/<base>/api/…", so the
-        // dev proxy has to strip the base before forwarding to the backend.
+        // Sub-path deployment: the dashboard calls "/<base>/api/…". Against a
+        // local backend the base is stripped before forwarding (FastAPI is
+        // mounted without the prefix); against a remote target the full path
+        // is forwarded as-is — see VITE_API_TARGET above.
         ...(normalizedBasePath
           ? {
               [`${normalizedBasePath}/api`]: {
-                target: `http://127.0.0.1:${apiPort}`,
+                target: apiTarget,
                 changeOrigin: true,
-                xfwd: true,
                 ws: true,
-                rewrite: (requestPath: string) =>
-                  requestPath.replace(
-                    new RegExp(`^${escapeRegExp(normalizedBasePath)}`),
-                    "",
-                  ),
+                // Local dev keeps xfwd so callbacks point back at the browser
+                // origin; a remote target forwards the remote origin instead.
+                ...(remoteForwarded
+                  ? { headers: remoteForwarded }
+                  : {
+                      xfwd: true,
+                      rewrite: (requestPath: string) =>
+                        requestPath.replace(
+                          new RegExp(`^${escapeRegExp(normalizedBasePath)}`),
+                          "",
+                        ),
+                    }),
               },
             }
           : {}),
         "/api": {
-          target: `http://127.0.0.1:${apiPort}`,
+          target: apiTarget,
           changeOrigin: true,
-          // Preserve the browser-facing origin so OAuth callbacks do not point
-          // at the proxy target (127.0.0.1:8088).
-          xfwd: true,
           // Only proxy API websockets — do not steal Vite's HMR upgrade on `/`.
           ws: true,
+          ...(remoteForwarded
+            ? { headers: remoteForwarded }
+            : {
+                // Preserve the browser-facing origin so OAuth callbacks do not
+                // point at the proxy target (127.0.0.1:8088).
+                xfwd: true,
+              }),
         },
       },
     },
