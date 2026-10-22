@@ -1729,6 +1729,11 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_thread_conversation_mode_schema(db)
             if max_version >= 18:
                 _ensure_user_role_schema(db)
+            if max_version >= 22:
+                path = next(path for version, path in _discover("postgresql") if version == 22)
+                sql = path.read_text(encoding="utf-8")
+                with db.connect() as conn, conn.transaction():
+                    _apply_postgresql_migration(conn, sql)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1775,6 +1780,9 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_user_role_schema(db)
     if max_version >= 21:
         _ensure_skill_package_download_schema(db)
+    if max_version >= 22:
+        path = next(path for version, path in _discover("sqlite") if version == 22)
+        _apply_sqlite_migration(db, 22, path)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 

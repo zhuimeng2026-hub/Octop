@@ -442,6 +442,51 @@ def test_ahead_of_max_schema_version_clamps_to_max(tmp_path: Path) -> None:
     assert "user_invites" in invite_tables
 
 
+def test_ahead_of_max_schema_version_repairs_product_library(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "octop.db")
+    with pool.connect() as conn:
+        conn.executescript(
+            (
+                Path(__file__).resolve().parents[3]
+                / "src/octop/infra/db/migrations/001_initial.sql"
+            ).read_text()
+        )
+        conn.execute("UPDATE _schema_version SET version = 99")
+
+    run_migrations(pool)
+
+    with pool.connect() as conn:
+        version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+        tables = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        conn.execute(
+            "INSERT INTO product_library_products "
+            "(product_id, owner_user_id, name, created_at, updated_at) "
+            "VALUES ('product-1', 1, 'Product', 1, 1)"
+        )
+
+    run_migrations(pool)
+
+    with pool.connect() as conn:
+        version_after_repeat = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+        product = conn.execute(
+            "SELECT name FROM product_library_products WHERE product_id = 'product-1'"
+        ).fetchone()
+
+    assert version == 22
+    assert {
+        "product_library_products",
+        "product_library_assets",
+        "product_library_projects",
+    }.issubset(tables)
+    assert version_after_repeat == 22
+    assert product is not None
+    assert product["name"] == "Product"
+    pool.close()
+
+
 def test_current_watermark_repairs_pre_v13_connectors_schema(tmp_path: Path) -> None:
     """A folded v13 schema change is repaired even when migration 013 is skipped."""
     pool = SqlitePool(tmp_path / "octop.db")
