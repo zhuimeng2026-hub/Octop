@@ -38,6 +38,7 @@ type App struct {
 	trayClickTimer *time.Timer
 	drops          dropServer
 	ownsListenPort bool
+	navigated      bool
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -236,11 +237,25 @@ func (a *App) boot() {
 	a.showDashboard(base)
 }
 
+// navigate points the window at base. The first navigation is deferred until
+// the webview is ready — later ones happen long after start-up and go direct.
+func (a *App) navigate(base string) {
+	a.mu.Lock()
+	first := !a.navigated
+	a.navigated = true
+	a.mu.Unlock()
+	if !first {
+		a.window.SetURL(base)
+		return
+	}
+	onWebviewReady(a.app, a.window, func() { a.window.SetURL(base) })
+}
+
 func (a *App) showDashboard(base string) {
 	if a.window == nil {
 		return
 	}
-	a.window.SetURL(base)
+	a.navigate(base)
 	a.scheduleDragOverlay()
 	s := a.store.get()
 	go func() {
