@@ -79,7 +79,7 @@ class ProductLibraryRepo:
                 f"UPDATE product_library_products SET {assignments} WHERE owner_user_id = ? AND product_id = ?",
                 (*values.values(), owner_id, product_id),
             )
-        return cur.rowcount > 0
+        return bool(cur.rowcount > 0)
 
     def delete_product(self, owner_id: int, product_id: str) -> bool:
         with self._db.transaction() as conn:
@@ -88,7 +88,7 @@ class ProductLibraryRepo:
                 "DELETE FROM product_library_products WHERE owner_user_id = ? AND product_id = ?",
                 (owner_id, product_id),
             )
-        return cur.rowcount > 0
+        return bool(cur.rowcount > 0)
 
     def add_asset(
         self,
@@ -173,7 +173,7 @@ class ProductLibraryRepo:
                 f"UPDATE product_library_assets SET {', '.join(sets)} WHERE owner_user_id = ? AND asset_id = ?",
                 (*params, owner_id, asset_id),
             )
-        return cur.rowcount > 0
+        return bool(cur.rowcount > 0)
 
     def create_project(
         self, owner_id: int, product_id: str, name: str, snapshot: dict[str, Any]
