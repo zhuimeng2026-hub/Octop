@@ -64,12 +64,22 @@ export default function ProductLibraryPage() {
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const previewUrls = useRef<Record<string, string>>({});
   const previewProductId = useRef<string | null>(null);
+  const activeProductId = useRef<string | null>(null);
+  const productSelectionVersion = useRef(0);
   const [previewBusy, setPreviewBusy] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [projectBusy, setProjectBusy] = useState(false);
   const [preparingId, setPreparingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const selectProduct = (product: Product | null) => {
+    if (activeProductId.current !== product?.id) {
+      activeProductId.current = product?.id ?? null;
+      productSelectionVersion.current += 1;
+    }
+    setActive(product);
+  };
 
   const reload = async () => {
     const [p, pr] = await Promise.all([
@@ -78,7 +88,7 @@ export default function ProductLibraryPage() {
     ]);
     setProducts(p.items);
     setProjects(pr.items);
-    if (active) setActive(p.items.find((x) => x.id === active.id) ?? null);
+    if (active) selectProduct(p.items.find((x) => x.id === active.id) ?? null);
   };
   useEffect(() => {
     void reload().catch(() => message.error(t("productLibrary.failed")));
@@ -151,7 +161,7 @@ export default function ProductLibraryPage() {
     setForm(blank);
     setParameterRows([]);
     setEditing(false);
-    setActive(null);
+    selectProduct(null);
     setBusy(true);
   };
   const openEdit = () => {
@@ -198,11 +208,21 @@ export default function ProductLibraryPage() {
   };
   const upload = async () => {
     if (!active || !files.length) return;
+    const productId = active.id;
+    const selectionVersion = productSelectionVersion.current;
     setUploadBusy(true);
     try {
-      await productLibraryApi.upload(active.id, files, usage);
+      await productLibraryApi.upload(productId, files, usage);
+      if (
+        activeProductId.current !== productId ||
+        productSelectionVersion.current !== selectionVersion
+      ) return;
       setFiles([]);
-      const r = await productLibraryApi.assets(active.id);
+      const r = await productLibraryApi.assets(productId);
+      if (
+        activeProductId.current !== productId ||
+        productSelectionVersion.current !== selectionVersion
+      ) return;
       setAssets(r.items);
       setSelectedAssets(r.items.filter((asset) => asset.active).map((asset) => asset.id));
       message.success(t("productLibrary.uploaded"));
@@ -332,7 +352,7 @@ export default function ProductLibraryPage() {
                     key={p.id}
                     block
                     type={active?.id === p.id ? "primary" : "default"}
-                    onClick={() => setActive(p)}
+                    onClick={() => selectProduct(p)}
                     style={{ height: "auto", textAlign: "left", padding: 12 }}
                   >
                     <div>
@@ -376,7 +396,7 @@ export default function ProductLibraryPage() {
                           title: t("productLibrary.deleteConfirm"),
                           onOk: async () => {
                             await productLibraryApi.deleteProduct(active.id);
-                            setActive(null);
+                            selectProduct(null);
                             await reload();
                           },
                         })
