@@ -63,6 +63,15 @@ jobs:
       - name: Type check
         run: make typecheck
 
+      - name: Database and local package regressions
+        run: >-
+          uv run pytest -x -q
+          tests/unit/db/test_db_pool.py
+          tests/unit/backup/test_system_archive.py
+          tests/unit/db/test_product_library_repo.py
+          tests/unit/db/test_product_package_export.py
+          tests/unit/api/test_product_library.py
+
       - name: Test
         run: make test
 

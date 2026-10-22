@@ -68,15 +68,27 @@ def test_run_migrations_creates_tables(db: SqlitePool):
         "sso_providers",
         "sso_login_states",
         "trajectory_events",
+        "product_library_products",
+        "product_library_assets",
+        "product_library_projects",
     }
     assert expected.issubset(names)
     assert "knowledge_base_members" not in names
 
 
 def test_run_migrations_idempotent(db: SqlitePool):
+    with db.connect() as conn:
+        conn.execute(
+            "INSERT INTO product_library_products "
+            "(product_id, owner_user_id, name, created_at, updated_at) "
+            "VALUES ('product-1', 1, 'Product', 1, 1)"
+        )
     run_migrations(db)
     with db.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+        product = conn.execute(
+            "SELECT name FROM product_library_products WHERE product_id = 'product-1'"
+        ).fetchone()
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
         thread_cols = {r["name"] for r in conn.execute("PRAGMA table_info(threads)").fetchall()}
@@ -100,6 +112,8 @@ def test_run_migrations_idempotent(db: SqlitePool):
             r["name"] for r in conn.execute("PRAGMA index_list(sso_providers)").fetchall()
         }
     assert v == 22
+    assert product is not None
+    assert product["name"] == "Product"
     assert "login_failed_count" in cols
     assert "login_locked_until" in cols
     assert "preferences_json" in cols

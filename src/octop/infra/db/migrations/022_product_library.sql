@@ -46,3 +46,5 @@ CREATE TABLE IF NOT EXISTS product_library_projects (
 );
 CREATE INDEX IF NOT EXISTS idx_product_library_projects_owner
     ON product_library_projects(owner_user_id, created_at DESC);
+
+UPDATE _schema_version SET version = 22;
