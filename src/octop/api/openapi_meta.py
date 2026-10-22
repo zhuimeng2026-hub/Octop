@@ -90,6 +90,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "description": "Private, shareable document knowledge bases and their indexing capability.",
     },
     {
+        "name": "product-library",
+        "description": "User-owned products, reusable media, immutable video-project snapshots, and preparation of Remotion jobs in an authorized agent workspace.",
+    },
+    {
         "name": "internal-mcp",
         "description": "Internal MCP gateway used by harness agents (no dashboard auth).",
     },

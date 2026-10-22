@@ -158,6 +158,12 @@ export function buildNavSections(
       icon: <MessageSquareText size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.chat",
     },
+    {
+      key: "product-library",
+      path: "/product-library",
+      icon: <Package size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.productLibrary",
+    },
   ];
   if (navAllowed(user, "experts")) {
     topItems.push({
