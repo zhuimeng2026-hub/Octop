@@ -59,7 +59,10 @@ def test_package_includes_only_referenced_assets_and_locked_runtime(package_libr
         usage="reference",
     )
     project = service.create_snapshot(
-        owner_id=1, product_id=product["id"], name="Video", asset_ids=[image["id"], reference["id"]]
+        owner_id=1,
+        product_id=product["id"],
+        name="Video",
+        asset_ids=[image["id"], reference["id"]],
     )
     repo.update_product(1, product["id"], {"name": "Changed product"})
     repo.delete_product(1, product["id"])
@@ -110,7 +113,9 @@ def test_export_rejects_changed_asset_bytes(package_library) -> None:
 def test_text_only_package_has_assets_directory(package_library) -> None:
     repo, paths, service = package_library
     product = repo.create_product(1, {"name": "Text-only product"})
-    project = service.create_snapshot(owner_id=1, product_id=product["id"], name="Video", asset_ids=[])
+    project = service.create_snapshot(
+        owner_id=1, product_id=product["id"], name="Video", asset_ids=[]
+    )
     output = package_export.export_project_package(paths, project)
     try:
         with ZipFile(output) as archive:

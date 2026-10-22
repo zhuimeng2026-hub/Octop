@@ -119,7 +119,9 @@ def export_project_package(paths: PathLayout, project: dict[str, Any]) -> Path:
             archive.writestr("assets/", b"")
             _write_text(archive, "script.json", script_bytes)
             _write_text(
-                archive, "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode()
+                archive,
+                "manifest.json",
+                json.dumps(manifest, ensure_ascii=False, indent=2).encode(),
             )
             _write_text(archive, "README.txt", PACKAGE_README.encode("utf-8"))
             # Reference documents are intentionally not shipped as playable scene assets.
