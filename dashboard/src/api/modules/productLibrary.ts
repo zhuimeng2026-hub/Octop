@@ -59,7 +59,11 @@ export const productLibraryApi = {
   },
   updateAsset: (
     id: string,
-    body: { usage?: ProductAsset["usage"]; priority?: boolean; active?: boolean },
+    body: {
+      usage?: ProductAsset["usage"];
+      priority?: boolean;
+      active?: boolean;
+    },
   ) =>
     request<ProductAsset>(`/product-library/assets/${id}`, {
       method: "PATCH",

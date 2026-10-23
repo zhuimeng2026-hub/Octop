@@ -13,8 +13,17 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { configure, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+// These cases drive a full antd drawer with real user-event interactions:
+// the file needs ~20 s unloaded, and each case lands at 1-2.5 s. Vitest's
+// default 5 s per-test timeout is therefore too tight whenever the box is
+// busy (parallel workers, a co-running pytest) and the file fails with
+// "Test timed out in 5000ms". Give the cases room to finish.
+vi.setConfig({ testTimeout: 30_000 });
+// Same reasoning for Testing Library's 1 s query timeout.
+configure({ asyncUtilTimeout: 5_000 });
 
 vi.mock("../../../api/request", () => ({
   request: vi.fn(),

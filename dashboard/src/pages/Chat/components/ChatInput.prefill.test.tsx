@@ -60,6 +60,8 @@ vi.mock("../hooks/chatStore", () => ({
   readInputDraft: (agentId: string) =>
     agentId === "agent-2" ? "target expert draft" : "",
   writeInputDraft: vi.fn(),
+  // Subscribe-only: the composer registers a listener for steered drafts.
+  onSteerRestore: () => () => {},
 }));
 
 vi.mock("./ChatInputPreviewBar", () => ({

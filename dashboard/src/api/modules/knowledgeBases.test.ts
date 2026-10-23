@@ -1,12 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { request, requestUpload, bridgeAgentHeaders } = vi.hoisted(() => ({
-  request: vi.fn(),
-  requestUpload: vi.fn(),
-  bridgeAgentHeaders: vi.fn(() => undefined),
-}));
+const { request, requestUpload, requestBlob, bridgeAgentHeaders } = vi.hoisted(
+  () => ({
+    request: vi.fn(),
+    requestUpload: vi.fn(),
+    requestBlob: vi.fn(),
+    bridgeAgentHeaders: vi.fn((agentId?: string | null) =>
+      agentId ? { "X-Octop-Agent-Id": agentId } : undefined,
+    ),
+  }),
+);
 
-vi.mock("../request", () => ({ request, requestUpload, bridgeAgentHeaders }));
+vi.mock("../request", () => ({
+  request,
+  requestUpload,
+  requestBlob,
+  bridgeAgentHeaders,
+}));
 
 import { knowledgeBasesApi } from "./knowledgeBases";
 

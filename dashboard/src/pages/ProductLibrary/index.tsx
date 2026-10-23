@@ -187,7 +187,9 @@ export default function ProductLibraryPage() {
       const payload = {
         ...form,
         name: form.name.trim(),
-        selling_points: form.selling_points.map((point) => point.trim()).filter(Boolean),
+        selling_points: form.selling_points
+          .map((point) => point.trim())
+          .filter(Boolean),
         parameters: Object.fromEntries(
           parameterRows
             .filter(([key]) => key.trim())
@@ -216,15 +218,19 @@ export default function ProductLibraryPage() {
       if (
         activeProductId.current !== productId ||
         productSelectionVersion.current !== selectionVersion
-      ) return;
+      )
+        return;
       setFiles([]);
       const r = await productLibraryApi.assets(productId);
       if (
         activeProductId.current !== productId ||
         productSelectionVersion.current !== selectionVersion
-      ) return;
+      )
+        return;
       setAssets(r.items);
-      setSelectedAssets(r.items.filter((asset) => asset.active).map((asset) => asset.id));
+      setSelectedAssets(
+        r.items.filter((asset) => asset.active).map((asset) => asset.id),
+      );
       message.success(t("productLibrary.uploaded"));
     } catch {
       message.error(t("productLibrary.failed"));
