@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { validateScript } from "./project.mjs";
 
 import { bundle } from "@remotion/bundler";
 import { ensureBrowser, renderMedia, selectComposition } from "@remotion/renderer";
@@ -73,33 +74,6 @@ function parseArgs(argv) {
   return args;
 }
 
-/** Minimal validation — the renderer must fail loudly, not render garbage. */
-function validateScript(script, projectDir) {
-  if (!script || typeof script !== "object") {
-    throw new Error("script.json must contain a JSON object");
-  }
-  if (!Array.isArray(script.scenes) || script.scenes.length === 0) {
-    throw new Error("script.json has no scenes");
-  }
-  const missing = [];
-  for (const [index, scene] of script.scenes.entries()) {
-    if (!scene || typeof scene !== "object") {
-      throw new Error(`scene #${index} is not an object`);
-    }
-    if (!scene.type) throw new Error(`scene #${index} has no "type"`);
-    if (!(Number(scene.duration) > 0)) {
-      throw new Error(`scene #${index} ("${scene.id ?? scene.type}") has no positive duration`);
-    }
-    if (scene.asset) {
-      const assetPath = path.join(projectDir, "assets", scene.asset);
-      if (!fs.existsSync(assetPath)) missing.push(scene.asset);
-    }
-  }
-  if (missing.length > 0) {
-    throw new Error(`missing asset file(s): ${missing.join(", ")}`);
-  }
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.project) {
@@ -149,7 +123,9 @@ async function main() {
   const jobEntry = path.join(projectDir, "src", "index.ts");
   const entryPoint = fs.existsSync(jobEntry) ? jobEntry : ENTRY_POINT;
   const jobPublic = path.join(projectDir, "public");
-  const publicDir = fs.existsSync(jobPublic) ? jobPublic : projectDir;
+  const publicDir = fs.existsSync(jobEntry)
+    ? (fs.existsSync(jobPublic) ? jobPublic : projectDir)
+    : path.join(projectDir, "assets");
   console.log(`[render] entry: ${entryPoint}`);
   console.log(`[render] public: ${publicDir}`);
 

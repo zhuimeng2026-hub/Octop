@@ -89,5 +89,8 @@ export function sceneDuration(scene: Scene): number {
 /** Total duration of a script in frames. */
 export function scriptDurationInFrames(script: VideoScript): number {
   const fps = script.fps ?? DEFAULT_FPS;
-  return Math.max(1, Math.round(scriptDurationSeconds(script) * fps));
+  return Math.max(1, script.scenes.reduce(
+    (frames, scene) => frames + Math.max(1, Math.round(sceneDuration(scene) * fps)),
+    0,
+  ));
 }

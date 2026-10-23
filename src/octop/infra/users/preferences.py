@@ -22,6 +22,7 @@ PREFERENCES_KEY_SIDEBAR_NAV = "sidebar_nav"
 SIDEBAR_NAV_KEYS = frozenset(
     {
         "chat",
+        "product-library",
         "experts",
         "tasks",
         "token-usage",

@@ -5,7 +5,7 @@ import { resolveTheme, type Scene, type VideoScript } from "../types";
 
 /** Resolve an asset file name to a URL inside the bundled public directory. */
 function assetUrl(asset: string): string {
-  return staticFile(`assets/${asset}`);
+  return staticFile(asset);
 }
 
 export const TitleScene: React.FC<{ scene: Scene; script: VideoScript }> = ({

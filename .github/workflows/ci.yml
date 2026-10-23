@@ -11,6 +11,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dashboard:
+    name: Dashboard / build and test
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check and build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
   quality:
     name: "Python ${{ matrix.python-version }}"
     runs-on: ubuntu-latest
@@ -37,6 +62,15 @@ jobs:
 
       - name: Type check
         run: make typecheck
+
+      - name: Database and local package regressions
+        run: >-
+          uv run pytest -x -q
+          tests/unit/db/test_db_pool.py
+          tests/unit/backup/test_system_archive.py
+          tests/unit/db/test_product_library_repo.py
+          tests/unit/db/test_product_package_export.py
+          tests/unit/api/test_product_library.py
 
       - name: Test
         run: make test

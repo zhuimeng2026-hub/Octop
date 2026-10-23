@@ -66,6 +66,7 @@ export interface NavSection {
 /** Every nav item key the sidebar can show. Keep in sync with `SIDEBAR_NAV_KEYS` in `octop.infra.users.preferences`. */
 export const SIDEBAR_NAV_KEYS = [
   "chat",
+  "product-library",
   "experts",
   "tasks",
   "token-usage",
@@ -157,6 +158,12 @@ export function buildNavSections(
       path: "/chat",
       icon: <MessageSquareText size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.chat",
+    },
+    {
+      key: "product-library",
+      path: "/product-library",
+      icon: <Package size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.productLibrary",
     },
   ];
   if (navAllowed(user, "experts")) {

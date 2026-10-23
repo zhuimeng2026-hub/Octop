@@ -17,6 +17,7 @@ from octop.infra.db.repos.cron import CronJobRepo
 from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
+from octop.infra.db.repos.product_library import ProductLibraryRepo
 from octop.infra.db.repos.providers import ProviderRepo
 from octop.infra.db.repos.published_experts import PublishedExpertRepo
 from octop.infra.db.repos.secrets import SecretRepo
@@ -62,6 +63,7 @@ class RepoBundle:
     voice_provider_repo: VoiceProviderRepo
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
+    product_library_repo: ProductLibraryRepo
     sso_repo: SsoRepo
 
     @classmethod
@@ -92,6 +94,7 @@ class RepoBundle:
             voice_provider_repo=VoiceProviderRepo(db),
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
+            product_library_repo=ProductLibraryRepo(db),
             sso_repo=SsoRepo(db),
         )
 
@@ -201,6 +204,10 @@ class SharedServices:
     @property
     def proactive_care_config_repo(self) -> ProactiveCareConfigRepo:
         return self.repos.proactive_care_config_repo
+
+    @property
+    def product_library_repo(self) -> ProductLibraryRepo:
+        return self.repos.product_library_repo
 
     @property
     def sso_repo(self) -> SsoRepo:

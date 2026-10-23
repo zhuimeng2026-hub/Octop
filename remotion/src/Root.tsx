@@ -32,7 +32,7 @@ export const RemotionRoot: React.FC = () => {
       width={DEFAULT_SCRIPT.width}
       height={DEFAULT_SCRIPT.height}
       defaultProps={{ script: DEFAULT_SCRIPT } as VideoProps}
-      calculateMetadata={({ props }) => {
+      calculateMetadata={({ props }: { props: VideoProps }) => {
         const script = (props as VideoProps).script ?? DEFAULT_SCRIPT;
         return {
           durationInFrames: scriptDurationInFrames(script),

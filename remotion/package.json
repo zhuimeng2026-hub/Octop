@@ -3,17 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Script-driven video rendering for Octop — Remotion project + local MCP server",
+  "engines": {
+    "node": ">=22"
+  },
+  "description": "Script-driven local video preview and rendering for Octop",
   "scripts": {
-    "render": "node src/render.mjs",
-    "render:draft": "node src/render.mjs --quality draft",
-    "mcp": "node mcp/server.mjs",
+    "preview": "node launch.mjs",
+    "render": "node launch.mjs --render",
+    "render:draft": "node launch.mjs --render --quality draft",
+    "test": "node --test test/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.0",
     "@remotion/cli": "^4.0.0",
     "@remotion/renderer": "^4.0.0",
+    "remotion": "4.0.537",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

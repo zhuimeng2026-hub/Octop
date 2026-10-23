@@ -210,7 +210,7 @@ lint:
 	@echo "[lint] Ruff check..."
 	$(RUN) ruff check src tests
 	@echo "[lint] Ruff format check..."
-	$(RUN) ruff format --check src tests
+	$(RUN) ruff format --diff src tests
 
 .PHONY: format
 format:
