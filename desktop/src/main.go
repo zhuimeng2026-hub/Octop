@@ -368,6 +368,17 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
+		// 进程互斥：第二个 Octop 实例启动时会尝试获取同 UniqueID 的锁，
+		// 获取失败即视为已在运行，直接 ExitCode 退出，不再拉起新窗口；
+		// 同时把启动参数/工作目录通过 OnSecondInstanceLaunch 通知首实例，
+		// 这里只负责把首实例窗口提到前台（双击图标/重开应聚焦而非多开）。
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.octop.desktop",
+			ExitCode: 0,
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				api.showWindow()
+			},
+		},
 	})
 	api.app = app
 	attachOpenURLEventListener(app, api.OpenExternal)

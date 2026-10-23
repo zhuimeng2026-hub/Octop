@@ -3,7 +3,7 @@
 - 复核日期：2026-10-23
 - 分支：`feature/local-studio-package`
 - 桌面壳技术栈：Wails v3（`github.com/wailsapp/wails/v3 v3.0.0-beta.13`）+ WebView2
-- 结论：**当前恰好只有一个 `Octop.exe` 主进程，但代码层面并没有强制进程互斥；不做保护时再次启动会拉起第二个进程。**
+- 结论：**代码层面原本没有强制进程互斥（再次启动会拉起第二个进程）。已在 `desktop/src/main.go` 启用 Wails v3 的 `SingleInstance`，从代码层强制单实例。**
 
 ---
 
@@ -76,9 +76,9 @@ type SingleInstanceOptions struct {
 
 ---
 
-## 4. 修复建议（待实施）
+## 4. 修复已实施
 
-在 `desktop/src/main.go` 的 `application.New(...)` 中启用单实例，第二实例直接退出（或聚焦已有窗口）：
+已在 `desktop/src/main.go` 的 `application.New(...)`（`main.go:368` 附近）启用单实例，第二实例直接退出并聚焦已有窗口：
 
 ```go
 app := application.New(application.Options{
@@ -87,18 +87,21 @@ app := application.New(application.Options{
     Services:    []application.Service{application.NewService(api)},
     // …既有字段…
     SingleInstance: &application.SingleInstanceOptions{
-        UniqueID: "com.tencent.octop",
+        UniqueID: "com.octop.desktop",
+        ExitCode: 0,
         OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
             api.showWindow() // 第二实例启动时，聚焦已存在的窗口
         },
-        ExitCode: 0,
     },
 })
 ```
 
-这样无论便携模式还是远程后端模式，第二次启动都会立即退出并聚焦首个实例，满足"进程互斥、只有一个进程存在"。
+- `UniqueID` 用 `com.octop.desktop`（应用级唯一标识，平台相关锁基于此）。
+- 第二个实例在 `application.go:215` 处 `os.Exit(ExitCode)` 直接退出，**不会**再创建 WebView2 / 托盘。
+- 通过 `OnSecondInstanceLaunch` 回调把首实例窗口提到前台——双击图标重开、或命令行再次启动时应聚焦而非多开。
+- 编译已验证：`go build` 通过，新二进制正常生成。
 
-> 注：本文仅记录复核结论与建议，未改动代码。如需实施，请另开修复提交。
+> 注意：单实例能力**需在重新编译后才会生效**。当前正在运行的 `Octop.exe`（PID 14240，旧二进制）不含此修复；要让它生效，需停止旧进程、`go build`/重新打包，再启动新二进制。无论便携模式还是远程后端模式（`OCTOP_DESKTOP_URL` 已设），第二次启动都会立即退出并聚焦首个实例，满足"进程互斥、只有一个进程存在"。
 
 ---
 
