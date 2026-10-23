@@ -1,10 +1,10 @@
 import { withBase } from "../../utils/basePath";
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Input, Button, Checkbox } from "antd";
+import { Button, Checkbox } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { KeyRound, Lock, User } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   clearAuthToken,
@@ -17,8 +17,7 @@ import {
   type OauthProviderStatus,
 } from "../../api/modules/auth";
 import { apiErrorMessage } from "../../utils/apiError";
-import { refreshServerLabels } from "../../i18n";
-import { applyUserLocale, applyGuestLocale } from "../../utils/locale";
+import { applyGuestLocale } from "../../utils/locale";
 import { useTheme } from "../../context/ThemeContext";
 import {
   isSsoPopup,
@@ -31,9 +30,6 @@ import dingtalkIcon from "../../assets/channels/dingtalk.svg";
 import wecomIcon from "../../assets/channels/wecom.svg";
 import wechatIcon from "../../assets/channels/weixin.svg";
 import googleIcon from "../../assets/providers/google.svg";
-import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
-import ForgotPasswordModal from "./ForgotPasswordModal";
-import { type PublicCaptchaConfig } from "./captchaAdapters";
 
 function providerLabel(
   provider: OauthProviderStatus,
@@ -84,20 +80,10 @@ export default function LoginPage() {
   const { isDark } = useTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
-  const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<OauthProviderStatus[]>([]);
   const [ldap, setLdap] = useState<LdapStatus | null>(null);
   const [ssoLoadingKind, setSsoLoadingKind] = useState<string | null>(null);
-  const [captchaReady, setCaptchaReady] = useState(false);
-  const [captchaResetKey, setCaptchaResetKey] = useState(0);
-  const [showForgotHelp, setShowForgotHelp] = useState(false);
-  const [captcha, setCaptcha] = useState<PublicCaptchaConfig>({
-    provider: "slider",
-  });
-  const captchaRef = useRef<CaptchaFieldHandle>(null);
 
   useEffect(() => {
     void applyGuestLocale();
@@ -129,14 +115,6 @@ export default function LoginPage() {
             if (!cancelled) setLdap(next);
           })
           .catch(() => {});
-        authApi
-          .getCaptcha()
-          .then((next) => {
-            if (!cancelled) setCaptcha(next);
-          })
-          .catch(() => {
-            if (!cancelled) setCaptcha({ provider: "slider" });
-          });
       })
       .catch(() => {
         // Backend unreachable — let the user attempt login and show a real
@@ -186,11 +164,6 @@ export default function LoginPage() {
     return () => window.removeEventListener("message", onMessage);
   }, [t]);
 
-  const resetCaptcha = () => {
-    setCaptchaReady(false);
-    setCaptchaResetKey((k) => k + 1);
-  };
-
   const onSso = async (kind: string) => {
     setSsoLoadingKind(kind);
     setRememberLoginPreference(remember);
@@ -221,24 +194,6 @@ export default function LoginPage() {
       popup?.close();
       message.error(apiErrorMessage(err, t("login.oidcStartFailed"), t));
       setSsoLoadingKind(null);
-    }
-  };
-
-  const handleLogin = async () => {
-    if (!username || !password || !captchaReady) return;
-    setLoading(true);
-    try {
-      const token = await captchaRef.current?.getToken();
-      const res = await authApi.login(username, password, token);
-      setAuthToken(res.access_token, remember);
-      await applyUserLocale(res.user.locale);
-      void refreshServerLabels(res.user.locale);
-      navigate("/chat", { replace: true });
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("login.failed"), t));
-      resetCaptcha();
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -304,30 +259,6 @@ export default function LoginPage() {
           {t("login.title")}
         </h2>
 
-        <Input
-          prefix={
-            <User size={16} style={{ color: "var(--fn-text-quaternary)" }} />
-          }
-          placeholder={t("login.username")}
-          size="large"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoFocus
-          style={{ borderRadius: 10 }}
-        />
-
-        <Input.Password
-          prefix={
-            <Lock size={16} style={{ color: "var(--fn-text-quaternary)" }} />
-          }
-          placeholder={t("login.password")}
-          size="large"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onPressEnter={handleLogin}
-          style={{ borderRadius: 10 }}
-        />
-
         {ldap?.enabled && (
           <p
             style={{
@@ -346,123 +277,45 @@ export default function LoginPage() {
           </p>
         )}
 
-        <CaptchaField
-          ref={captchaRef}
-          config={captcha}
-          resetKey={captchaResetKey}
-          slideHint={t("login.slideHint")}
-          slideVerifiedLabel={t("login.slideVerified")}
-          unsupportedLabel={t("login.unsupportedCaptcha")}
-          onReadyChange={setCaptchaReady}
-        />
+        {providers.map((provider) => (
+          <Button
+            key={provider.kind}
+            size="large"
+            block
+            icon={providerIcon(provider)}
+            loading={ssoLoadingKind === provider.kind}
+            onClick={() => void onSso(provider.kind)}
+            style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
+          >
+            {t("login.oidcWith", { name: providerLabel(provider, t) })}
+          </Button>
+        ))}
 
-        <Button
-          type="primary"
-          size="large"
-          block
-          loading={loading}
-          onClick={handleLogin}
-          disabled={!username || !password || !captchaReady}
-          style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
-        >
-          {t("login.submit")}
-        </Button>
-
-        <div
-          style={{
-            width: "100%",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
-          <div
+        {providers.length > 0 ? (
+          <Checkbox
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              width: "100%",
+              margin: 0,
+              fontSize: 13,
+              color: "var(--fn-text-tertiary)",
             }}
           >
-            <Checkbox
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
-              style={{
-                margin: 0,
-                fontSize: 13,
-                color: "var(--fn-text-tertiary)",
-              }}
-            >
-              {t("login.remember")}
-            </Checkbox>
-            <button
-              type="button"
-              data-testid="login-forgot-password-toggle"
-              onClick={() => setShowForgotHelp(true)}
-              style={{
-                margin: 0,
-                padding: 0,
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: "var(--fn-text-tertiary)",
-                flexShrink: 0,
-              }}
-            >
-              {t("login.forgotPassword", "Forgot password?")}
-            </button>
-          </div>
-          <ForgotPasswordModal
-            open={showForgotHelp}
-            onClose={() => setShowForgotHelp(false)}
-          />
-        </div>
-
-        {providers.length > 0 && (
-          <>
-            <div
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                color: "var(--fn-text-tertiary)",
-                fontSize: 13,
-              }}
-            >
-              <span
-                style={{
-                  flex: 1,
-                  height: 1,
-                  background: "var(--fn-border-primary)",
-                }}
-              />
-              {t("login.or")}
-              <span
-                style={{
-                  flex: 1,
-                  height: 1,
-                  background: "var(--fn-border-primary)",
-                }}
-              />
-            </div>
-            {providers.map((provider) => (
-              <Button
-                key={provider.kind}
-                size="large"
-                block
-                icon={providerIcon(provider)}
-                loading={ssoLoadingKind === provider.kind}
-                onClick={() => void onSso(provider.kind)}
-                style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
-              >
-                {t("login.oidcWith", { name: providerLabel(provider, t) })}
-              </Button>
-            ))}
-          </>
+            {t("login.remember")}
+          </Checkbox>
+        ) : (
+          <p
+            style={{
+              margin: 0,
+              width: "100%",
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: "var(--fn-text-tertiary)",
+              textAlign: "center",
+            }}
+          >
+            {t("login.noProviderEnabled")}
+          </p>
         )}
       </div>
     </div>

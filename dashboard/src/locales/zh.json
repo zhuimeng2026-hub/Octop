@@ -5733,6 +5733,7 @@
     "unsupportedCaptcha": "当前客户端不支持此验证码。请使用支持的客户端登录。",
     "or": "或",
     "oidcWith": "使用 {{name}} 继续",
+    "noProviderEnabled": "尚未配置任何登录方式，请联系管理员。",
     "oidcStartFailed": "无法启动单点登录",
     "ldapHint": "使用{{name}}账号登录",
     "oidcError": {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import httpx
@@ -238,3 +239,66 @@ def test_wechat_open_test_connection_rejects_bad_secret(service: SsoService) -> 
 
     assert result["ok"] is False
     assert "40125" in str(result["detail"])
+
+
+def test_start_login_logs_the_callback_url(
+    service: SsoService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The callback URL is the thing that breaks a QR scan; it must be in the log."""
+    service._services.user_repo.create(username="admin", role="admin")
+    _wechat_row(service)
+
+    with caplog.at_level(logging.INFO, logger="octop.infra.auth.sso.service"):
+        started = service.start_login_for_kind(
+            "wechat_open",
+            redirect_after=None,
+            public_base="https://ocbot.aixifs.com/videogen",
+        )
+
+    assert started["authorization_url"].startswith("https://open.weixin.qq.com/connect/qrconnect?")
+    assert any(
+        "https://ocbot.aixifs.com/videogen/api/auth/oauth/callback" in record.message
+        for record in caplog.records
+    )
+
+
+async def test_callback_with_an_unknown_state_is_logged(
+    service: SsoService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A lost state cookie is the classic failure; it must not stay silent."""
+    with caplog.at_level(logging.WARNING, logger="octop.infra.auth.sso.service"):
+        await service.handle_callback(
+            code="auth-code",
+            state="never-issued",
+            error=None,
+            public_base="https://ocbot.aixifs.com/videogen",
+        )
+
+    assert any("no login state matched" in record.message for record in caplog.records)
+
+
+def test_profile_failure_is_logged(service: SsoService, caplog: pytest.LogCaptureFixture) -> None:
+    """A refused profile call still signs the user in, but only the log explains it."""
+    adapter = WeChatOpenAdapter(service)
+    row = _wechat_row(service)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/sns/oauth2/access_token"):
+            return httpx.Response(
+                200, json={"errcode": 0, "access_token": "oauth-token", "openid": "oABC"}
+            )
+        return httpx.Response(200, json={"errcode": 48001, "errmsg": "api unauthorized"})
+
+    login_state = type("State", (), {})()
+    with (
+        patch("octop.infra.auth.sso.service.httpx.Client", side_effect=_mock_client(handler)),
+        caplog.at_level(logging.INFO, logger="octop.infra.auth.sso.providers.wechat_open"),
+    ):
+        adapter.complete_login(
+            "auth-code",
+            row=row,
+            login_state=login_state,  # type: ignore[arg-type]
+            redirect_uri="https://octop.example/api/auth/oauth/callback",
+        )
+
+    assert any("48001" in record.message for record in caplog.records)

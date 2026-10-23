@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
 from functools import partial
 from typing import Any, Literal, cast
@@ -24,6 +25,8 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 SsoKind = Literal["oidc", "feishu", "dingtalk", "wecom", "wechat_open"]
 
@@ -112,9 +115,26 @@ async def oauth_callback(
     stored = cookie_state(request)
     auth_code = code or authCode
     if not state or not stored or not secrets.compare_digest(stored, state):
+        # The state never reaches the service on this path, so it is logged here:
+        # a lost cookie, a stripped base path, or a restarted server all land here.
+        logger.warning(
+            "SSO callback rejected: state mismatch (query_state=%s cookie_state=%s "
+            "code=%s error=%s public_base=%s)",
+            bool(state),
+            bool(stored),
+            bool(auth_code),
+            error,
+            public_base,
+        )
         frontend = _login_error_redirect(server, public_base)
         response = RedirectResponse(f"{frontend}/login?oidc_error=state", status_code=302)
     else:
+        logger.info(
+            "SSO callback accepted (code=%s error=%s public_base=%s)",
+            bool(auth_code),
+            error,
+            public_base,
+        )
         result = await _service(server).handle_callback(
             code=auth_code,
             state=state,

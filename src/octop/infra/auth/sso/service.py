@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import secrets
 import time
@@ -23,7 +24,6 @@ from octop.infra.auth.sso.providers import build_adapters
 from octop.infra.auth.sso.providers.base import SSO_KINDS, IdentityProvider
 from octop.infra.auth.sso.public_base import build_redirect_uri, parse_strict_origin
 from octop.infra.auth.sso.redirect_after import sanitize_redirect_after
-from octop.infra.base_path import current_base_path
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.sso import SsoProviderRow
 from octop.infra.db.services import SharedServices
@@ -36,6 +36,15 @@ _LOGIN_CODE_TTL_SECONDS = 60
 _HTTP_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
 logger = logging.getLogger(__name__)
+
+
+def _subject_fingerprint(subject: str) -> str:
+    """A stable, non-reversible tag for a provider subject (openid, sub, …).
+
+    Subject values are user identifiers, so they are never logged verbatim:
+    the fingerprint is enough to correlate one login across log lines.
+    """
+    return hashlib.sha256(subject.encode("utf-8")).hexdigest()[:12]
 
 
 @dataclass(frozen=True)
@@ -240,6 +249,7 @@ class SsoService:
             code_challenge=challenge,
             redirect_uri=redirect_uri,
         )
+        logger.info("SSO login started (kind=%s redirect_uri=%s)", kind, redirect_uri)
         self._services.sso_repo.create_login_state(
             state=state,
             provider_id=provider.id,
@@ -265,23 +275,40 @@ class SsoService:
         self._services.sso_repo.delete_expired()
         frontend = self._frontend_base(public_base)
         if error is not None:
+            logger.info("SSO callback: the provider returned an error (%s)", error)
             return self._error_redirect(
                 frontend, "denied" if error == "access_denied" else "generic"
             )
         if not state:
+            logger.warning("SSO callback: the provider sent no state")
             return self._error_redirect(frontend, "state")
 
         login_state = self._services.sso_repo.take_login_state(state)
         if login_state is None:
+            logger.warning(
+                "SSO callback: no login state matched (expired, already used, or the "
+                "state cookie did not survive the round trip)"
+            )
             return self._error_redirect(frontend, "state")
         provider = self._services.sso_repo.get_by_id(login_state.provider_id)
         if provider is None or not provider.enabled:
+            logger.warning(
+                "SSO callback: the provider row is missing or disabled (kind=%s)",
+                provider.kind if provider is not None else "?",
+            )
             return self._error_redirect(frontend, "disabled")
         try:
             adapter = self._adapter(provider.kind)
         except ValueError:
+            logger.warning("SSO callback: no adapter for kind=%s", provider.kind)
             return self._error_redirect(frontend, "misconfigured")
         if not adapter.is_configured(provider) or not code:
+            logger.warning(
+                "SSO callback: incomplete exchange (kind=%s configured=%s code=%s)",
+                provider.kind,
+                adapter.is_configured(provider),
+                bool(code),
+            )
             return self._error_redirect(frontend, "misconfigured")
 
         frontend = self._frontend_base(public_base, provider=provider)
@@ -320,13 +347,32 @@ class SsoService:
                     provider_id=provider.id, subject=subject, claims=claims
                 )
         except OctopError as exc:
+            logger.warning(
+                "SSO login refused (kind=%s subject=%s code=%s)",
+                provider.kind,
+                _subject_fingerprint(subject),
+                exc.code,
+            )
             if exc.code is ErrorCode.USER_DISABLED:
                 return self._error_redirect(frontend, "disabled")
             if exc.code is ErrorCode.SSO_IDENTITY_TAKEN:
                 return self._error_redirect(frontend, "identity_taken")
             return self._error_redirect(frontend, "generic")
         except Exception:
+            logger.exception(
+                "SSO login failed (kind=%s subject=%s)",
+                provider.kind,
+                _subject_fingerprint(subject),
+            )
             return self._error_redirect(frontend, "generic")
+
+        logger.info(
+            "SSO login succeeded (kind=%s subject=%s user_id=%s bound=%s)",
+            provider.kind,
+            _subject_fingerprint(subject),
+            user.id,
+            login_state.user_id is not None,
+        )
 
         login_code = secrets.token_urlsafe(32)
         self._services.sso_repo.attach_login_code(
@@ -387,8 +433,10 @@ class SsoService:
             if row.enabled and row.dashboard_origin:
                 return row.dashboard_origin.rstrip("/")
         # No explicit dashboard origin — the dashboard lives next to the API,
-        # i.e. under the deployment base path.
-        return f"{public_base.rstrip('/')}{current_base_path()}"
+        # i.e. under the deployment base path. ``public_base`` already carries
+        # that prefix (it is resolved from the request's root_path), so it must
+        # not be appended a second time.
+        return public_base.rstrip("/")
 
     def login_error_frontend(self, public_base: str) -> str:
         """Resolve where OIDC error redirects should land (dashboard_origin when set)."""

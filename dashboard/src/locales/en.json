@@ -5733,6 +5733,7 @@
     "unsupportedCaptcha": "This captcha provider is not supported in this client. Use a supported client to sign in.",
     "or": "or",
     "oidcWith": "Continue with {{name}}",
+    "noProviderEnabled": "No sign-in method is available. Contact the administrator.",
     "oidcStartFailed": "Could not start single sign-on",
     "ldapHint": "Sign in with your {{name}} account",
     "oidcError": {

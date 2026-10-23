@@ -12,6 +12,7 @@ import pytest
 from octop.config import OctopConfig
 from octop.infra.auth.sso.crypto import decrypt_secret
 from octop.infra.auth.sso.service import SsoService
+from octop.infra.base_path import set_base_path
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.services import build_shared_services
@@ -228,6 +229,57 @@ async def test_callback_maps_denied_bad_state_and_invalid_token(service: SsoServ
             code="code", state="valid-state", error=None, public_base="https://octop.example"
         )
     assert invalid.url == "https://octop.example/login?oidc_error=invalid_token"
+
+
+@pytest.mark.asyncio
+async def test_callback_under_a_base_path_keeps_the_prefix_once(service: SsoService) -> None:
+    """A sub-path deployment must not double the prefix in the dashboard URL."""
+    service._services.user_repo.create(username="admin", role="admin")
+    configure_provider(service)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/.well-known/openid-configuration":
+            return httpx.Response(
+                200,
+                json={
+                    "issuer": "https://issuer.example",
+                    "authorization_endpoint": "https://issuer.example/authorize",
+                    "token_endpoint": "https://issuer.example/token",
+                    "jwks_uri": "https://issuer.example/jwks",
+                },
+            )
+        return httpx.Response(200, json={"id_token": "signed-id-token"})
+
+    set_base_path("/videogen")
+    try:
+        denied = await service.handle_callback(
+            code=None,
+            state=None,
+            error="access_denied",
+            public_base="https://octop.example/videogen",
+        )
+        with (
+            discovery_client(handler),
+            patch(
+                "octop.infra.auth.sso.service.verify_id_token",
+                return_value={"sub": "subject-123", "preferred_username": "member"},
+            ),
+        ):
+            started = service.start_login(
+                redirect_after=None, public_base="https://octop.example/videogen"
+            )
+            state = httpx.QueryParams(started["authorization_url"].split("?", 1)[1])["state"]
+            result = await service.handle_callback(
+                code="authorization-code",
+                state=state,
+                error=None,
+                public_base="https://octop.example/videogen",
+            )
+    finally:
+        set_base_path("")
+
+    assert denied.url == "https://octop.example/videogen/login?oidc_error=denied"
+    assert result.url.startswith("https://octop.example/videogen/login/oidc/complete#code=")
 
 
 @pytest.mark.asyncio

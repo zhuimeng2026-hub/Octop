@@ -22,6 +22,7 @@ every response body is parsed before it is believed.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
@@ -34,6 +35,8 @@ from octop.infra.db.repos.sso import SsoLoginStateRow, SsoProviderRow
 
 if TYPE_CHECKING:
     from octop.infra.auth.sso.service import SsoService
+
+logger = logging.getLogger(__name__)
 
 _AUTHORIZE = "https://open.weixin.qq.com/connect/qrconnect"
 _API = "https://api.weixin.qq.com"
@@ -87,6 +90,13 @@ class WeChatOpenAdapter:
             "scope": _SCOPE,
             "state": state,
         }
+        appid = row.client_id.strip()
+        logger.info(
+            "WeChat authorize URL built (appid=%s… scope=%s redirect_uri=%s)",
+            appid[:6],
+            _SCOPE,
+            redirect_uri,
+        )
         return f"{_AUTHORIZE}?{urlencode(params)}{_REDIRECT_FRAGMENT}"
 
     def complete_login(
@@ -131,6 +141,7 @@ class WeChatOpenAdapter:
         except (httpx.HTTPError, ValueError) as exc:
             return {"ok": False, "detail": str(exc)}
         errcode = payload.get("errcode")
+        logger.info("WeChat credential probe returned errcode=%s", errcode)
         if errcode in (_ERRCODE_INVALID_APPID, _ERRCODE_INVALID_SECRET):
             errmsg = payload.get("errmsg")
             detail = errmsg if isinstance(errmsg, str) and errmsg else ""
@@ -234,6 +245,10 @@ class WeChatOpenAdapter:
         except (httpx.HTTPError, ValueError):
             return {}
         if not isinstance(payload, dict) or payload.get("errcode") not in (0, "0", None):
+            logger.info(
+                "WeChat profile lookup returned errcode=%s (the sign-in itself is unaffected)",
+                payload.get("errcode") if isinstance(payload, dict) else "?",
+            )
             return {}
         claims: dict[str, Any] = {}
         nickname = payload.get("nickname")
@@ -245,4 +260,10 @@ class WeChatOpenAdapter:
         unionid = payload.get("unionid")
         if isinstance(unionid, str) and unionid.strip():
             claims["unionid"] = unionid.strip()
+        logger.info(
+            "WeChat profile lookup ok (nickname=%s avatar=%s unionid=%s)",
+            bool(claims.get("name")),
+            bool(claims.get("picture")),
+            bool(claims.get("unionid")),
+        )
         return claims
