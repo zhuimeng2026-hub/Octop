@@ -188,4 +188,12 @@ async def run_foreground(
 
 def run_foreground_blocking(**kwargs: Any) -> None:
     """Sync entry for Click commands and tests."""
-    asyncio.run(run_foreground(**kwargs))
+    try:
+        asyncio.run(run_foreground(**kwargs))
+    except KeyboardInterrupt:
+        # uvicorn re-raises the signal it captured once the graceful shutdown
+        # is done, and asyncio's runner turns that into a KeyboardInterrupt.
+        # A requested stop is not a crash: letting it escape made the process
+        # exit 1, so a service manager recorded every clean stop as a failed
+        # unit (systemd: "Main process exited, code=exited, status=1/FAILURE").
+        logger.info("shutdown signal received — exiting cleanly")

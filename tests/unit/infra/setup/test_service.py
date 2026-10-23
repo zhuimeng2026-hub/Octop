@@ -42,6 +42,26 @@ non_root_only = pytest.mark.skipif(
 )
 
 
+def _non_root_account() -> str:
+    """A real, non-root account name to render ``User=`` for.
+
+    The suite may run as root (deployment host, some CI containers). A root
+    system unit deliberately omits ``User=`` — see
+    ``test_render_systemd_unit_system_scope_omits_user_for_root`` — so the
+    ``User=`` assertions need an account that is not root.
+    """
+    current = getpass.getuser()
+    if current != "root":
+        return current
+    for candidate in ("nobody", "daemon", "bin", "www-data"):
+        try:
+            pwd.getpwnam(candidate)
+        except KeyError:
+            continue
+        return candidate
+    pytest.skip("no non-root account available to render User=")
+
+
 def _runtime(tmp_path: Path) -> ServiceRuntime:
     octop_bin = tmp_path / "bin" / "octop"
     octop_bin.parent.mkdir(parents=True)
@@ -54,6 +74,30 @@ def _runtime(tmp_path: Path) -> ServiceRuntime:
         octop_bin=octop_bin,
         run_as_user=getpass.getuser(),
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_real_systemd(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail loudly when a test drives the host's real systemd.
+
+    On a deployment host ``/etc/systemd/system/octop.service`` exists, so a
+    test that forgets to stub ``is_service_installed`` stops the *live*
+    service — the site then answers 502 until someone restarts it by hand.
+    Tests that need the real call site patch ``_systemd_run`` themselves,
+    which replaces this guard.
+    """
+
+    def _unexpected(_rt, *args):
+        raise AssertionError(f"test must not call systemctl {args}")
+
+    monkeypatch.setattr(service_mod, "_systemd_run", _unexpected)
+
+
+def _fake_systemd_run(_rt, *args):
+    """A systemd that answers without touching the host."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(returncode=0, stdout="", stderr="")
 
 
 def test_resolve_octop_executable_falls_back_to_path(
@@ -87,9 +131,10 @@ def test_render_systemd_unit_user_scope(tmp_path: Path) -> None:
 
 @non_root_only
 def test_render_systemd_unit_system_scope(tmp_path: Path) -> None:
-    runtime = _runtime(tmp_path)
+    account = _non_root_account()
+    runtime = replace(_runtime(tmp_path), run_as_user=account)
     unit = render_systemd_unit(runtime, user_unit=False)
-    assert f"User={getpass.getuser()}" in unit
+    assert f"User={account}" in unit
     assert 'Environment="HOME=' in unit
     assert "WantedBy=multi-user.target" in unit
     assert "OCTOP_SYSTEMD_USER=1" not in unit
@@ -106,14 +151,12 @@ def test_render_systemd_unit_system_scope_uses_runtime_scope_by_default(
     before any system unit existed, so the first install omitted ``User=`` and
     systemd ran the daemon as root.
     """
-    import getpass
-
-    user = getpass.getuser()
-    account_home = Path(pwd.getpwnam(user).pw_dir)
-    runtime = replace(_runtime(tmp_path), run_as_user=user, scope="system")
+    account = _non_root_account()
+    account_home = Path(pwd.getpwnam(account).pw_dir)
+    runtime = replace(_runtime(tmp_path), run_as_user=account, scope="system")
 
     unit = render_systemd_unit(runtime)
-    assert f"User={user}" in unit
+    assert f"User={account}" in unit
     assert f'Environment="HOME={account_home}"' in unit
     assert f"Environment=OCTOP_HOME={tmp_path}" in unit
     assert "WorkingDirectory=" not in unit
@@ -136,7 +179,7 @@ def test_probe_health_with_retry_uses_default_budget(
     need to tune it for slow service startups."""
     attempts: list[int] = []
 
-    def _fake_probe(host: str, port: int) -> tuple[bool, str]:
+    def _fake_probe(host: str, port: int, base_path: str | None = None) -> tuple[bool, str]:
         attempts.append(len(attempts) + 1)
         if len(attempts) < 5:
             return False, "connection refused"
@@ -275,10 +318,11 @@ def test_install_service_adds_resource_limits_to_existing_unit(
 
     monkeypatch.setattr(service_mod, "unit_path", lambda *_a, **_kw: unit)
     monkeypatch.setattr(service_mod, "ensure_nofile_dropin", lambda _rt: False)
+    monkeypatch.setattr(service_mod, "ensure_watchdog_units", lambda _rt: False)
     monkeypatch.setattr(service_mod, "_systemd_run", systemd_run)
     assert install_service(runtime) is True
     guard = (dropins / service_mod.RESOURCE_DROPIN_NAME).read_text()
-    assert "[Unit]\nStartLimitIntervalSec=600\nStartLimitBurst=3" in guard
+    assert "[Unit]\nStartLimitIntervalSec=600\nStartLimitBurst=10" in guard
     for setting in ("MemoryHigh=60%", "MemoryMax=75%", "MemorySwapMax=512M", "RestartSec=30"):
         assert setting in guard
     assert "OOMPolicy=kill" in guard
@@ -322,6 +366,131 @@ def test_resource_dropin_skips_launchd(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(service_mod, "_write_managed_file", unexpected_write)
     assert service_mod.ensure_resource_dropin(replace(_runtime(tmp_path), mode="launchd")) is False
+
+
+def test_watchdog_units_are_rendered(tmp_path: Path) -> None:
+    runtime = _runtime(tmp_path)
+    timer = service_mod.render_watchdog_timer()
+    service = service_mod.render_watchdog_service(runtime)
+
+    assert "OnUnitActiveSec=120s" in timer
+    assert "WantedBy=timers.target" in timer
+    assert "Type=oneshot" in service
+    assert f"Environment=OCTOP_HOME={tmp_path}" in service
+    assert (
+        f"ExecStart={runtime.octop_bin} service watchdog "
+        f"--host {runtime.host} --port {runtime.port} --scope system" in service
+    )
+
+
+def test_ensure_watchdog_units_writes_and_enables_the_timer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from types import SimpleNamespace
+
+    runtime = replace(_runtime(tmp_path), scope="system")
+    calls: list[tuple[str, ...]] = []
+
+    def systemd_run(_runtime, *args):
+        calls.append(args)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(service_mod, "unit_path", lambda *_a, **_kw: tmp_path / "octop.service")
+    monkeypatch.setattr(service_mod, "_systemd_run", systemd_run)
+
+    assert service_mod.ensure_watchdog_units(runtime) is True
+    timer = tmp_path / service_mod.WATCHDOG_TIMER_NAME
+    service = tmp_path / service_mod.WATCHDOG_SERVICE_NAME
+    assert timer.read_text(encoding="utf-8") == service_mod.render_watchdog_timer()
+    assert service.read_text(encoding="utf-8") == service_mod.render_watchdog_service(runtime)
+    assert ("enable", "--now", service_mod.WATCHDOG_TIMER_NAME) in calls
+
+    # Second run writes nothing new and leaves the enable state alone —
+    # an operator who disabled the timer for maintenance keeps it disabled.
+    calls.clear()
+    assert service_mod.ensure_watchdog_units(runtime) is False
+    assert calls == []
+
+
+@pytest.mark.parametrize("scope", ["user"])
+def test_ensure_watchdog_units_skips_user_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, scope: str
+) -> None:
+    def unexpected_write(*_a, **_kw):
+        raise AssertionError("must not write watchdog units for a user scope")
+
+    monkeypatch.setattr(service_mod, "_write_managed_file", unexpected_write)
+    assert service_mod.ensure_watchdog_units(replace(_runtime(tmp_path), scope=scope)) is False
+
+
+def test_ensure_watchdog_units_skips_launchd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def unexpected_write(*_a, **_kw):
+        raise AssertionError("must not write watchdog units for launchd")
+
+    monkeypatch.setattr(service_mod, "_write_managed_file", unexpected_write)
+    runtime = replace(_runtime(tmp_path), mode="launchd", scope="system")
+    assert service_mod.ensure_watchdog_units(runtime) is False
+
+
+def test_run_watchdog_restarts_an_unhealthy_service(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = _runtime(tmp_path)
+    probes: list[bool] = [False, True]
+    restarts: list[ServiceRuntime] = []
+
+    def fake_probe(*_a, **_kw):
+        return (probes.pop(0) if len(probes) > 1 else True), "detail"
+
+    monkeypatch.setattr(service_mod, "probe_health_with_retry", fake_probe)
+    monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
+    monkeypatch.setattr(service_mod, "_systemd_status", lambda _rt: (False, True, ""))
+    monkeypatch.setattr(service_mod, "restart_service", restarts.append)
+
+    healthy, detail = service_mod.run_watchdog(runtime)
+    assert restarts == [runtime]
+    assert healthy is True
+    assert detail == "detail"
+
+
+def test_run_watchdog_leaves_a_disabled_service_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = _runtime(tmp_path)
+
+    def unexpected_restart(_rt):
+        raise AssertionError("must not restart a disabled service")
+
+    monkeypatch.setattr(
+        service_mod, "probe_health_with_retry", lambda *_a, **_kw: (False, "connection refused")
+    )
+    monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
+    monkeypatch.setattr(service_mod, "_systemd_status", lambda _rt: (False, False, ""))
+    monkeypatch.setattr(service_mod, "restart_service", unexpected_restart)
+
+    healthy, detail = service_mod.run_watchdog(runtime)
+    assert healthy is False
+    assert "disabled" in detail
+
+
+def test_run_watchdog_does_not_restart_a_healthy_service(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = _runtime(tmp_path)
+
+    def unexpected_restart(_rt):
+        raise AssertionError("must not restart a healthy service")
+
+    monkeypatch.setattr(service_mod, "probe_health_with_retry", lambda *_a, **_kw: (True, "ok"))
+    monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
+    monkeypatch.setattr(service_mod, "_systemd_status", lambda _rt: (True, True, ""))
+    monkeypatch.setattr(service_mod, "restart_service", unexpected_restart)
+
+    healthy, detail = service_mod.run_watchdog(runtime)
+    assert healthy is True
+    assert detail == "ok"
 
 
 def test_start_service_restarts_systemd_when_apply_unit(
@@ -457,13 +626,28 @@ def test_render_launchd_plist_includes_service_mode(tmp_path: Path) -> None:
     assert "<string>--port</string>" not in plist
 
 
-def test_stop_service_noop_when_not_installed(tmp_path: Path) -> None:
+def test_stop_service_noop_when_not_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     runtime = _runtime(tmp_path)
+
+    def unexpected_systemctl(_rt, *args):
+        raise AssertionError(f"must not drive the system service: {args}")
+
+    # The host may really have octop.service installed (this deployment
+    # does), so the "not installed" precondition has to be stubbed — otherwise
+    # this test stops the live service and the site answers 502 until someone
+    # restarts it by hand.
+    monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: False)
+    monkeypatch.setattr(service_mod, "_systemd_run", unexpected_systemctl)
     stop_service(runtime)
 
 
-def test_restart_service_requires_install(tmp_path: Path) -> None:
+def test_restart_service_requires_install(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     runtime = _runtime(tmp_path)
+    # The host may really have octop.service installed (this deployment
+    # does), so the "not installed" precondition has to be stubbed.
+    monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: False)
     with pytest.raises(RuntimeError, match="not installed"):
         restart_service(runtime)
 
@@ -563,7 +747,7 @@ def test_probe_health_with_retry_succeeds_on_second_attempt(
 ) -> None:
     attempts = {"n": 0}
 
-    def _fake_probe(host: str, port: int) -> tuple[bool, str]:
+    def _fake_probe(host: str, port: int, base_path: str | None = None) -> tuple[bool, str]:
         attempts["n"] += 1
         if attempts["n"] == 1:
             return False, "connection refused"
@@ -906,13 +1090,13 @@ def test_write_unit_sudo_path_creates_parent_dir_first(
         return _Proc()
 
     # Force the sudo branch regardless of the on-disk state of ~/Library.
-    # ``_write_managed_file`` gates it on ``geteuid() != 0``, and that name is
-    # bound in this module (it no longer reads ``os.geteuid``), so the stub has
-    # to patch ``service_mod.geteuid`` — patching ``service_mod.os`` alone
-    # leaves a root shell on the direct-write path and the sudo branch untested.
+    # ``_write_managed_file`` gates the sudo branch on ``geteuid() != 0``, and
+    # that name is bound in this module (it no longer reads ``os.geteuid``), so
+    # the stub has to patch ``service_mod.geteuid`` — patching ``service_mod.os``
+    # alone leaves a root shell on the direct-write path and the sudo branch
+    # untested.
     monkeypatch.setattr(service_mod, "_needs_sudo", lambda _p: True)
     monkeypatch.setattr(service_mod, "geteuid", lambda: 501)
-    monkeypatch.setattr(service_mod, "os", _FakeOs(root=False))
     monkeypatch.setattr(service_mod, "_run_cmd", _fake_run_cmd)
 
     service_mod._write_unit(runtime)
@@ -935,26 +1119,6 @@ def test_needs_sudo_false_when_an_ancestor_is_writable(tmp_path: Path) -> None:
     assert service_mod._needs_sudo(nested) is False
 
 
-class _FakeOs:
-    """Minimal stand-in for `os` so we can stub `geteuid` and `W_OK` checks."""
-
-    def __init__(self, *, root: bool) -> None:
-        self._root = root
-
-    def geteuid(self) -> int:
-        return 0 if self._root else 501
-
-    def getuid(self) -> int:
-        return 501
-
-    def access(self, _path: object, _mode: int) -> bool:
-        return False  # always unwritable → forces sudo path
-
-    def unlink(self, _path: object) -> None:
-        # The tmp file is `delete=False`, so this is called in `finally`.
-        return None
-
-
 def test_persist_bind_options_refuses_corrupt_config(tmp_path: Path) -> None:
     """issue #730: must not merge into an empty dict and wipe every other key."""
     home = tmp_path / "octop"
@@ -965,3 +1129,55 @@ def test_persist_bind_options_refuses_corrupt_config(tmp_path: Path) -> None:
         service_mod.persist_bind_options(home, host="127.0.0.1", port=443)
     assert excinfo.value.code is ErrorCode.CONFIG_FILE_CORRUPT
     assert (home / "config.json").read_text(encoding="utf-8") == corrupt
+
+
+def test_service_unit_base_path_reads_the_unit_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from types import SimpleNamespace
+
+    runtime = _runtime(tmp_path)
+    monkeypatch.setattr(
+        service_mod,
+        "_systemd_run",
+        lambda _rt, *args: SimpleNamespace(
+            returncode=0, stdout="PATH=/usr/bin OCTOP_BASE_PATH=/videogen HOME=/root", stderr=""
+        ),
+    )
+    assert service_mod.service_unit_base_path(runtime) == "/videogen"
+
+
+def test_service_health_base_paths_fall_back_to_the_root_deployment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from types import SimpleNamespace
+
+    runtime = _runtime(tmp_path)
+    monkeypatch.setattr(
+        service_mod,
+        "_systemd_run",
+        lambda _rt, *args: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+    assert service_mod.service_health_base_paths(runtime) == [""]
+
+
+def test_probe_health_uses_the_given_base_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    urls: list[str] = []
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, bool]:
+            return {"ok": True}
+
+    def fake_get(url: str, timeout: float | None = None) -> _Response:
+        urls.append(url)
+        return _Response()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    ok, _detail = service_mod.probe_health("127.0.0.1", 8088, "/videogen")
+    assert ok is True
+    assert urls == ["http://127.0.0.1:8088/videogen/api/health"]

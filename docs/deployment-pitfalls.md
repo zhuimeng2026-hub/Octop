@@ -182,6 +182,93 @@ X-Forwarded-Host:  ocbot.aixifs.com
 
 ---
 
+## 9. 扫码登录「服务端说成功了，浏览器却 404」
+
+**症状**
+
+- 微信开放平台扫码：服务端日志出现 `SSO login succeeded`，浏览器却被重定向到
+  `https://host/videogen/videogen/login/oidc/complete`（前缀出现两次）→ 404。
+- 同一条链路上的错误重定向也一样：`/videogen/videogen/login?oidc_error=state`。
+
+**原因**
+
+子路径部署时前缀被拼了两次：
+
+| 位置 | 行为 |
+|------|------|
+| `api/common/public_base.py` `resolve_public_base()` | 返回 `https://host/videogen`（已带 root_path） |
+| `infra/auth/sso/service.py` `_frontend_base()` | 又拼了一次 `current_base_path()` |
+
+两处都来自子路径部署那次改动（`53456ab8` / `7dd075f8`），OIDC 与 OAuth 共用
+`_frontend_base()`，所以**通用 OIDC 登录在子路径下同样中招**。
+
+**修法**
+
+`_frontend_base()` 直接返回 `public_base.rstrip("/")`（前缀已在 `public_base` 里），
+不再追加 `current_base_path()`。回归测试：
+`tests/unit/auth/test_sso_service.py::test_callback_under_a_base_path_keeps_the_prefix_once`。
+
+**排查手法**：SSO 链路的日志落在应用日志文件里（不是 journalctl）：
+
+```bash
+grep -E "SSO|WeChat" /opt/octop-data/logs/octop.log
+```
+
+起跳、回调、state 校验失败、微信 errcode、成功与失败分支都有日志，能直接看出
+卡在哪一段（回调地址对不对、state cookie 有没有丢、微信返回什么错误码）。
+
+---
+
+## 10. 全站 502：后端根本没在跑（不是应用报错）
+
+**症状**
+
+- 浏览器全站 502，nginx 日志是
+  `connect() failed (111: Connection refused) while connecting to upstream`，
+  `upstream: "http://127.0.0.1:8088/..."`。
+- `journalctl -u octop.service` 里最后一条是 `Stopping octop.service ...`，
+  之后再没有 `Started`。
+- 应用日志里没有任何异常栈——因为进程根本没在运行。
+
+**502 = nginx 连不上后端**。先确认上游是否在监听：
+
+```bash
+systemctl is-active octop.service
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8088/videogen/api/health
+```
+
+**三个坑叠加**
+
+| 坑 | 表现 | 修法 |
+|----|------|------|
+| 优雅停止退出码是 1 | `Main process exited, code=exited, status=1/FAILURE`，systemd 记成崩溃 | `launch.py` 捕获 `KeyboardInterrupt` → 退出码 0（`tests/unit/test_launch_signals.py`） |
+| 测试集会停掉线上服务 | `tests/unit/infra/setup/test_service.py` 的 `stop_service` 用例在部署机上命中真实的 `/etc/systemd/system/octop.service` | 用例改为 stub `is_service_installed` + `_systemd_run`；模块加了 autouse 守卫，任何真实 `systemctl` 调用直接失败 |
+| systemd 不会重启被显式 stop 的 unit | `Restart=always` 对 `systemctl stop` 不生效，进程停了就是停了 | `octop-watchdog.timer` 每 2 分钟探活，不通就拉起 |
+
+**看门狗（`octop-watchdog.timer`）**
+
+```bash
+systemctl list-timers | grep octop-watchdog     # 下次触发时间
+systemctl start octop-watchdog.service          # 手动跑一次
+octop service watchdog                          # 手动探活 + 自愈
+journalctl -u octop-watchdog.service -n 20      # 看它做了什么
+```
+
+- 探活地址会同时试 `<base_path>/api/health` 和 `/api/health`：
+  子路径部署（`OCTOP_BASE_PATH=/videogen`）只有带前缀的那个会返回 200。
+- 服务正常时输出 `healthy`；不通就 `systemctl restart` 再复检。
+- **维护窗口**要停服时，先 `systemctl disable --now octop-watchdog.timer`，
+  否则看门狗会在 2 分钟内把服务拉起来。
+- 探活失败但 unit 是 `disabled` 状态时，看门狗不拉起——那是运维主动关的。
+
+**`StartLimitBurst`**
+
+`15-resource-limits.conf` 里的 `StartLimitBurst=10`（600 秒窗口）。
+systemd 默认 5 次：连续重启几次就会彻底放弃启动，unit 卡在 failed，
+后端就再也不会自己起来，直到有人手工 `systemctl reset-failed && start`。
+
+---
+
 ## 相关文档
 
 | 文档 | 内容 |

@@ -162,7 +162,12 @@ def test_write_text_privileged_falls_back_to_sudo_tee(
 @pytest.mark.asyncio
 async def test_probe_tencent_mirror_unreachable() -> None:
     # 127.0.0.1:1 → connection refused → probe returns False quickly.
-    with patch.object(docker_install, "_TENCENT_MIRROR_HOST", "127.0.0.1"):
+    # The port is stubbed too: the real one is 443, and a host running a
+    # local HTTPS server (nginx, caddy, …) would answer on it.
+    with (
+        patch.object(docker_install, "_TENCENT_MIRROR_HOST", "127.0.0.1"),
+        patch.object(docker_install, "_TENCENT_MIRROR_PORT", 1),
+    ):
         assert await _probe_tencent_mirror() is False
 
 

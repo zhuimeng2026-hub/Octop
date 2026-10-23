@@ -19,6 +19,7 @@ from octop.infra.setup.service import (
     launchd_domain,
     persist_bind_options,
     restart_service,
+    run_watchdog,
     start_service,
     stop_service,
     unit_path,
@@ -212,3 +213,30 @@ def status(host: str | None, port: int | None, scope: str, no_health: bool) -> N
         click.echo(info.detail)
     if not no_health:
         _echo_health(info, warn_only=False, runtime=runtime)
+
+
+@service.command("watchdog")
+@click.option("--host", default=None, help="Health-check host (defaults from config.json).")
+@click.option(
+    "--port", default=None, type=int, help="Health-check port (defaults from config.json)."
+)
+@click.option(
+    "--scope",
+    default="auto",
+    type=click.Choice(["user", "system", "auto"], case_sensitive=False),
+    show_default=True,
+    help="Service scope to inspect (must match the installed scope).",
+)
+def watchdog(host: str | None, port: int | None, scope: str) -> None:
+    """Check the service health and restart it when it stopped answering.
+
+    Runs from ``octop-watchdog.timer``; exits non-zero when the service is
+    still unhealthy afterwards.
+    """
+    runtime = _runtime(host, port, _resolve_scope(scope))
+    healthy, detail = run_watchdog(runtime)
+    if healthy:
+        click.echo("healthy")
+        return
+    click.echo(f"unhealthy: {detail}", err=True)
+    raise SystemExit(1)

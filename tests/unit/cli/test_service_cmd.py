@@ -20,6 +20,23 @@ from octop.infra.setup.service import (
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX service management")
 
 
+@pytest.fixture(autouse=True)
+def _no_real_service_actions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail loudly if a test drives the host's real service.
+
+    On a deployment host ``octop.service`` is installed, so an unstubbed
+    call would stop the live service and the site would answer 502 until
+    someone restarts it.  Tests that need the call site patch it themselves.
+    """
+    import octop.cli.commands.service as service_cmd
+
+    def _unexpected(*_a, **_kw):
+        raise AssertionError("test must not drive the real service")
+
+    for name in ("install_service", "start_service", "restart_service", "stop_service"):
+        monkeypatch.setattr(service_cmd, name, _unexpected)
+
+
 def _runtime(tmp_path: Path, *, mode: str = "systemd", scope: str = "system") -> ServiceRuntime:
     octop_bin = tmp_path / "bin" / "octop"
     octop_bin.parent.mkdir(parents=True)
@@ -246,3 +263,29 @@ def test_service_status_rejects_garbage_scope() -> None:
     result = runner.invoke(cli, ["service", "status", "--scope", "nonsense"])
     assert result.exit_code != 0
     assert "scope" in result.output.lower()
+
+
+def test_service_watchdog_reports_healthy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import octop.cli.commands.service as service_cmd
+
+    runtime = _runtime(tmp_path)
+    monkeypatch.setattr(service_cmd, "build_runtime", lambda **kw: runtime)
+    monkeypatch.setattr(service_cmd, "run_watchdog", lambda rt: (True, "ok"))
+
+    result = CliRunner().invoke(cli, ["service", "watchdog"])
+    assert result.exit_code == 0, result.output
+    assert "healthy" in result.output
+
+
+def test_service_watchdog_exits_nonzero_when_still_unhealthy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import octop.cli.commands.service as service_cmd
+
+    runtime = _runtime(tmp_path)
+    monkeypatch.setattr(service_cmd, "build_runtime", lambda **kw: runtime)
+    monkeypatch.setattr(service_cmd, "run_watchdog", lambda rt: (False, "connection refused"))
+
+    result = CliRunner().invoke(cli, ["service", "watchdog"])
+    assert result.exit_code == 1
+    assert "connection refused" in result.output
