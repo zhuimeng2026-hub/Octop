@@ -1,5 +1,11 @@
 # 桌面端单实例修复 — 测试记录
 
+> **注意（后续变更）**：本记录验证的是**跨平台文件锁**方案（`fix/desktop-single-instance-20261023`）。
+> 合入主干时该方案被改为**按平台分工**：Windows/macOS 改用 Wails 的 `SingleInstance`
+> （可把二次启动的注意力转回首个窗口），Linux 保留本记录中的 flock 文件锁
+> （Wails 的 Linux 实现依赖 D-Bus session bus，缺失时会导致启动直接失败）。
+> 详见 `docs/desktop-single-instance.md`。下文 §1 的实现机制描述对应当时的分支状态。
+
 - 分支：`fix/desktop-single-instance-20261023`
 - 二进制：`desktop/src/bin/Octop.exe`（本分支 `go build` 产物，2026-10-23 09:22）
 - 测试时间：2026-10-23
