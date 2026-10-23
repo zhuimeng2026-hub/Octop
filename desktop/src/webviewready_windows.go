@@ -3,27 +3,24 @@
 package main
 
 import (
-	"sync"
-
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-// onWebviewReady runs fn once win has finished its initial navigation.
+// armWebviewReady registers the listener that reports the webview becoming
+// usable.
 //
-// boot() runs in a goroutine started before app.Run(), so when the Octop health
-// check answers immediately — a remote deployment is typically far quicker
-// than spawning a local server — showDashboard can reach window.SetURL() before
-// the WebView2 controller exists. beta.13 dereferences it unguarded and the
-// shell dies with "invalid memory address or nil pointer dereference" inside
-// edge.(*ICoreWebView2).Navigate.
+// It has to be registered before the first navigation finishes: boot()
+// resolves the dashboard URL asynchronously (it health-probes the target
+// first) and a remote deployment usually answers long after the embedded
+// shell page has completed its own load. Registering from inside boot()
+// therefore misses that completion, and since NavigationCompleted only fires
+// per navigation the window would never leave the shell page.
 //
-// NavigationCompleted fires for *every* load, and fn navigates, so it has to
-// stay one-shot: without the guard fn re-navigates on each completion and the
-// window reloads forever.
-func onWebviewReady(_ *application.App, win *application.WebviewWindow, fn func()) {
-	var once sync.Once
+// NavigationCompleted fires for *every* load, so onReady may run more than
+// once — callers have to keep it idempotent.
+func armWebviewReady(win *application.WebviewWindow, onReady func()) {
 	win.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(_ *application.WindowEvent) {
-		once.Do(fn)
+		onReady()
 	})
 }
