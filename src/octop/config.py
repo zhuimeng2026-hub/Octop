@@ -138,6 +138,10 @@ class OctopConfig:
     enable_dashboard: bool = True
     enable_api_docs: bool = False
     history_v2_enabled: bool = False
+    # Dump every outbound model request/response to <OCTOP_HOME>/logs/llm/.
+    # Off by default: the dump holds the user's prompt, the agent's system
+    # prompt and every tool schema.
+    llm_debug: bool = False
     require_setup_password: bool = True
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     # False when config.json omits ``database`` (use PathLayout.db unless env overrides).
@@ -514,6 +518,10 @@ def load_config(path: Path) -> OctopConfig:
         merged["require_setup_password"] = _coerce_bool(
             "OCTOP_REQUIRE_SETUP_PASSWORD", v, bool(merged["require_setup_password"])
         )
+    if v := os.environ.get("OCTOP_LLM_DEBUG"):
+        merged["llm_debug"] = _coerce_bool(
+            "OCTOP_LLM_DEBUG", v, bool(merged.get("llm_debug", False))
+        )
     if v := os.environ.get("OCTOP_MAX_UPLOAD_MB"):
         merged["max_upload_mb"] = parse_max_upload_mb(
             v, default=int(merged.get("max_upload_mb", DEFAULT_MAX_UPLOAD_MB))
@@ -627,6 +635,7 @@ def load_config(path: Path) -> OctopConfig:
         default_timezone=str(merged.get("default_timezone") or "Asia/Shanghai"),
         enable_dashboard=bool(merged["enable_dashboard"]),
         enable_api_docs=bool(merged["enable_api_docs"]),
+        llm_debug=bool(merged.get("llm_debug", False)),
         history_v2_enabled=_coerce_bool(
             "OCTOP_HISTORY_V2_ENABLED",
             os.environ.get(

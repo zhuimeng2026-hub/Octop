@@ -465,3 +465,19 @@ def test_base_path_comes_from_file_and_env_overrides_it(tmp_path: Path, monkeypa
 
     monkeypatch.setenv("OCTOP_BASE_PATH", "/from-env")
     assert load_config(cfg_path).base_path == "/from-env"
+
+
+def test_llm_debug_defaults_off_and_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    assert load_config(tmp_path / "config.json").llm_debug is False
+
+    monkeypatch.setenv("OCTOP_LLM_DEBUG", "1")
+    assert load_config(tmp_path / "config.json").llm_debug is True
+
+    monkeypatch.setenv("OCTOP_LLM_DEBUG", "false")
+    assert load_config(tmp_path / "config.json").llm_debug is False
+
+
+def test_llm_debug_from_file(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"llm_debug": True}), encoding="utf-8")
+    assert load_config(cfg_path).llm_debug is True

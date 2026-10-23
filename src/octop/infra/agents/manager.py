@@ -3861,6 +3861,7 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.llm_debug import LlmDebugMiddleware
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
@@ -3895,6 +3896,16 @@ class AgentManager:
             ),
             OctopUiOffloadMiddleware(),
         ]
+        if self._config.llm_debug:
+            # Opt-in dump of every outbound model request/response. Last in
+            # Octop's chain so it observes the request after the other Octop
+            # middleware have shaped it.
+            agent_middleware.append(
+                LlmDebugMiddleware(
+                    directory=self._paths.logs_dir / "llm",
+                    agent_id=row.agent_id,
+                )
+            )
 
         merged_tools: list[Any] = []
         if cron_tools:

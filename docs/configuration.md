@@ -230,6 +230,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_CORS_ORIGINS` | comma-sep list | empty | Permitted CORS origins for the dashboard / external callers |
 | `OCTOP_ENABLE_DASHBOARD` | bool | `true` | Serve the built React SPA at `/` |
 | `OCTOP_ENABLE_API_DOCS` | bool | `false` | Expose Scalar API docs at `/api/docs` |
+| `OCTOP_LLM_DEBUG` | bool | `false` | Dump every outbound model request/response to `<OCTOP_HOME>/logs/llm/llm-<YYYY-MM-DD>.jsonl` (see [LLM request dump](#llm-request-dump)) |
 | `OCTOP_REQUIRE_SETUP_PASSWORD` | bool | `true` | Require wizard password during initial setup |
 | `OCTOP_MAX_UPLOAD_MB` | int | `100` | Max upload size in MiB for chat attachments, IM inbound, and knowledge documents (1–1024) |
 | `OCTOP_DATABASE_URL` | string | empty | Full DSN — overrides the `OCTOP_DATABASE_*` fields below |
@@ -258,8 +259,49 @@ they are listed under `environment:` in `docker/docker-compose.yml`
 (Compose uses `.env` for interpolation only; unset keys do not enter the
 container). Writing the same keys to the mounted `~/.octop/env` also works.
 
-### Agent memory vs control plane
+### LLM request dump
 
+`OCTOP_LLM_DEBUG=1` makes Octop write every outbound model request and the
+matching response to `<OCTOP_HOME>/logs/llm/llm-<YYYY-MM-DD>.jsonl` — one
+JSON object per line:
+
+```json
+{
+  "ts": "2026-10-23T17:38:32+08:00",
+  "agent_id": "85KGRA",
+  "thread_id": "thr_01M5E…",
+  "model": "MiniMax-M3",
+  "request": {
+    "system_prompt": "…",
+    "messages": [{"role": "human", "content": "…"}],
+    "tools": [{"type": "function", "function": {"name": "ls", "…": "…"}}],
+    "model_settings": {},
+    "segments": {"system_prompt": 286, "tool_definitions": 12053, "…": 0}
+  },
+  "response": {"messages": [...], "usage": {"input_tokens": 7778, "…": 0}},
+  "duration_ms": 1365
+}
+```
+
+Use it to answer "what did the client actually send to the model?": the
+`messages` are the conversation as the provider saw it, `tools` holds the
+bound tool schemas, and `segments` repeats the token estimate the platform
+publishes on the AI message.
+
+Things to know before turning it on:
+
+- **It contains user data.** The user's prompt, the agent's system prompt
+  and every tool schema are written verbatim. Keep the directory readable
+  only by the service account and delete the files when the investigation
+  is over.
+- API keys, phone numbers and mainland ID numbers are masked through the
+  harness' PII detector; other secrets in the prompt text are not.
+- The dump is **not rotated or size-limited** — one call is roughly 60 KB,
+  dominated by the tool schemas. Prune it (logrotate, a cron job) or turn
+  the flag off.
+- The flag is read at boot; restart the service to change it.
+
+### Agent memory vs control plane
 Control-plane `database` and agent memory are separate layers. Defaults:
 
 - Control plane SQLite → agent memory stays `{workspace}/memory.sqlite`
