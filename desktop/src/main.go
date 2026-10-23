@@ -365,6 +365,19 @@ func (a *App) requestQuit() {
 }
 
 func main() {
+	// A desktop instance owns the GUI and its child server for this user.
+	// Reject a second launch before constructing windows or spawning Python.
+	instanceLock, err := acquireInstanceLock()
+	if err != nil {
+		if errors.Is(err, errInstanceRunning) {
+			log.Print("Octop desktop is already running")
+			return
+		}
+		log.Printf("desktop instance lock: %v", err)
+		return
+	}
+	defer instanceLock.Close()
+
 	store := &settingsStore{cur: loadSettings()}
 	api := &App{
 		store: store,
