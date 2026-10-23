@@ -38,7 +38,8 @@ type App struct {
 	trayClickTimer *time.Timer
 	drops          dropServer
 	ownsListenPort bool
-	navigated      bool
+	webviewReady   bool
+	pendingURL     string
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -237,18 +238,38 @@ func (a *App) boot() {
 	a.showDashboard(base)
 }
 
-// navigate points the window at base. The first navigation is deferred until
-// the webview is ready — later ones happen long after start-up and go direct.
+// navigate points the window at base.
+//
+// The navigation is deferred until the webview has finished its first load:
+// right after start-up the WebView2 controller does not exist yet and SetURL
+// on it dereferences a nil pointer, killing the shell.
 func (a *App) navigate(base string) {
 	a.mu.Lock()
-	first := !a.navigated
-	a.navigated = true
+	ready := a.webviewReady
+	if !ready {
+		a.pendingURL = base
+	}
 	a.mu.Unlock()
-	if !first {
-		a.window.SetURL(base)
+	if !ready {
 		return
 	}
-	onWebviewReady(a.app, a.window, func() { a.window.SetURL(base) })
+	a.window.SetURL(base)
+}
+
+// markWebviewReady records that the webview completed its first navigation
+// and applies the navigation that was waiting for it.
+//
+// It is called for every navigation, so it has to stay idempotent: the
+// pending URL is cleared once it has been applied.
+func (a *App) markWebviewReady() {
+	a.mu.Lock()
+	a.webviewReady = true
+	base := a.pendingURL
+	a.pendingURL = ""
+	a.mu.Unlock()
+	if base != "" && a.window != nil {
+		a.window.SetURL(base)
+	}
 }
 
 func (a *App) showDashboard(base string) {
@@ -400,6 +421,13 @@ func main() {
 		BackgroundColour:     application.NewRGB(247, 248, 250),
 	})
 	api.window = win
+	// Arm the readiness listener before app.Run(): the first navigation is
+	// what proves the webview is usable, and the event is delivered by the
+	// app's event loop, which only starts there. Arming it later — from
+	// boot(), once the dashboard URL is known — misses the completion of the
+	// embedded shell page, and since the event only fires per navigation the
+	// window would sit on the shell page forever.
+	armWebviewReady(win, api.markWebviewReady)
 	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
 		win.ToggleMaximise()
 	})
