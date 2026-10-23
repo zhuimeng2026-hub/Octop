@@ -63,7 +63,7 @@ Layering and hard bans are defined in `AGENTS.md` §5; the short version — dep
 
 **Dependency injection:** routers get `server: OctopServer = Depends(get_server)`; every repo is reached through `server.services` (`SharedServices` from `infra/db/services.py`). Never import a repo at module level outside `SharedServices` / `RepoBundle`.
 
-**Database:** SQLite (WAL) or PostgreSQL, one shared schema. Migrations are numbered pairs `src/octop/infra/db/migrations/00N_desc.sql` + `00N_desc.pg.sql`; the latest pair is **`021_skill_package_download`**, and the version assertion in `tests/unit/db/test_db_pool.py` is currently **`v == 21`** (keep the two in sync when you add a migration). Resource tables use an integer surrogate `id` PK plus a public string `{entity}_id` (ULID) that APIs and child FKs use.
+**Database:** SQLite (WAL) or PostgreSQL, one shared schema. Migrations are numbered pairs `src/octop/infra/db/migrations/00N_desc.sql` + `00N_desc.pg.sql`; the latest pair is **`022_product_library`**, and the version assertion in `tests/unit/db/test_db_pool.py` is currently **`v == 22`** (keep the two in sync when you add a migration). Resource tables use an integer surrogate `id` PK plus a public string `{entity}_id` (ULID) that APIs and child FKs use.
 
 **Agent scope:** most agent routes nest under `/api/agents/{agent_id}/…`; a few legacy ones (MBTI) still use the `X-Octop-Agent-Id` header. Always load the agent row and check ownership via `_assert_agent_owner(row, user)` (admin bypass).
 

@@ -367,7 +367,9 @@ func (a *App) requestQuit() {
 func main() {
 	// A desktop instance owns the GUI and its child server for this user.
 	// Reject a second launch before constructing windows or spawning Python.
-	instanceLock, err := acquireInstanceLock()
+	// On Linux this is the flock-based lock; Windows and macOS rely on Wails'
+	// SingleInstance support, which runs inside application.New below.
+	lock, err := acquireInstanceLock()
 	if err != nil {
 		if errors.Is(err, errInstanceRunning) {
 			log.Print("Octop desktop is already running")
@@ -376,7 +378,7 @@ func main() {
 		log.Printf("desktop instance lock: %v", err)
 		return
 	}
-	defer instanceLock.Close()
+	defer lock.Close()
 
 	store := &settingsStore{cur: loadSettings()}
 	api := &App{
@@ -402,17 +404,11 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
-		// 进程互斥：第二个 Octop 实例启动时会尝试获取同 UniqueID 的锁，
-		// 获取失败即视为已在运行，直接 ExitCode 退出，不再拉起新窗口；
-		// 同时把启动参数/工作目录通过 OnSecondInstanceLaunch 通知首实例，
-		// 这里只负责把首实例窗口提到前台（双击图标/重开应聚焦而非多开）。
-		SingleInstance: &application.SingleInstanceOptions{
-			UniqueID: "com.octop.desktop",
-			ExitCode: 0,
-			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
-				api.showWindow()
-			},
-		},
+		// 进程互斥：Windows/macOS 由 Wails 的 SingleInstance 处理——第二个实例
+		// 退出前把启动参数通过 OnSecondInstanceLaunch 通知首实例，首实例把窗口
+		// 提到前台（双击图标/重开应聚焦而非多开）；Linux 该选项为 nil，改由
+		// instance_lock_linux.go 的 flock 保证互斥（见 singleinstance_*.go）。
+		SingleInstance: singleInstanceOptions(api),
 	})
 	api.app = app
 	attachOpenURLEventListener(app, api.OpenExternal)

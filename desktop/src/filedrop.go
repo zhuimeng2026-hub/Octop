@@ -206,9 +206,12 @@ func (s *dropServer) ensure() error {
 	s.batches = map[string]dropBatch{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/drop/", s.serve)
-	s.server = &http.Server{Handler: mux}
+	server := &http.Server{Handler: mux}
+	s.server = server
 	go func() {
-		if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
+		// Serve on the captured server: close() clears s.server, so reading
+		// the field here would race and could dereference a nil *http.Server.
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Printf("desktop file drop server: %v", err)
 		}
 	}()

@@ -76,9 +76,9 @@ type SingleInstanceOptions struct {
 
 ---
 
-## 4. 修复已实施
+## 4. 修复已实施（按平台分工）
 
-已在 `desktop/src/main.go` 的 `application.New(...)`（`main.go:368` 附近）启用单实例，第二实例直接退出并聚焦已有窗口：
+单实例按平台分两套实现，入口统一在 `desktop/src/main.go`：
 
 ```go
 app := application.New(application.Options{
@@ -86,22 +86,26 @@ app := application.New(application.Options{
     Description: "Octop desktop",
     Services:    []application.Service{application.NewService(api)},
     // …既有字段…
-    SingleInstance: &application.SingleInstanceOptions{
-        UniqueID: "com.octop.desktop",
-        ExitCode: 0,
-        OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
-            api.showWindow() // 第二实例启动时，聚焦已存在的窗口
-        },
-    },
+    SingleInstance: singleInstanceOptions(api),
 })
 ```
 
-- `UniqueID` 用 `com.octop.desktop`（应用级唯一标识，平台相关锁基于此）。
-- 第二个实例在 `application.go:215` 处 `os.Exit(ExitCode)` 直接退出，**不会**再创建 WebView2 / 托盘。
-- 通过 `OnSecondInstanceLaunch` 回调把首实例窗口提到前台——双击图标重开、或命令行再次启动时应聚焦而非多开。
-- 编译已验证：`go build` 通过，新二进制正常生成。
+`singleInstanceOptions(api)` 定义在平台专用文件里：
 
-> 注意：单实例能力**需在重新编译后才会生效**。当前正在运行的 `Octop.exe`（PID 14240，旧二进制）不含此修复；要让它生效，需停止旧进程、`go build`/重新打包，再启动新二进制。无论便携模式还是远程后端模式（`OCTOP_DESKTOP_URL` 已设），第二次启动都会立即退出并聚焦首个实例，满足"进程互斥、只有一个进程存在"。
+| 平台 | 文件 | 机制 | 第二实例行为 |
+|---|---|---|---|
+| Windows / macOS | `desktop/src/singleinstance_wails.go` | Wails `SingleInstance`（Windows 命名 Mutex + 隐藏消息窗口，macOS 临时目录锁文件 + 分布式通知） | 退出前把启动参数通知首实例，首实例**聚焦已有窗口** |
+| Linux | `desktop/src/singleinstance_linux.go`（返回 `nil`）+ `desktop/src/instance_lock_linux.go` | `flock(LOCK_EX\|LOCK_NB)` 锁 `{octopHome}/desktop-instance.lock` | 直接退出，不拉起第二个壳 |
+
+> **为什么 Linux 不用 Wails 的 `SingleInstance`**：Wails v3 的 Linux 实现建立在 **D-Bus session bus** 之上（`single_instance_linux.go` 里 `dbus.ConnectSessionBus()`）。总线不存在时 `acquire` 返回错误，Wails 走 `result.fatal("failed to initialize single instance manager")`——不是降级，而是**整个桌面壳启动即失败**。无头主机、容器、纯 SSH 会话都可能没有 session bus。Linux 因此改用不依赖 D-Bus 的 flock 文件锁。
+
+> **为什么不两套同时用**：文件锁在 `main()` 最前面获取，第二个实例会在那里直接退出，Wails 的 `OnSecondInstanceLaunch` 回调永远不会被触发（聚焦已有窗口的 UX 失效）。所以两者按平台二选一，而不是叠加。
+
+- `UniqueID` 用 `com.octop.desktop`（应用级唯一标识，平台相关锁基于此）。
+- Windows/macOS：第二个实例在 `application.go:215` 处 `os.Exit(ExitCode)` 直接退出，**不会**再创建 WebView2 / 托盘；通过 `OnSecondInstanceLaunch` 回调把首实例窗口提到前台——双击图标重开、或命令行再次启动时应聚焦而非多开。
+- Linux：文件锁在 `main()` 开头获取，早于窗口构造与 Python 子进程启动，因此第二个实例既不会开窗口也不会起第二个后端。锁随进程退出自动释放（`flock` 随 fd 关闭）。
+- 无论便携模式还是远程后端模式（`OCTOP_DESKTOP_URL` 已设），第二次启动都会被拦下。
+- 编译已验证：`go build`（Linux）、`GOOS=windows go build` 通过；`go test -race ./...` 通过（Linux 锁测试 `instance_lock_test.go` 仅在 Linux 构建）。
 
 ---
 
