@@ -22,6 +22,7 @@ from octop.infra.product_library.service import (
     ProductLibraryService,
     project_payload,
 )
+from octop.infra.product_library.video_planner import VideoPlanRequest, build_video_plan
 
 router = APIRouter()
 
@@ -295,3 +296,42 @@ async def prepare_render(
         body.agent_id, user=user, as_user=None, server=server, owner_only=True
     )
     return await _service(server).prepare_render(project=row, workspace=ws)
+
+
+@router.post(
+    "/product-library/projects/{project_id}/video-plan",
+    summary="Preview a validated Remotion plan for an owned product snapshot",
+)
+async def preview_video_plan(
+    project_id: str,
+    body: VideoPlanRequest,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    project = _service(server).get_project(user.id, project_id)
+    return build_video_plan(project_payload(project)["snapshot"], body)
+
+
+@router.post(
+    "/product-library/projects/{project_id}/planned-package",
+    response_class=FileResponse,
+    summary="Download a local Studio package using a backend video plan",
+)
+async def download_planned_package(
+    project_id: str,
+    body: VideoPlanRequest,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> FileResponse:
+    project = _service(server).get_project(user.id, project_id)
+    plan = build_video_plan(project_payload(project)["snapshot"], body)
+    package = await asyncio.to_thread(
+        export_project_package, server.services.paths, project, script_override=plan["script"]
+    )
+    return FileResponse(
+        package,
+        media_type="application/zip",
+        filename=f"video-project-{project_id}.zip",
+        background=BackgroundTask(package.unlink, missing_ok=True),
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )

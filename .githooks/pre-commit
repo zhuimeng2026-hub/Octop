@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Pre-commit gate: make precommit (format BE+FE + lint + typecheck + testmon-scoped
-# tests) + dashboard build. The full suite still runs in CI (`make all`); this is a
-# fast, change-aware local gate so commits don't wait on the whole test matrix.
+# Pre-commit gate (local, fast): backend format + lint + typecheck + a small
+# smoke test subset. The full suite still runs in CI (`make all`); this gate
+# exists so a local commit does not wait on the whole test matrix.
+#
+# Frontend steps (prettier + dashboard build) only run when dashboard sources
+# actually changed, and can be switched off entirely with SKIP_FRONTEND=1 —
+# server hosts that only ship the backend do not need a client build.
+#
 # Enable once per clone:  make install-hooks
 # Bypass (emergency only): SKIP_PRECOMMIT=1 git commit ...
 # Or: git commit --no-verify
@@ -14,6 +19,13 @@ fi
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
+
+# Per-host overrides (not tracked). Create `.githooks/local.env` with e.g.
+# `SKIP_FRONTEND=1` on machines that only build the backend.
+if [[ -f "$ROOT/.githooks/local.env" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT/.githooks/local.env"
+fi
 
 # Documentation-only commits do not need code checks or a dashboard build.
 # Include deletions and both sides of renames when deciding what changed.
@@ -38,8 +50,19 @@ while IFS= read -r line; do
   [[ -n "$line" ]] && STAGED_FILES+=("$line")
 done < <(git diff --cached --name-only --diff-filter=ACMR || true)
 
-echo "[pre-commit] make precommit  (format-all + lint + typecheck + testmon-scoped test)"
-make precommit
+# Whether dashboard sources changed → whether the client build is needed at all.
+FRONTEND_CHANGED=0
+for f in "${STAGED_FILES[@]}"; do
+  case "$f" in
+    dashboard/*|src/octop/dashboard/*) FRONTEND_CHANGED=1 ;;
+  esac
+done
+
+echo "[pre-commit] backend gate (format + lint + typecheck + smoke tests)"
+make format
+make lint
+make typecheck
+make test-smoke
 
 # If format rewrote files that were already staged, refresh the index so the
 # commit includes the formatted content (worktree vs index drift).
@@ -55,10 +78,18 @@ if ((${#STAGED_FILES[@]} > 0)); then
   fi
 fi
 
-echo "[pre-commit] dashboard npm run build"
-(
-  cd "$ROOT/dashboard"
-  npm run build
-)
+if [[ "${SKIP_FRONTEND:-}" == "1" ]]; then
+  echo "[pre-commit] SKIP_FRONTEND=1 — skipping dashboard format and build"
+elif [[ "$FRONTEND_CHANGED" == "1" ]]; then
+  echo "[pre-commit] dashboard changed — formatting and building the SPA"
+  make format-frontend
+  (
+    cd "$ROOT/dashboard"
+    # vite's default heap cap is ~2 GB; raise it so the bundle does not OOM.
+    NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}" npm run build
+  )
+else
+  echo "[pre-commit] no dashboard changes — skipping dashboard format and build"
+fi
 
 echo "[pre-commit] all checks passed"

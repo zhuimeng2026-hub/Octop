@@ -238,12 +238,11 @@ test-live:
 	@echo "[test] pytest (live)..."
 	$(RUN) pytest -m live
 
-# Fast, change-aware gate for the local pre-commit hook. Runs ruff/mypy (cheap
-# and kept full for accuracy) plus only the tests affected by changed files via
-# pytest-testmon. The full suite still runs in CI (`make all`); this is local
-# feedback only, so a missed cross-module impact is caught there.
+# Fast local gate for the pre-commit hook: backend format + lint + typecheck +
+# a small smoke test subset. The full suite still runs in CI (`make all`); this
+# is local feedback only, so a missed cross-module impact is caught there.
 .PHONY: precommit
-precommit: format-all lint typecheck test-affected
+precommit: format lint typecheck test-smoke
 
 # NOTE: do NOT pass `-m` here — pytest-testmon deactivates its affected-test
 # selection whenever a marker expression is present, which would fall back to
@@ -260,6 +259,21 @@ precommit: format-all lint typecheck test-affected
 test-affected:
 	@echo "[test] pytest (testmon: only tests affected by changes)..."
 	$(RUN) pytest --testmon
+
+# Smoke subset for the local pre-commit gate: a handful of fast, high-signal
+# backend tests that finish in well under a minute, so a local commit never
+# waits on the whole matrix. CI (`make all`) stays the authoritative gate.
+.PHONY: test-smoke
+test-smoke:
+	@echo "[test-smoke] pytest (fast smoke subset)..."
+	$(RUN) pytest \
+		tests/unit/test_config.py \
+		tests/unit/db/test_db_pool.py \
+		tests/unit/db/test_product_package_export.py \
+		tests/unit/db/test_video_planner_mvp.py \
+		tests/unit/api/test_product_library.py \
+		tests/unit/api/test_exception_handlers.py \
+		-m "not live" -q
 
 # ─── Quality (frontend) ──────────────────────────────────────────────────────
 
