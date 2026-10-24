@@ -1,0 +1,85 @@
+name: M1 Desktop Beta Smoke
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "dashboard/**"
+      - "src/octop/api/routers/product_library.py"
+      - "src/octop/infra/product_library/**"
+      - "src/octop/infra/db/migrations/022_product_library*"
+      - "remotion/**"
+      - ".github/workflows/m1-desktop-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Desktop compile / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: desktop/src/go.sum
+      - name: Install Linux Wails build requirements
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: Build and focused desktop tests
+        working-directory: desktop/src
+        run: |
+          go build ./...
+          go test . -run 'TestDesktopSingleInstanceLock|TestRestoreMainAfterDockClick|Test.*Webview|Test.*Navigation' -count=1
+
+  dashboard:
+    name: Dashboard production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  product-api:
+    name: Product library targeted tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - run: uv run pytest -q tests/unit/db/test_product_library_repo.py tests/unit/db/test_product_package_export.py tests/unit/api/test_product_library.py
+
+  studio:
+    name: Remotion package smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: remotion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: remotion/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: node --test test/launch.test.mjs
