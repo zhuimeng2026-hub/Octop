@@ -22,6 +22,7 @@ import {
   Upload as UploadIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { request } from "../../api/request";
 import {
   productLibraryApi,
@@ -44,6 +45,7 @@ const blank: Omit<Product, "id"> = {
 
 export default function ProductLibraryPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [projects, setProjects] = useState<ProductProject[]>([]);
   const [active, setActive] = useState<Product | null>(null);
@@ -313,6 +315,15 @@ export default function ProductLibraryPage() {
     <PageShell
       title={t("productLibrary.title")}
       subtitle={t("productLibrary.subtitle")}
+      actions={
+        <Button
+          type="primary"
+          icon={<Sparkles size={16} />}
+          onClick={() => navigate("/product-library/video-wizard")}
+        >
+          {t("productLibrary.makeVideo")}
+        </Button>
+      }
     >
       <div
         style={{
@@ -750,6 +761,17 @@ export default function ProductLibraryPage() {
                   </Tag>{" "}
                   · {p.snapshot.assets.length} {t("productLibrary.assetsCount")}
                 </span>
+                <Button
+                  onClick={() =>
+                    navigate(
+                      `/product-library/video-wizard?project=${encodeURIComponent(
+                        p.id,
+                      )}`,
+                    )
+                  }
+                >
+                  {t("productLibrary.continueVideo")}
+                </Button>
                 <Button
                   type="primary"
                   icon={<Download size={16} />}
