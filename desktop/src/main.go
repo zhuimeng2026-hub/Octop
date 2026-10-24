@@ -57,6 +57,8 @@ type App struct {
 	ownsListenPort bool
 	webviewReady   bool
 	pendingURL     string
+	video          *videoManager
+	videoNonce     string
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -65,6 +67,9 @@ func (a *App) ServiceStartup(context.Context, application.ServiceOptions) error 
 
 func (a *App) ServiceShutdown() error {
 	a.sleep.stop()
+	if a.video != nil {
+		a.video.interrupt()
+	}
 	a.mu.Lock()
 	cmd := a.cmd
 	a.cmd = nil
@@ -301,6 +306,9 @@ func (a *App) showDashboard(base string) {
 		return
 	}
 	a.navigate(base)
+	if a.video == nil {
+		a.video = newVideoManager(base)
+	}
 	a.scheduleDragOverlay()
 	s := a.store.get()
 	go func() {
@@ -367,6 +375,14 @@ func (a *App) installDragOverlay() {
 	}
 	a.window.ExecJS(dragOverlayJS())
 	a.window.ExecJS(fileDropJS())
+	a.installVideoBridge()
+}
+
+func (a *App) installVideoBridge() {
+	if a.window == nil || a.video == nil || a.videoNonce == "" {
+		return
+	}
+	a.window.ExecJS(videoBridgeJS(a.video.base, a.videoNonce))
 }
 
 func (a *App) scheduleDragOverlay() {
@@ -414,6 +430,7 @@ func main() {
 		store: store,
 		sleep: &sleepGuard{},
 	}
+	api.videoNonce, _ = randomToken()
 
 	app := application.New(application.Options{
 		Name:        "Octop",
@@ -442,6 +459,7 @@ func main() {
 	api.app = app
 	attachOpenURLEventListener(app, api.OpenExternal)
 	attachFileDropEventListener(app, api)
+	attachVideoEventListener(app, api, api.videoNonce)
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
 		applyAppIcon(app)
 	})

@@ -34,7 +34,7 @@ const LOCAL_NODE_MODULES = path.join(HERE, "node_modules");
  * unusably slow on some networks. A locally installed Chrome/Chromium
  * (Playwright's, or the system one) works just as well and is preferred.
  */
-function detectBrowser() {
+export function detectBrowser() {
   const explicit = process.env.REMOTION_BROWSER_EXECUTABLE;
   if (explicit && fs.existsSync(explicit)) return explicit;
 
@@ -58,6 +58,14 @@ function detectBrowser() {
       if (fs.existsSync(candidate)) return candidate;
     }
   }
+  for (const root of [process.env.ProgramFiles, process.env["ProgramFiles(x86)"]].filter(Boolean)) {
+    for (const candidate of [
+      path.join(root, "Google", "Chrome", "Application", "chrome.exe"),
+      path.join(root, "Microsoft", "Edge", "Application", "msedge.exe"),
+    ]) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
   return null;
 }
 
@@ -74,31 +82,26 @@ function parseArgs(argv) {
   return args;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (!args.project) {
-    console.error("usage: node render.mjs --project <dir> [--out file.mp4] [--quality draft|prod]");
-    process.exit(2);
-  }
-  const projectDir = path.resolve(args.project);
-  const scriptPath = path.join(projectDir, "script.json");
+export async function renderProject({ projectDir, outPath, quality = "prod", onProgress = () => {}, onStage = () => {}, cancelSignal, trustedTemplate = false }) {
+  const resolvedProjectDir = path.resolve(projectDir);
+  const scriptPath = path.join(resolvedProjectDir, "script.json");
   if (!fs.existsSync(scriptPath)) {
     throw new Error(`script.json not found in ${projectDir}`);
   }
   const script = JSON.parse(fs.readFileSync(scriptPath, "utf-8"));
-  validateScript(script, projectDir);
+  validateScript(script, resolvedProjectDir);
 
-  const outPath = path.resolve(
-    args.out ?? path.join(projectDir, "out", "final.mp4"),
+  const resolvedOutPath = path.resolve(
+    outPath ?? path.join(resolvedProjectDir, "out", "final.mp4"),
   );
-  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.mkdirSync(path.dirname(resolvedOutPath), { recursive: true });
 
-  const draft = args.quality === "draft";
-  const scale = args.scale ?? (draft ? 0.5 : 1);
+  const draft = quality === "draft";
+  const scale = draft ? 0.5 : 1;
 
   console.log(`[render] script: ${scriptPath}`);
   console.log(`[render] scenes: ${script.scenes.length}`);
-  console.log(`[render] output: ${outPath} (${draft ? "draft" : "prod"}, scale ${scale})`);
+  console.log(`[render] output: ${resolvedOutPath} (${draft ? "draft" : "prod"}, scale ${scale})`);
 
   const browserExecutable = detectBrowser();
   if (browserExecutable) {
@@ -116,16 +119,16 @@ async function main() {
     });
   }
 
+  onStage("preparing");
   console.log("[render] bundling…");
-  // A job may ship its own Remotion project (server-generated components);
-  // otherwise the local project provides the components and the job only
-  // carries data (script.json + assets).
-  const jobEntry = path.join(projectDir, "src", "index.ts");
-  const entryPoint = fs.existsSync(jobEntry) ? jobEntry : ENTRY_POINT;
-  const jobPublic = path.join(projectDir, "public");
-  const publicDir = fs.existsSync(jobEntry)
-    ? (fs.existsSync(jobPublic) ? jobPublic : projectDir)
-    : path.join(projectDir, "assets");
+  // The desktop worker always selects the reviewed local template. Legacy CLI
+  // projects may still provide their own entry point as before.
+  const jobEntry = path.join(resolvedProjectDir, "src", "index.ts");
+  const entryPoint = trustedTemplate || !fs.existsSync(jobEntry) ? ENTRY_POINT : jobEntry;
+  const jobPublic = path.join(resolvedProjectDir, "public");
+  const publicDir = trustedTemplate || !fs.existsSync(jobEntry)
+    ? path.join(resolvedProjectDir, "assets")
+    : (fs.existsSync(jobPublic) ? jobPublic : resolvedProjectDir);
   console.log(`[render] entry: ${entryPoint}`);
   console.log(`[render] public: ${publicDir}`);
 
@@ -149,6 +152,7 @@ async function main() {
     publicDir,
     webpackOverride,
     onProgress: (progress) => {
+      onProgress({ stage: "preparing", progress: Math.min(0.2, progress / 100 * 0.2) });
       if (progress % 25 === 0) console.log(`[render] bundling ${progress}%`);
     },
   });
@@ -168,30 +172,47 @@ async function main() {
     `[render] composition: ${composition.width}x${composition.height} @ ${composition.fps}fps, ${composition.durationInFrames} frames`,
   );
 
+  onStage("rendering");
   await renderMedia({
     composition,
     serveUrl: bundleLocation,
     codec: "h264",
-    outputLocation: outPath,
+    outputLocation: resolvedOutPath,
     inputProps,
     crf: draft ? 28 : 18,
     scale,
     overwrite: true,
     browserExecutable: browserExecutable ?? null,
     timeoutInMilliseconds: 600000,
-    onProgress: ({ renderedFrames }) => {
+    cancelSignal: cancelSignal ? (cancel) => {
+      if (cancelSignal.aborted) cancel();
+      else cancelSignal.addEventListener("abort", cancel, { once: true });
+    } : undefined,
+    onProgress: ({ renderedFrames, progress }) => {
+      onProgress({ stage: "rendering", progress });
       if (renderedFrames % 30 === 0) {
         console.log(`[render] frame ${renderedFrames}/${composition.durationInFrames}`);
       }
     },
   });
 
-  const size = fs.statSync(outPath).size;
-  console.log(`[render] done: ${outPath} (${(size / 1024 / 1024).toFixed(2)} MB)`);
-  console.log(JSON.stringify({ ok: true, output: outPath, bytes: size }));
+  const size = fs.statSync(resolvedOutPath).size;
+  console.log(`[render] done: ${resolvedOutPath} (${(size / 1024 / 1024).toFixed(2)} MB)`);
+  return { output: resolvedOutPath, bytes: size, duration: composition.durationInFrames / composition.fps };
 }
 
-main().catch((err) => {
-  console.error(`[render] failed: ${err instanceof Error ? err.message : err}`);
-  process.exit(1);
-});
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (!args.project) {
+    console.error("usage: node render.mjs --project <dir> [--out file.mp4] [--quality draft|prod]");
+    process.exit(2);
+  }
+  await renderProject({ projectDir: args.project, outPath: args.out, quality: args.quality });
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(`[render] failed: ${err instanceof Error ? err.message : err}`);
+    process.exit(1);
+  });
+}

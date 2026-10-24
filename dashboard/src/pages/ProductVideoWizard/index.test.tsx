@@ -29,8 +29,31 @@ const api = vi.hoisted(() => ({
   downloadStoryboardPackage: vi.fn(),
   downloadAsset: vi.fn(),
 }));
+const desktopJobs = vi.hoisted(() => ({
+  bridgeAvailable: false,
+  jobs: [] as {
+    id: string;
+    projectId: string;
+    ownerId: number;
+    name: string;
+    state: string;
+    progress: number | null;
+    updatedAt: number;
+    videoUrl?: string;
+  }[],
+  start: vi.fn(),
+  cancel: vi.fn(),
+  retry: vi.fn(),
+  save: vi.fn(),
+  refresh: vi.fn(),
+}));
 
 vi.mock("../../api/modules/productLibrary", () => ({ productLibraryApi: api }));
+vi.mock("../../context/DesktopVideoJobsContext", () => ({
+  useDesktopVideoJobs: () => desktopJobs,
+  isActiveDesktopVideoJob: (job: { state: string }) =>
+    ["preparing", "downloading", "rendering", "saving"].includes(job.state),
+}));
 vi.mock("antd", async (importOriginal) => {
   const actual = await importOriginal<typeof import("antd")>();
   return {
@@ -159,6 +182,8 @@ function renderWizard(path = "/product-library/video-wizard") {
 describe("product video wizard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    desktopJobs.bridgeAvailable = false;
+    desktopJobs.jobs = [];
     api.products.mockResolvedValue({ items: [product] });
     api.projects.mockResolvedValue({ items: [] });
     api.assets.mockResolvedValue({ items: [sceneAsset] });
@@ -267,6 +292,61 @@ describe("product video wizard", () => {
     expect(api.saveStoryboard.mock.calls.at(-1)?.[1].confirmed).toBe(true);
   }, 15000);
 
+  it("starts native rendering only after the user confirms, not when reopening a confirmed plan", async () => {
+    const user = userEvent.setup();
+    desktopJobs.bridgeAvailable = true;
+    const nativeJob = {
+      id: "job1",
+      projectId: project.id,
+      ownerId: 7,
+      name: "Sample product",
+      state: "preparing",
+      progress: 0,
+      updatedAt: 1,
+    };
+    desktopJobs.start.mockImplementation(async () => {
+      desktopJobs.jobs = [nativeJob];
+      return nativeJob;
+    });
+    api.projects.mockResolvedValue({ items: [project] });
+    api.getStoryboard.mockResolvedValue(savedDraft);
+    api.saveStoryboard.mockImplementation(async (_id, body) => ({
+      ...savedDraft,
+      ...body,
+    }));
+    const { unmount } = renderWizard(
+      "/product-library/video-wizard?project=project1",
+    );
+    await screen.findByText("videoWizard.storyboardTitle");
+    await user.click(
+      screen.getByRole("button", { name: "videoWizard.confirmMake" }),
+    );
+    await waitFor(() =>
+      expect(desktopJobs.start).toHaveBeenCalledWith("project1"),
+    );
+    expect(api.saveStoryboard.mock.calls[0][1].confirmed).toBe(true);
+    await screen.findByText("videoWizard.activeTitle");
+    expect(
+      screen.getAllByText("videoWizard.stage.preparing").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText("videoWizard.stageStatus.current"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("videoWizard.stageStatus.pending")).toHaveLength(
+      2,
+    );
+    expect(
+      screen.getByRole("button", { name: "videoWizard.previous" }),
+    ).toBeDisabled();
+    unmount();
+
+    desktopJobs.jobs = [];
+    api.getStoryboard.mockResolvedValue({ ...savedDraft, confirmed: true });
+    renderWizard("/product-library/video-wizard?project=project1");
+    await screen.findByText("videoWizard.startReadyTitle");
+    expect(desktopJobs.start).toHaveBeenCalledTimes(1);
+  });
+
   it("restores structured requirements and replaces the platform without retaining stale values", async () => {
     const user = userEvent.setup();
     const instructions = encodeVideoBrief({
@@ -317,5 +397,5 @@ describe("product video wizard", () => {
     expect(api.generateStoryboard.mock.calls[0][1].instructions).not.toContain(
       "Original platform",
     );
-  });
+  }, 15000);
 });

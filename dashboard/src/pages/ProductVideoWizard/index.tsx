@@ -8,6 +8,7 @@ import {
   Empty,
   Input,
   InputNumber,
+  Progress,
   Radio,
   Select,
   Space,
@@ -25,9 +26,12 @@ import {
   Circle,
   Download,
   Image as ImageIcon,
+  LoaderCircle,
+  Play,
   RefreshCw,
   Sparkles,
   Upload as UploadIcon,
+  X,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -44,6 +48,11 @@ import {
 } from "../../api/modules/productLibrary";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import PageShell from "../../layouts/PageShell";
+import {
+  isActiveDesktopVideoJob,
+  useDesktopVideoJobs,
+  type DesktopVideoJob,
+} from "../../context/DesktopVideoJobsContext";
 import { message } from "../../utils/antdMessage";
 import {
   decodeVideoBrief,
@@ -67,6 +76,18 @@ const steps = [
   "confirm",
   "download",
 ];
+
+function nativeErrorMessage(error: unknown, t: (key: string) => string) {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code ?? "INTERNAL")
+      : "INTERNAL";
+  return t(`videoWizard.desktopErrors.${code}`);
+}
+
+function nativeStage(job: DesktopVideoJob) {
+  return job.state === "downloading" ? "preparing" : job.state;
+}
 
 function mediaType(asset: ProductSnapshotAsset) {
   return asset.media_type.startsWith("image/")
@@ -93,6 +114,9 @@ export default function ProductVideoWizardPage() {
   const [params] = useSearchParams();
   const currentUser = useCurrentUser();
   const userId = currentUser?.id;
+  const desktopVideo = useDesktopVideoJobs();
+  const isDesktop =
+    desktopVideo.bridgeAvailable || window.octopDesktopVideo?.version === 1;
   const requestedProjectId = params.get("project");
   const [step, setStep] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
@@ -106,6 +130,8 @@ export default function ProductVideoWizardPage() {
   const [draft, setDraft] = useState<StoryboardDraft | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [nativeBusy, setNativeBusy] = useState(false);
+  const [nativeSaving, setNativeSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
@@ -144,6 +170,8 @@ export default function ProductVideoWizardPage() {
     setUploads([]);
     setError("");
     setBusy(false);
+    setNativeBusy(false);
+    setNativeSaving(false);
     cleanUrls();
     setImageUrls({});
     const version = ++requestVersion.current;
@@ -276,6 +304,25 @@ export default function ProductVideoWizardPage() {
   const totalDuration =
     draft?.script.scenes.reduce((sum, scene) => sum + scene.duration, 0) ?? 0;
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const desktopJob = desktopVideo.jobs.find(
+    (job) => job.projectId === project?.id,
+  );
+  const coverScene = draft?.script.scenes.find(
+    (scene) => scene.type === "image" || scene.type === "video",
+  );
+  const coverAsset = coverScene?.asset
+    ? assetByExportName.get(coverScene.asset)
+    : undefined;
+  const nativeStages = ["preparing", "rendering", "saving"] as const;
+  const currentNativeStage = desktopJob
+    ? nativeStages.indexOf(
+        nativeStage(desktopJob) as (typeof nativeStages)[number],
+      )
+    : -1;
+  const isNativeActive = Boolean(
+    desktopJob && isActiveDesktopVideoJob(desktopJob),
+  );
+  const isNativeComplete = desktopJob?.state === "completed";
 
   const pickProduct = (id: string) => {
     requestVersion.current += 1;
@@ -463,7 +510,20 @@ export default function ProductVideoWizardPage() {
       if (version !== requestVersion.current) return;
       setDraft(updated);
       setSaved(true);
-      if (confirmed) setStep(4);
+      if (confirmed) {
+        setStep(4);
+        if (isDesktop) {
+          try {
+            setNativeBusy(true);
+            await desktopVideo.start(project.id);
+          } catch (error) {
+            if (version === requestVersion.current)
+              setError(nativeErrorMessage(error, t));
+          } finally {
+            if (version === requestVersion.current) setNativeBusy(false);
+          }
+        }
+      }
     } catch {
       if (version === requestVersion.current) {
         setError(t("videoWizard.saveFailed"));
@@ -471,6 +531,59 @@ export default function ProductVideoWizardPage() {
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const startNativeJob = async () => {
+    if (!project) return;
+    setNativeBusy(true);
+    setError("");
+    try {
+      await desktopVideo.start(project.id);
+    } catch (nativeError) {
+      setError(nativeErrorMessage(nativeError, t));
+    } finally {
+      setNativeBusy(false);
+    }
+  };
+
+  const cancelNativeJob = async () => {
+    if (!desktopJob) return;
+    setNativeBusy(true);
+    setError("");
+    try {
+      await desktopVideo.cancel(desktopJob.id);
+    } catch (nativeError) {
+      setError(nativeErrorMessage(nativeError, t));
+    } finally {
+      setNativeBusy(false);
+    }
+  };
+
+  const retryNativeJob = async () => {
+    if (!desktopJob) return;
+    setNativeBusy(true);
+    setError("");
+    try {
+      await desktopVideo.retry(desktopJob.id);
+    } catch (nativeError) {
+      setError(nativeErrorMessage(nativeError, t));
+    } finally {
+      setNativeBusy(false);
+    }
+  };
+
+  const saveNativeVideo = async () => {
+    if (!desktopJob) return;
+    setNativeSaving(true);
+    setError("");
+    try {
+      const savedVideo = await desktopVideo.save(desktopJob.id);
+      if (savedVideo) message.success(t("videoWizard.videoSaved"));
+    } catch (nativeError) {
+      setError(nativeErrorMessage(nativeError, t));
+    } finally {
+      setNativeSaving(false);
     }
   };
 
@@ -501,7 +614,7 @@ export default function ProductVideoWizardPage() {
   };
 
   useEffect(() => {
-    if (!draft || step !== 3) return;
+    if (!draft || (step !== 3 && !(step === 4 && isDesktop))) return;
     let active = true;
     const targets = [
       ...new Set(
@@ -533,7 +646,7 @@ export default function ProductVideoWizardPage() {
     return () => {
       active = false;
     };
-  }, [draft?.script.scenes, step, assetByExportName, previewRetry]);
+  }, [draft?.script.scenes, step, isDesktop, assetByExportName, previewRetry]);
 
   useEffect(() => {
     if (step !== 0 || !selectedAssetIds.length) return;
@@ -561,6 +674,7 @@ export default function ProductVideoWizardPage() {
   }, [step, selectedAssetIds]);
 
   const setStepSafe = (next: number) => {
+    if ((isNativeActive || nativeBusy) && next <= 3) return;
     if (next > 0 && !product) return;
     if (next === 2 && !busy) return;
     if (next === 3 && !draft) return;
@@ -571,7 +685,9 @@ export default function ProductVideoWizardPage() {
   return (
     <PageShell
       title={t("videoWizard.title")}
-      subtitle={t("videoWizard.subtitle")}
+      subtitle={t(
+        isDesktop ? "videoWizard.desktopSubtitle" : "videoWizard.subtitle",
+      )}
       fill
     >
       <ConfigProvider componentDisabled={busy || uploadBusy}>
@@ -591,6 +707,8 @@ export default function ProductVideoWizardPage() {
                 disabled={
                   busy ||
                   uploadBusy ||
+                  nativeBusy ||
+                  (isNativeActive && index <= 3) ||
                   (index === 1 && !product) ||
                   (index === 2 && !draft && !busy) ||
                   (index === 3 && !draft) ||
@@ -601,7 +719,11 @@ export default function ProductVideoWizardPage() {
                   {index < step ? <Check size={15} /> : index + 1}
                 </span>
                 <span className={styles.stepLabel}>
-                  {t(`videoWizard.${key}`)}
+                  {t(
+                    `videoWizard.${
+                      index === 4 && isDesktop ? "makeVideo" : key
+                    }`,
+                  )}
                 </span>
               </button>
             ))}
@@ -1247,7 +1369,210 @@ export default function ProductVideoWizardPage() {
                 </div>
               )}
 
-              {step === 4 && draft?.confirmed && (
+              {step === 4 && draft?.confirmed && isDesktop && (
+                <section className={styles.exportPanel}>
+                  <Card
+                    className={styles.desktopJobCard}
+                    classNames={{ body: styles.desktopJobBody }}
+                  >
+                    {isNativeComplete && desktopJob?.videoUrl ? (
+                      <video
+                        className={styles.completedVideoFrame}
+                        src={desktopJob.videoUrl}
+                        controls
+                        preload="metadata"
+                      />
+                    ) : (
+                      <div className={styles.desktopCover}>
+                        {coverAsset && imageUrls[coverAsset.id] ? (
+                          coverAsset.media_type.startsWith("video/") ? (
+                            <video
+                              src={imageUrls[coverAsset.id]}
+                              muted
+                              controls
+                              preload="metadata"
+                            />
+                          ) : (
+                            <img src={imageUrls[coverAsset.id]} alt="" />
+                          )
+                        ) : (
+                          <div className={styles.coverPlaceholder}>
+                            <ImageIcon size={26} />
+                          </div>
+                        )}
+                        <Tag className={styles.coverTag}>
+                          {t("videoWizard.coverSample")}
+                        </Tag>
+                      </div>
+                    )}
+                    <div className={styles.desktopJobContent}>
+                      <div className={styles.nativeTimeline}>
+                        {nativeStages.map((stage, index) => {
+                          const completed =
+                            isNativeComplete ||
+                            (isNativeActive && index < currentNativeStage);
+                          const current =
+                            isNativeActive && index === currentNativeStage;
+                          const status = completed
+                            ? "done"
+                            : current
+                            ? "current"
+                            : "pending";
+                          return (
+                            <div
+                              className={`${styles.nativeStage} ${
+                                completed
+                                  ? styles.nativeStageDone
+                                  : current
+                                  ? styles.nativeStageCurrent
+                                  : ""
+                              }`}
+                              key={stage}
+                            >
+                              <span className={styles.nativeStageIcon}>
+                                {completed ? (
+                                  <CheckCircle2 size={20} />
+                                ) : current ? (
+                                  <LoaderCircle size={20} />
+                                ) : (
+                                  <Circle size={20} />
+                                )}
+                              </span>
+                              <div className={styles.nativeStageCopy}>
+                                <strong>
+                                  {t(`videoWizard.stage.${stage}`)}
+                                </strong>
+                                <span>
+                                  {t(`videoWizard.stageStatus.${status}`)}
+                                </span>
+                                {current &&
+                                  desktopJob &&
+                                  desktopJob.progress !== null && (
+                                    <Progress
+                                      className={styles.nativeStageProgress}
+                                      percent={Math.round(
+                                        Math.max(
+                                          0,
+                                          Math.min(1, desktopJob.progress),
+                                        ) * 100,
+                                      )}
+                                      status="active"
+                                      strokeColor="var(--fn-color-primary, #f04e70)"
+                                      size="small"
+                                    />
+                                  )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {desktopJob && isActiveDesktopVideoJob(desktopJob) ? (
+                        <>
+                          <Typography.Title level={4}>
+                            {t("videoWizard.activeTitle")}
+                          </Typography.Title>
+                          <Typography.Text
+                            className={styles.nativeDescription}
+                            type="secondary"
+                          >
+                            {t("videoWizard.activeHint")}
+                          </Typography.Text>
+                          <Space wrap>
+                            <Button
+                              type="primary"
+                              icon={<ArrowRight size={15} />}
+                              onClick={() => navigate("/product-library")}
+                            >
+                              {t("videoWizard.backgroundNavigate")}
+                            </Button>
+                            <Button
+                              danger
+                              icon={<X size={15} />}
+                              loading={nativeBusy}
+                              onClick={() => void cancelNativeJob()}
+                            >
+                              {t("videoWizard.cancelJob")}
+                            </Button>
+                          </Space>
+                        </>
+                      ) : desktopJob?.state === "completed" ? (
+                        <>
+                          <Typography.Title level={4}>
+                            {t("videoWizard.completedTitle")}
+                          </Typography.Title>
+                          {!desktopJob.videoUrl && (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              message={t("videoWizard.videoUnavailable")}
+                            />
+                          )}
+                          {desktopJob.videoUrl && (
+                            <Button
+                              type="primary"
+                              icon={<Download size={15} />}
+                              loading={nativeSaving}
+                              disabled={nativeSaving}
+                              onClick={() => void saveNativeVideo()}
+                            >
+                              {t("videoWizard.saveVideo")}
+                            </Button>
+                          )}
+                        </>
+                      ) : desktopJob &&
+                        ["failed", "cancelled", "interrupted"].includes(
+                          desktopJob.state,
+                        ) ? (
+                        <>
+                          <Alert
+                            type={
+                              desktopJob.state === "failed" ? "error" : "info"
+                            }
+                            showIcon
+                            message={t(
+                              `videoWizard.jobState.${desktopJob.state}`,
+                            )}
+                            description={
+                              desktopJob.errorCode
+                                ? t(
+                                    `videoWizard.desktopErrors.${desktopJob.errorCode}`,
+                                  )
+                                : undefined
+                            }
+                          />
+                          <Button
+                            type="primary"
+                            icon={<RefreshCw size={15} />}
+                            loading={nativeBusy}
+                            onClick={() => void retryNativeJob()}
+                          >
+                            {t("videoWizard.retryJob")}
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Typography.Title level={4}>
+                            {t("videoWizard.startReadyTitle")}
+                          </Typography.Title>
+                          <Typography.Paragraph type="secondary">
+                            {t("videoWizard.startReadyHint")}
+                          </Typography.Paragraph>
+                          <Button
+                            type="primary"
+                            icon={<Play size={15} />}
+                            loading={nativeBusy}
+                            onClick={() => void startNativeJob()}
+                          >
+                            {t("videoWizard.startDesktop")}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </Card>
+                </section>
+              )}
+
+              {step === 4 && draft?.confirmed && !isDesktop && (
                 <section className={styles.exportPanel}>
                   <Typography.Title level={3}>
                     {t("videoWizard.exportTitle")}
@@ -1279,7 +1604,11 @@ export default function ProductVideoWizardPage() {
 
           <footer className={styles.footer}>
             <span className={styles.footerStatus}>
-              {busy ? (
+              {nativeSaving ? (
+                t("videoWizard.savingVideo")
+              ) : nativeBusy ? (
+                t("videoWizard.nativeStarting")
+              ) : busy ? (
                 step === 2 ? (
                   t("videoWizard.generating")
                 ) : (
@@ -1304,7 +1633,13 @@ export default function ProductVideoWizardPage() {
             <Space>
               <Button
                 icon={<ArrowLeft size={15} />}
-                disabled={step === 0 || busy || uploadBusy}
+                disabled={
+                  step === 0 ||
+                  busy ||
+                  uploadBusy ||
+                  nativeBusy ||
+                  isNativeActive
+                }
                 onClick={() =>
                   setStep(
                     step === 3 ? 1 : step === 4 ? 3 : Math.max(0, step - 1),
@@ -1366,11 +1701,15 @@ export default function ProductVideoWizardPage() {
                     }
                     onClick={() => void persist(true)}
                   >
-                    {t("videoWizard.confirmContinue")}
+                    {t(
+                      isDesktop
+                        ? "videoWizard.confirmMake"
+                        : "videoWizard.confirmContinue",
+                    )}
                   </Button>
                 </>
               )}
-              {step === 4 && (
+              {step === 4 && !isDesktop && (
                 <Button
                   type="primary"
                   icon={<Download size={15} />}

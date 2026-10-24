@@ -31,6 +31,7 @@ import {
   type ProductProject,
 } from "../../api/modules/productLibrary";
 import type { OctopAgent } from "../../context/AgentContext";
+import { useDesktopVideoJobs } from "../../context/DesktopVideoJobsContext";
 import PageShell from "../../layouts/PageShell";
 import { message } from "../../utils/antdMessage";
 
@@ -46,6 +47,7 @@ const blank: Omit<Product, "id"> = {
 export default function ProductLibraryPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { bridgeAvailable: isDesktop } = useDesktopVideoJobs();
   const [products, setProducts] = useState<Product[]>([]);
   const [projects, setProjects] = useState<ProductProject[]>([]);
   const [active, setActive] = useState<Product | null>(null);
@@ -737,7 +739,11 @@ export default function ProductLibraryPage() {
           style={{ gridColumn: "1 / -1" }}
         >
           <Typography.Paragraph type="secondary">
-            {t("productLibrary.localWorkflow")}
+            {t(
+              isDesktop
+                ? "videoWizard.startReadyHint"
+                : "productLibrary.localWorkflow",
+            )}
           </Typography.Paragraph>
           {projects.length ? (
             projects.map((p) => (
@@ -762,6 +768,7 @@ export default function ProductLibraryPage() {
                   · {p.snapshot.assets.length} {t("productLibrary.assetsCount")}
                 </span>
                 <Button
+                  type={isDesktop ? "primary" : "default"}
                   onClick={() =>
                     navigate(
                       `/product-library/video-wizard?project=${encodeURIComponent(
@@ -772,14 +779,16 @@ export default function ProductLibraryPage() {
                 >
                   {t("productLibrary.continueVideo")}
                 </Button>
-                <Button
-                  type="primary"
-                  icon={<Download size={16} />}
-                  loading={downloadingId === p.id}
-                  onClick={() => void downloadPackage(p)}
-                >
-                  {t("productLibrary.downloadPackage")}
-                </Button>
+                {!isDesktop && (
+                  <Button
+                    type="primary"
+                    icon={<Download size={16} />}
+                    loading={downloadingId === p.id}
+                    onClick={() => void downloadPackage(p)}
+                  >
+                    {t("productLibrary.downloadPackage")}
+                  </Button>
+                )}
                 <details>
                   <summary style={{ cursor: "pointer" }}>
                     {t("productLibrary.advancedAgentSync")}

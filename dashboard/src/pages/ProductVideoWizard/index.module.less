@@ -322,6 +322,130 @@
 .exportPanel p {
   margin: 0 0 7px;
 }
+.desktopJobCard {
+  width: 100%;
+}
+.desktopJobBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 16px;
+}
+.desktopCover {
+  position: relative;
+  width: clamp(280px, 30vw, 378px);
+  max-width: 100%;
+  max-height: min(60vh, calc(100vh - 480px));
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--fn-bg-elevated, #f5f5f5);
+  flex: 0 0 auto;
+}
+.desktopCover img,
+.desktopCover video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.coverTag {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  margin: 0;
+}
+.coverPlaceholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--fn-text-secondary, #667085);
+}
+.desktopJobContent {
+  display: flex;
+  min-width: min(300px, 100%);
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.desktopJobContent h4 {
+  margin: 0;
+  order: -2;
+  font-size: clamp(24px, 2.3vw, 34px);
+  line-height: 1.3;
+}
+.nativeDescription {
+  order: -1;
+  margin-bottom: 12px;
+}
+.nativeTimeline {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 8px;
+}
+.nativeStage {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  min-height: 88px;
+}
+.nativeStage:not(:last-child)::after {
+  position: absolute;
+  top: 22px;
+  bottom: 0;
+  left: 9px;
+  border-left: 1px solid var(--fn-border, #d9d9d9);
+  content: "";
+}
+.nativeStageIcon {
+  z-index: 1;
+  display: grid;
+  width: 20px;
+  height: 22px;
+  place-items: center;
+  background: var(--fn-bg-container, #fff);
+  color: var(--fn-text-secondary, #667085);
+}
+.nativeStageDone .nativeStageIcon {
+  color: var(--fn-color-success, #389e0d);
+}
+.nativeStageCurrent .nativeStageIcon {
+  color: var(--fn-color-primary, #f04e70);
+}
+.nativeStageCopy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 12px;
+}
+.nativeStageCopy strong {
+  color: var(--fn-text-primary, #202938);
+}
+.nativeStageCopy > span {
+  color: var(--fn-text-secondary, #667085);
+  font-size: 12px;
+}
+.nativeStageProgress {
+  max-width: 320px;
+  margin-top: 2px;
+}
+.completedVideoFrame {
+  display: block;
+  width: clamp(280px, 30vw, 378px);
+  max-width: 100%;
+  max-height: min(60vh, calc(100vh - 480px));
+  aspect-ratio: 9 / 16;
+  background: #111;
+  border-radius: 8px;
+  object-fit: contain;
+}
 .footer {
   position: sticky;
   z-index: 2;
@@ -336,6 +460,15 @@
   padding: 10px 16px;
   border-top: 1px solid var(--fn-border, #e8e8e8);
   background: var(--fn-bg-container, #fff);
+}
+
+@media (max-height: 900px) {
+  .nativeStage {
+    min-height: 58px;
+  }
+  .nativeDescription {
+    margin-bottom: 0;
+  }
 }
 
 @media (max-width: 1100px) {

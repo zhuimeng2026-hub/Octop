@@ -1,71 +1,52 @@
-# Product Video Wizard — Design QA
+# Desktop automatic video — Design QA
 
 final result: passed
 
-## Visual target and evidence
+This is a browser-rendered UI result, not an installed Windows-client acceptance. The previous web-wizard report is archived at `docs/design/product-video-wizard/design-qa.md`.
 
-- Source: `docs/design/product-video-wizard/concept-a.png`, PNG, 1487 × 1058 pixels.
-- Final implementation: `docs/design/product-video-wizard/implementation-desktop.jpg`, JPEG, 1487 × 1058 pixels, captured from the production bundle using local Vite preview and an isolated mock API.
-- Final CSS viewport: 1487 × 1058; devicePixelRatio: 1. Source and implementation were opened together at native size in the same comparison input. No scaling or resizing was needed.
-- State: fourth step, saved but unconfirmed storyboard, seven fixture scenes, editable cards and confirmation action.
-- Other captures: `implementation-download.jpg` (production download state); `implementation-narrow.jpg` and `implementation-narrow-scrolled.jpg` (final source, 900 × 800 CSS/pixels, DPR 1); `review-initial.jpg` (first iteration).
-- Captures use a fictitious user and a generated sample bracelet photograph served only by the local mock API. Demo photographs are not bundled into the production application.
+## Target and evidence
+
+- Source: `docs/design/desktop-auto-video/selected-concept.png` (安心制作页), 1487 × 1058 pixels.
+- Final implementation: `docs/design/desktop-auto-video/implementation-desktop.jpg`, 1487 × 1058 pixels; CSS viewport 1487 × 1058, DPR 1. Source and implementation were opened together in one comparison input at native size without scaling.
+- State: fifth step, confirmed fixture plan, rendering UI at 64%. This percentage is controlled visual-fixture data, not a measured production render.
+- Other captures: `implementation-completed.jpg`, `implementation-background.jpg`, `implementation-narrow.jpg` (900 × 800) and `review-initial.jpg`. Final desktop capture is from the production bundle; related interactions were also checked with the same source in development preview.
+- Synthetic local account, sample photograph and test-only native bridge stay outside production code and real product libraries.
+- Completed player reads the real native-smoke MP4: 360 × 640, duration 3 seconds, readyState 4, no media error; playback reached the end.
 
 ## Comparison history
 
-### Iteration 1 — blocked
+Initial review — blocked:
 
-Opened the source and `review-initial.jpg` together. That first capture was 1488 × 1056; the source was 1487 × 1058. The small frame difference was not treated as a typography defect; the final comparison uses exactly matching dimensions.
+- [P1, fixed] String native owner ID did not match numeric account ID, hiding jobs. Normalize before filtering and cover the string native ID in the provider test.
+- [P2, fixed] Dashboard uses a custom Ant Design prefix, so the card body was not flexed and actions fell below the image. Use explicit Card body/tag/progress classes.
+- [P2, fixed] Poster could overlap the footer. Bound height to available space and compact the timeline on shorter windows.
+- [P2, fixed] Add the selected concept's three-stage timeline and background primary action; preserve honest stage progress.
+- [P2, fixed] Product Library still exposed ZIP/Node instructions. Desktop mode now shows automatic workflow and continue controls; web export is retained.
 
-- [P2] Step connectors crossed labels. Fixed label stacking/background and connector spacing.
-- [P2] Blank fields and approximately 380-pixel cards hid too much of the second row. Tightened padding and removed renderer-unused inputs, including the duplicate end-card subtitle.
-- [P2] Summary exposed 1080:1920 and ZH. Replaced with 9:16 and localized 中文.
-- [P2] Saved and confirmed states were insufficiently distinct. Added pending-confirmation status and invalidated export after edits.
-- [P3] Replaced text status glyphs with the existing icon library.
+Final comparison — passed: opened the selected concept and final capture together after fixes. Portrait cover, right-hand heading, rose navigation/actions, three-stage status and disabled edit navigation are visible. No actionable P0/P1/P2 visual finding remains.
 
-### Interaction and responsive review — blocked, then fixed
-
-- [P2] Scrolling hid step navigation. Made it sticky; the final narrow scrolled capture shows navigation and footer while editing the last scene.
-- [P2] At 900 pixels with the sidebar expanded, horizontal step labels collided with adjacent circles. Steps now align vertically below 1100 pixels. Final narrow captures show separated labels.
-- [P2] Refresh flattened requirements into additional notes and could retain conflicting platforms. A versioned internal brief encoder/decoder now restores each business field. Browser verification restored audience/platform and replaced 抖音 with 小红书 without retaining the old platform in the saved brief. Legacy unstructured notes remain available.
-- Disabled controls during pending saves/uploads to prevent keyboard edits being overwritten by an earlier save response; covered by component tests.
-
-### Final comparison — passed
-
-Opened the source, final production desktop capture and final scrolled narrow capture together after fixes. No actionable P0/P1/P2 findings remain.
-
-Intentional adaptations: reuse the current repository Dashboard shell rather than reconstructing the older shell in the concept. Scene count/content are data-driven: this fixture has title/text/end-card scenes and four photographs; the concept illustrates six photographic cards. Text scenes show real text, not invented photographs. Extra rows scroll internally while actions and navigation stay available. Saving is explicit; the interface does not claim automatic persistence before the server responds.
+Intentional adaptations: existing Dashboard font, standard icons and compact summary/status typography; actual library asset instead of a generated marketing poster; corrected stale ZIP subtitle. Preparation remains indeterminate until measurable progress exists.
 
 ## Required fidelity surfaces
 
-| Surface              | Result                                                                                                                                                                                                                           |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fonts and typography | Dashboard system font and heading hierarchy retained; captions, duration controls and labels are readable. No new font dependency.                                                                                               |
-| Spacing and layout   | Desktop three-column and narrow two-column grids verified. Tighter cards; visible footer and sticky steps. No document-level horizontal overflow at 1487 × 1058 or 900 × 800. Sidebar collapse/expansion retains usable actions. |
-| Colors and tokens    | Dashboard rose accent and semantic states reuse theme tokens. Dark mode was not separately captured.                                                                                                                             |
-| Images and assets    | All sample images loaded. Production previews use authenticated blobs and snapshot media/export names. Actual text appears on text cards. No generated demo image is installed into a real product library.                      |
-| Copy and content     | Business-facing zh/en copy, familiar language/aspect ratio, internal brief JSON hidden. Scene illustration, ZIP download and local MP4 rendering are clearly distinguished.                                                      |
+| Surface | Result |
+| --- | --- |
+| Fonts / typography | Existing system font and Dashboard hierarchy; large creation heading and readable stage/status labels. |
+| Spacing / layout | Two desktop columns, bounded image, sticky navigation/footer. Narrow content stacks and scrolls to save; no document-level horizontal overflow at 900 × 800. |
+| Colors / tokens | Rose primary and progress, semantic completed state, neutral pending state. Dark theme not separately captured. |
+| Images / quality | Authenticated asset marked 封面示意; completion replaces it with actual MP4. No custom image approximations or production demo assets. |
+| Copy / content | Desktop hides ZIP/JSON/Node/API/renderer details, explains keeping the client running, and localizes zh/en. |
 
-Full-view labels are readable at native desktop size. Additional focused checks used browser DOM/accessibility inspection for input values, disabled states, navigation and footer bounds; a separate magnified crop was not needed to resolve the findings.
+Full-view captures show labels and controls clearly at native density. DOM/accessibility checks verify disabled controls, stage status and video metadata; no magnified crop was needed to resolve findings.
 
-## Verification evidence
+## Interaction checks and limits
 
-- `cd dashboard && npx tsc -b` — exit 0.
-- `cd dashboard && npx vitest run src/pages/ProductVideoWizard/brief.test.ts src/pages/ProductVideoWizard/index.test.tsx` — 2 files, 6 tests passed. Covers roundtrip/legacy/length limits, generation failure retaining the project, restored draft editing/confirmation/export, replacing restored platform requirements, disabled inputs during save, and snapshot media.
-- `cd dashboard && npm run build` — exit 0, TypeScript plus production Vite/PWA build. Final Vite build completed in 2m 36s. Existing chunk-size and mixed static/dynamic import warnings are non-fatal.
-- Fresh production-preview browser: successful confirmation and real browser download event for the mocked ZIP; no console error entries.
-- Other mock-browser checks: product selection, back navigation retaining inputs, generation loading/failure/retry, project ID in URL, refresh restoring draft and structured requirements, caption/duration save, edit invalidating export, and responsive navigation/footer.
-- `git diff --check` — clean.
+- Fixture browser: cancel → retry; background navigation; task status and completion reminder → video page; actual MP4 playback; narrow scrolling to save.
+- Focused tests: explicit confirmation starts once, restored confirmation does not start, auth passed to native controls, account changes hide jobs.
+- Fresh production preview checked separately for console errors. Development-proxy HMR websocket errors are fixture infrastructure issues.
+- Separate native HTTP → validated ZIP → trusted runtime → MP4 → Range smoke passed. Fixture UI alone does not prove native integration.
+- Automatic approval rejected native GUI launch without a specific reason. Save dialog, installed client and NSIS remain unverified; see `docs/design/desktop-auto-video/acceptance.md`.
 
-## Scope and residual gaps
+P3 follow-up: refine summary strip and larger stage typography while retaining Dashboard density.
 
-Only frontend checks were run, as requested. No make all, backend tests, real model call, cross-user server-security acceptance, WeChat live login or local Remotion/MP4 render was performed. The downloaded mock ZIP contains a test-only README, not a renderer package. Existing backend MVP acceptance remains separate. The desktop M1 checkout was not modified.
-
-## Implementation checklist
-
-- [x] Compare selected visual and implementation together.
-- [x] Resolve and recapture P0/P1/P2 issues.
-- [x] Verify critical interactions with mock data.
-- [x] Inspect final production bundle and console.
-- [x] Save desktop/download/narrow evidence.
-- [x] Record test scope and unverified integrations.
+Checklist: selected visual reviewed; initial findings fixed; desktop/background/completed/narrow captured; real media independently verified; native GUI and installation gaps recorded.

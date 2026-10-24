@@ -46,6 +46,7 @@ Wails requires native packaging, so all six variants are produced by the CI
 matrix on macOS, Linux, and Windows runners rather than cross-compiled locally.
 Windows packaging also needs [NSIS](https://nsis.sourceforge.io/) (`makensis`)
 so the `.exe` is an installer rather than a portable single-file binary.
+The Windows installer build runs `node remotion/build-desktop-runtime.mjs --target win-x64|win-arm64 --output desktop/src/video-runtime` and installs that trusted local Node/Remotion runtime beside `Octop.exe` under `video-runtime/`. This is a build-machine preparation step; end users do not install Node or run npm.
 
 ## Build the Wails shell
 

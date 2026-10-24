@@ -12,6 +12,8 @@
     "render": "node launch.mjs --render",
     "render:draft": "node launch.mjs --render --quality draft",
     "test": "node --test test/*.test.mjs",
+    "test:desktop-worker": "node --test test/desktop-worker.test.mjs",
+    "smoke:desktop-worker": "node test/desktop-worker-smoke.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

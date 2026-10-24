@@ -53,6 +53,7 @@ tasks:
           ARCH: "{{.ARCH}}"
           VERSION: "{{.VERSION}}"
           DEFAULT_SERVER_URL: "{{.DEFAULT_SERVER_URL}}"
+      - cmd: node ../../remotion/build-desktop-runtime.mjs --target {{if eq .ARCH "arm64"}}win-arm64{{else}}win-x64{{end}} --output video-runtime
       - task: create:nsis:installer
         vars:
           ARCH: "{{.ARCH}}"
