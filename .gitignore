@@ -121,3 +121,6 @@ scripts/lh_image_install_octop_tencentos.sh
 # Remotion local renderer (Octop video pipeline)
 remotion/work/
 remotion/example/out/
+
+# Per-host pre-commit overrides
+.githooks/local.env
