@@ -189,14 +189,19 @@ func (a *App) boot() {
 		locale = a.store.get().Locale
 	}
 	if url := resolveRemoteDashboardURL(); url != "" {
+		navLogf("boot: remote target %s", redactURL(url))
 		a.setStatus(desktopText(locale, copyStatusConnecting))
+		started := time.Now()
 		if err := waitHealth(locale, url, 60*time.Second); err != nil {
+			navLogf("boot: health probe failed after %s: %v", time.Since(started).Round(time.Millisecond), err)
 			a.setStatus(err.Error())
 			return
 		}
+		navLogf("boot: health probe ok in %s, showing %s", time.Since(started).Round(time.Millisecond), redactURL(url))
 		a.showDashboard(url)
 		return
 	}
+	navLogf("boot: no remote target, starting bundled runtime")
 	a.setStatus(desktopText(locale, copyStatusCheckingRuntime))
 	if err := ensurePortable(locale, a.setStatus); err != nil {
 		a.setStatus(err.Error())
@@ -268,8 +273,10 @@ func (a *App) navigate(base string) {
 	}
 	a.mu.Unlock()
 	if !ready {
+		navLogf("navigate: deferred %s (webview not ready)", redactURL(base))
 		return
 	}
+	navLogf("navigate: set URL %s", redactURL(base))
 	a.window.SetURL(base)
 }
 
@@ -397,6 +404,11 @@ func main() {
 	}
 	defer lock.Close()
 
+	// Start the navigation log before anything can navigate: boot problems then
+	// leave a trace even when no window is ever shown.
+	navLog.start()
+	defer navLog.close()
+
 	store := &settingsStore{cur: loadSettings()}
 	api := &App{
 		store: store,
@@ -445,6 +457,9 @@ func main() {
 		BackgroundColour:     application.NewRGB(247, 248, 250),
 	})
 	api.window = win
+	// Navigation log: records what the webview really loads (and what the page
+	// itself reports about failed requests). Appended to ~/.octop/logs/.
+	armNavigationLog(win)
 	// Arm the readiness listener before app.Run(): the first navigation is
 	// what proves the webview is usable, and the event is delivered by the
 	// app's event loop, which only starts there. Arming it later — from
