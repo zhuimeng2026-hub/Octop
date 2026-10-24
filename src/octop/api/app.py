@@ -14,6 +14,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from scalar_fastapi import get_scalar_api_reference
 
 from octop.api.middleware.jwt_auth import install as install_jwt_auth
+from octop.api.middleware.request_logging import (
+    STALE_ASSET_HINT,
+    log_request_failure,
+)
+from octop.api.middleware.request_logging import (
+    install as install_request_logging,
+)
 from octop.api.middleware.setup_lockdown import install as install_setup_lockdown
 from octop.api.openapi_meta import API_DESCRIPTION, OPENAPI_TAGS, configure_openapi
 from octop.infra.errors import ErrorCode, OctopError
@@ -57,7 +64,9 @@ def is_dashboard_asset_path(full_path: str) -> bool:
     return full_path.startswith("assets/")
 
 
-def _dashboard_fallback(index_file: Path, full_path: str) -> FileResponse:
+def _dashboard_fallback(
+    index_file: Path, full_path: str, request: Request | None = None
+) -> FileResponse:
     """Serve the SPA shell for routes; 404 for a missing hashed asset.
 
     Answering ``/assets/index.<old-hash>.js`` with ``index.html`` makes the
@@ -65,7 +74,19 @@ def _dashboard_fallback(index_file: Path, full_path: str) -> FileResponse:
     type"), which hides the real cause — a stale shell after an upgrade.
     """
     if is_dashboard_asset_path(full_path):
+        if request is not None:
+            log_request_failure(
+                request,
+                404,
+                detail=f"missing hashed asset {full_path}",
+                hint=STALE_ASSET_HINT,
+            )
         raise HTTPException(status_code=404, detail="Not Found")
+    logger.info(
+        "spa shell | GET %s%s → index.html",
+        full_path or "/",
+        f"?{request.url.query}" if request is not None and request.url.query else "",
+    )
     return _dashboard_response(index_file, "")
 
 
@@ -140,6 +161,9 @@ def build_app(server: OctopServer) -> FastAPI:
     install_bridge_proxy(app, server)
     install_jwt_auth(app, server)
     install_setup_lockdown(app, server)
+    # Outermost, so every failure is logged — including the ones rejected by
+    # the JWT gate or the setup lockdown above.
+    install_request_logging(app)
 
     if server.app_runtime is not None and server.app_runtime.bridge_manager is not None:
         from octop.api.bridge_peer import prepare_peer_dashboard_turn
@@ -328,7 +352,7 @@ def build_app(server: OctopServer) -> FastAPI:
         if index_file.exists():
 
             @app.get("/{full_path:path}", include_in_schema=False)
-            async def spa_fallback(full_path: str) -> FileResponse:
+            async def spa_fallback(request: Request, full_path: str) -> FileResponse:
                 if full_path.startswith(("api/", "ws/")):
                     raise HTTPException(status_code=404, detail="Not Found")
 
@@ -337,14 +361,14 @@ def build_app(server: OctopServer) -> FastAPI:
                     # Reject absolute paths and parent-dir references before
                     # joining, so user input never drives a path expression.
                     if raw_path.is_absolute() or ".." in raw_path.parts:
-                        return _dashboard_fallback(index_file, full_path)
+                        return _dashboard_fallback(index_file, full_path, request)
                     candidate = (dashboard_dir / Path(*raw_path.parts)).resolve()
                     try:
                         candidate.relative_to(dashboard_dir.resolve())
                     except ValueError:
-                        return _dashboard_fallback(index_file, full_path)
+                        return _dashboard_fallback(index_file, full_path, request)
                     if candidate.is_file():
                         return _dashboard_response(candidate, full_path)
-                return _dashboard_fallback(index_file, full_path)
+                return _dashboard_fallback(index_file, full_path, request)
 
     return app
