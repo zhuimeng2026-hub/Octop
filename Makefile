@@ -48,6 +48,7 @@ help:
 	@echo "  build-frontend   Build React dashboard only → $(DASHBOARD_DEST)"
 	@echo "                    (prefixed deployment: make build-frontend BASE_URL=/videogen)"
 	@echo "  build-wheel      Build Python wheel only (assumes frontend built)"
+	@echo "  bootstrap        Package the lightweight download bootstrapper → dist/"
 	@echo ""
 	@echo "Publish targets:"
 	@echo "  publish          Build + upload to PyPI (PYPI_TOKEN or prompt)"
@@ -128,6 +129,17 @@ build-wheel:
 	exit $$status
 	@echo "[build-wheel] Done. Artifacts in: $(DIST_DIR)/"
 	@ls -lh $(DIST_DIR)/
+
+# ─── Bootstrap (lightweight downloader) ─────────────────────────────────────
+
+BOOTSTRAP_DIR := $(REPO_ROOT)/bootstrap
+
+.PHONY: bootstrap
+bootstrap:
+	@echo "[bootstrap] Packaging $(BOOTSTRAP_DIR) → $(DIST_DIR)/"
+	@$(PYTHON) scripts/build_bootstrap.py
+	@echo "[bootstrap] Done. Artifacts in: $(DIST_DIR)/"
+	@ls -lh $(DIST_DIR)/ | grep -i bootstrap
 
 # ─── Publish ─────────────────────────────────────────────────────────────────
 
