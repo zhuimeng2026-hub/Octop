@@ -10,6 +10,12 @@ vars:
   APP_NAME: "Octop"
   BIN_DIR: "bin"
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+  # Build-time default dashboard URL for the shell (Windows release builds bake
+  # this in via -ldflags "-X main.defaultServerURL=..."). Must be a GLOBAL var:
+  # go-task renders var templates with only call vars + globals in scope, so a
+  # task-level default would be invisible to BUILD_FLAGS. Override per build
+  # with: wails3 task build DEFAULT_SERVER_URL=https://host/prefix
+  DEFAULT_SERVER_URL: "https://ocbot.aixifs.com/videogen"
 
 tasks:
   build:
