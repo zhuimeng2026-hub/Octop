@@ -27,6 +27,21 @@ function download(url, destination) {
   execFileSync("curl.exe", ["--fail", "--location", "--silent", "--show-error", "--retry", "4", "--retry-all-errors", "--retry-delay", "2", "--max-time", "180", "--output", destination, url], { stdio: "inherit" });
 }
 
+// Moves a prepared directory into place.
+//
+// rename() is atomic and cheap on one volume, but Windows temp usually lives on
+// C: while the checkout can live on D:, and rename() across volumes fails with
+// EXDEV. Fall back to copy-then-delete so the build works on either layout.
+function moveDirectory(from, to) {
+  try {
+    fs.renameSync(from, to);
+  } catch (error) {
+    if (error.code !== "EXDEV") throw error;
+    fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
+    fs.rmSync(from, { recursive: true, force: true });
+  }
+}
+
 async function main() {
   const { output, target } = parseArgs(process.argv.slice(2));
   if (process.platform !== "win32") throw new Error("Windows runtime must be built on a Windows host");
@@ -96,7 +111,7 @@ async function main() {
     }
     fs.writeFileSync(path.join(stagedRuntime, "runtime.json"), `${JSON.stringify({ schema: "octop-desktop-video-runtime/1", templateVersion: 1, nodeVersion: NODE_VERSION, target, browserMode: "headless-shell" }, null, 2)}\n`);
     if (replaceExisting) fs.rmSync(root, { recursive: true, force: true });
-    fs.renameSync(stagedRuntime, root);
+    moveDirectory(stagedRuntime, root);
     console.log(`Prepared trusted video runtime at ${root}`);
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
