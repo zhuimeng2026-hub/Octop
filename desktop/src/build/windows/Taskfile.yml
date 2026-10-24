@@ -21,8 +21,9 @@ tasks:
       - cmd: rm -f *.syso
         platforms: [linux, darwin]
     vars:
-      BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"{{else}}-buildvcs=false -gcflags=all="-l"{{end}}'
+      BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui{{if .DEFAULT_SERVER_URL}} -X main.defaultServerURL={{.DEFAULT_SERVER_URL}}{{end}}"{{else}}-buildvcs=false -gcflags=all="-l"{{end}}'
       VERSION: '{{.VERSION | default "dev"}}'
+      DEFAULT_SERVER_URL: '{{.DEFAULT_SERVER_URL | default "https://ocbot.aixifs.com/videogen"}}'
     env:
       GOOS: windows
       CGO_ENABLED: "0"
@@ -52,6 +53,7 @@ tasks:
           PRODUCTION: "true"
           ARCH: "{{.ARCH}}"
           VERSION: "{{.VERSION}}"
+          DEFAULT_SERVER_URL: "{{.DEFAULT_SERVER_URL}}"
       - task: create:nsis:installer
         vars:
           ARCH: "{{.ARCH}}"
@@ -65,6 +67,7 @@ tasks:
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       VERSION: '{{.VERSION | default "dev"}}'
+      DEFAULT_SERVER_URL: '{{.DEFAULT_SERVER_URL | default "https://ocbot.aixifs.com/videogen"}}'
       PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-portable-windows-%s-%s.zip" .ARCH .VERSION)}}'
       ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-desktop-windows-{{.ARCH}}-{{.VERSION}}.exe'
 

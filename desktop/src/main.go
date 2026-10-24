@@ -22,6 +22,23 @@ var assets embed.FS
 
 const trayDoubleClick = 400 * time.Millisecond
 
+// defaultServerURL is baked in at build time via
+// -ldflags "-X main.defaultServerURL=https://host/prefix". Release packages
+// point the shell at the hosted Octop instance so end users need neither the
+// environment variable nor a bundled local runtime. Empty means local mode.
+var defaultServerURL string
+
+// resolveRemoteDashboardURL picks the remote dashboard target for boot: the
+// OCTOP_DESKTOP_URL environment variable wins over the build-time default
+// (baked in via -ldflags "-X main.defaultServerURL=..."); an empty result
+// means fall back to the bundled portable runtime (local mode).
+func resolveRemoteDashboardURL() string {
+	if url := os.Getenv("OCTOP_DESKTOP_URL"); url != "" {
+		return url
+	}
+	return defaultServerURL
+}
+
 // App is the Wails service bound to the shell UI.
 type App struct {
 	app            *application.App
@@ -171,7 +188,7 @@ func (a *App) boot() {
 	if a.store != nil {
 		locale = a.store.get().Locale
 	}
-	if url := os.Getenv("OCTOP_DESKTOP_URL"); url != "" {
+	if url := resolveRemoteDashboardURL(); url != "" {
 		a.setStatus(desktopText(locale, copyStatusConnecting))
 		if err := waitHealth(locale, url, 60*time.Second); err != nil {
 			a.setStatus(err.Error())
