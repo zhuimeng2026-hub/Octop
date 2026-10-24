@@ -18,11 +18,11 @@ from octop.api.deps import current_user, get_server
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.product_library.package_export import export_project_package
-from octop.infra.product_library.video_planner import VideoPlanRequest, build_video_plan
 from octop.infra.product_library.service import (
     ProductLibraryService,
     project_payload,
 )
+from octop.infra.product_library.video_planner import VideoPlanRequest, build_video_plan
 
 router = APIRouter()
 

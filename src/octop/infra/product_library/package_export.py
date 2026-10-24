@@ -79,7 +79,9 @@ def _write_text(archive: ZipFile, name: str, content: bytes, *, executable: bool
     archive.writestr(info, content)
 
 
-def export_project_package(\n    paths: PathLayout, project: dict[str, Any], *, script_override: dict[str, Any] | None = None\n) -> Path:
+def export_project_package(
+    paths: PathLayout, project: dict[str, Any], *, script_override: dict[str, Any] | None = None
+) -> Path:
     """Return a temporary ZIP; the HTTP adapter removes it after transmission."""
     snapshot = project_payload(project)["snapshot"]
     script, assets = render_script(snapshot)

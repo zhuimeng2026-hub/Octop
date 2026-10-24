@@ -1,4 +1,5 @@
 """Focused backend video planner tests, no model calls or desktop dependencies."""
+
 import pytest
 from pydantic import ValidationError
 
@@ -8,10 +9,15 @@ from octop.infra.product_library.video_planner import VideoPlanRequest, build_vi
 def sample():
     return {
         "product": {"name": "Canvas Bag", "model": "A1", "selling_points": ["Durable"]},
-        "assets": [{
-            "id": "asset1", "filename": "bag.png", "media_type": "image/png",
-            "usage": "scene", "priority": 1,
-        }],
+        "assets": [
+            {
+                "id": "asset1",
+                "filename": "bag.png",
+                "media_type": "image/png",
+                "usage": "scene",
+                "priority": 1,
+            }
+        ],
     }
 
 
@@ -28,7 +34,8 @@ def test_portrait_plan_reuses_snapshot_assets():
 
 def test_without_bullets_and_landscape():
     result = build_video_plan(
-        sample(), VideoPlanRequest(format="landscape", include_selling_points=False, seconds_per_asset=7)
+        sample(),
+        VideoPlanRequest(format="landscape", include_selling_points=False, seconds_per_asset=7),
     )
     assert result["script"]["width"] == 1920
     assert all(scene["type"] != "bullets" for scene in result["script"]["scenes"])
