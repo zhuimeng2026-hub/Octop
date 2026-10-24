@@ -79,10 +79,20 @@ def _write_text(archive: ZipFile, name: str, content: bytes, *, executable: bool
     archive.writestr(info, content)
 
 
-def export_project_package(paths: PathLayout, project: dict[str, Any]) -> Path:
+def export_project_package(\n    paths: PathLayout, project: dict[str, Any], *, script_override: dict[str, Any] | None = None\n) -> Path:
     """Return a temporary ZIP; the HTTP adapter removes it after transmission."""
     snapshot = project_payload(project)["snapshot"]
     script, assets = render_script(snapshot)
+    if script_override is not None:
+        # The planner returns only existing snapshot asset references. Keep the
+        # canonical export asset list and reject foreign filenames at this boundary.
+        known = {asset["export_name"] for asset in assets}
+        if not isinstance(script_override.get("scenes"), list) or not script_override["scenes"]:
+            raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS)
+        for scene in script_override["scenes"]:
+            if not isinstance(scene, dict) or (scene.get("asset") and scene["asset"] not in known):
+                raise OctopError.localized(ErrorCode.SLASH_BAD_ARGS)
+        script = script_override
     root = paths.product_library_dir.resolve()
     sources: list[tuple[str, Path]] = []
     manifest_assets: list[dict[str, Any]] = []
