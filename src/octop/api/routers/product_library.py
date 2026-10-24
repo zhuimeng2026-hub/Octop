@@ -17,13 +17,13 @@ from octop.api.common.workspace import require_running_workspace
 from octop.api.deps import current_user, get_server
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.product_library.package_export import export_project_package
 from octop.infra.product_library.llm_video_planner import generate_model_plan
-from octop.infra.product_library.video_drafts import load_draft, save_draft
+from octop.infra.product_library.package_export import export_project_package
 from octop.infra.product_library.service import (
     ProductLibraryService,
     project_payload,
 )
+from octop.infra.product_library.video_drafts import load_draft, save_draft
 from octop.infra.product_library.video_planner import VideoPlanRequest, build_video_plan
 
 router = APIRouter()
@@ -345,8 +345,10 @@ class StoryboardDraftBody(BaseModel):
     confirmed: bool = False
 
 
-@router.post("/product-library/projects/{project_id}/generate-storyboard",
-             summary="Generate and persist an AI storyboard for an owned project")
+@router.post(
+    "/product-library/projects/{project_id}/generate-storyboard",
+    summary="Generate and persist an AI storyboard for an owned project",
+)
 async def generate_storyboard(
     project_id: str,
     body: VideoPlanRequest,
@@ -358,14 +360,18 @@ async def generate_storyboard(
     try:
         plan = await generate_model_plan(snapshot, body)
     except (ValueError, OSError, KeyError, IndexError, TypeError) as exc:
-        raise HTTPException(status_code=502, detail="Video model unavailable or returned invalid script") from exc
-    draft = await asyncio.to_thread(save_draft, server.services.paths.root, user.id,
-                                    project_id, snapshot, body, plan["script"])
+        raise HTTPException(
+            status_code=502, detail="Video model unavailable or returned invalid script"
+        ) from exc
+    draft = await asyncio.to_thread(
+        save_draft, server.services.paths.root, user.id, project_id, snapshot, body, plan["script"]
+    )
     return {"generator": plan["generator"], "draft": draft}
 
 
-@router.get("/product-library/projects/{project_id}/storyboard",
-            summary="Read my saved storyboard draft")
+@router.get(
+    "/product-library/projects/{project_id}/storyboard", summary="Read my saved storyboard draft"
+)
 async def get_storyboard(
     project_id: str,
     user: Any = Depends(current_user),
@@ -378,8 +384,10 @@ async def get_storyboard(
     return draft
 
 
-@router.put("/product-library/projects/{project_id}/storyboard",
-            summary="Edit and validate storyboard, optionally confirm")
+@router.put(
+    "/product-library/projects/{project_id}/storyboard",
+    summary="Edit and validate storyboard, optionally confirm",
+)
 async def update_storyboard(
     project_id: str,
     body: StoryboardDraftBody,
@@ -388,15 +396,25 @@ async def update_storyboard(
 ) -> dict[str, Any]:
     project = _service(server).get_project(user.id, project_id)
     try:
-        return await asyncio.to_thread(save_draft, server.services.paths.root, user.id,
-                                       project_id, project_payload(project)["snapshot"],
-                                       body.request, body.script, confirmed=body.confirmed)
+        return await asyncio.to_thread(
+            save_draft,
+            server.services.paths.root,
+            user.id,
+            project_id,
+            project_payload(project)["snapshot"],
+            body.request,
+            body.script,
+            confirmed=body.confirmed,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/product-library/projects/{project_id}/storyboard-package",
-            response_class=FileResponse, summary="Download confirmed storyboard as Studio package")
+@router.get(
+    "/product-library/projects/{project_id}/storyboard-package",
+    response_class=FileResponse,
+    summary="Download confirmed storyboard as Studio package",
+)
 async def download_storyboard_package(
     project_id: str,
     user: Any = Depends(current_user),
@@ -408,14 +426,21 @@ async def download_storyboard_package(
         raise HTTPException(status_code=409, detail="Storyboard must be confirmed before export")
     try:
         from octop.infra.product_library.llm_video_planner import validate_script
-        script = validate_script(draft["script"], project_payload(project)["snapshot"],
-                                 VideoPlanRequest.model_validate(draft["request"]))
+
+        script = validate_script(
+            draft["script"],
+            project_payload(project)["snapshot"],
+            VideoPlanRequest.model_validate(draft["request"]),
+        )
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=422, detail="Saved storyboard is invalid") from exc
-    package = await asyncio.to_thread(export_project_package, server.services.paths,
-                                      project, script_override=script)
+    package = await asyncio.to_thread(
+        export_project_package, server.services.paths, project, script_override=script
+    )
     return FileResponse(
-        package, media_type="application/zip", filename=f"storyboard-{project_id}.zip",
+        package,
+        media_type="application/zip",
+        filename=f"storyboard-{project_id}.zip",
         background=BackgroundTask(package.unlink, missing_ok=True),
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )

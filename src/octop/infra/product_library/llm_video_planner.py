@@ -1,4 +1,5 @@
 """Optional low-cost OpenAI-compatible video planner with strict render validation."""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +15,9 @@ SCENE_TYPES = {"title", "bullets", "image", "video", "text", "endcard"}
 MAX_SCENES = 24
 
 
-def validate_script(script: Any, snapshot: dict[str, Any], request: VideoPlanRequest) -> dict[str, Any]:
+def validate_script(
+    script: Any, snapshot: dict[str, Any], request: VideoPlanRequest
+) -> dict[str, Any]:
     """Reject foreign assets, arbitrary keys, pathological durations and invalid shapes."""
     if not isinstance(script, dict) or not isinstance(script.get("scenes"), list):
         raise ValueError("invalid script")
@@ -32,9 +35,18 @@ def validate_script(script: Any, snapshot: dict[str, Any], request: VideoPlanReq
         kind = item.get("type")
         scene_id = item.get("id")
         duration = item.get("duration")
-        if kind not in SCENE_TYPES or not isinstance(scene_id, str) or not 1 <= len(scene_id) <= 64 or scene_id in ids:
+        if (
+            kind not in SCENE_TYPES
+            or not isinstance(scene_id, str)
+            or not 1 <= len(scene_id) <= 64
+            or scene_id in ids
+        ):
             raise ValueError("invalid type or id")
-        if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not 0.25 <= duration <= 15:
+        if (
+            isinstance(duration, bool)
+            or not isinstance(duration, (int, float))
+            or not 0.25 <= duration <= 15
+        ):
             raise ValueError("invalid scene duration")
         total += duration
         ids.add(scene_id)
@@ -46,20 +58,36 @@ def validate_script(script: Any, snapshot: dict[str, Any], request: VideoPlanReq
                 scene[key] = item[key]
         if kind == "bullets":
             bullets = item.get("bullets")
-            if not isinstance(bullets, list) or not 1 <= len(bullets) <= 8 or any(not isinstance(v, str) or len(v) > 150 for v in bullets):
+            if (
+                not isinstance(bullets, list)
+                or not 1 <= len(bullets) <= 8
+                or any(not isinstance(v, str) or len(v) > 150 for v in bullets)
+            ):
                 raise ValueError("invalid bullets")
             scene["bullets"] = bullets
         if kind in ("image", "video"):
             asset = item.get("asset")
-            if not isinstance(asset, str) or asset not in allowed or not allowed[asset]["media_type"].startswith(kind + "/"):
+            if (
+                not isinstance(asset, str)
+                or asset not in allowed
+                or not allowed[asset]["media_type"].startswith(kind + "/")
+            ):
                 raise ValueError("media asset outside snapshot or type mismatch")
             scene["asset"] = asset
         cleaned.append(scene)
     if total > 180:
         raise ValueError("video duration exceeds 180 seconds")
-    width, height = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}[request.format]
+    width, height = {"portrait": (1080, 1920), "landscape": (1920, 1080), "square": (1080, 1080)}[
+        request.format
+    ]
     product = snapshot["product"]
-    return {"title": str(product["name"])[:200], "fps": 30, "width": width, "height": height, "scenes": cleaned}
+    return {
+        "title": str(product["name"])[:200],
+        "fps": 30,
+        "width": width,
+        "height": height,
+        "scenes": cleaned,
+    }
 
 
 def _call_model(snapshot: dict[str, Any], request: VideoPlanRequest) -> Any:
@@ -73,11 +101,23 @@ def _call_model(snapshot: dict[str, Any], request: VideoPlanRequest) -> Any:
         "model": model,
         "temperature": 0.3,
         "messages": [
-            {"role": "system", "content": "You are a short commercial video storyboard planner. Output only one valid JSON object matching the sample script. Use ONLY the sample's exact media asset filenames. Never invent product claims. Obey expression limits. Keep 1-24 scenes, each 0.25-15 seconds."},
-            {"role": "user", "content": json.dumps({
-                "brief": request.model_dump(), "product": snapshot["product"],
-                "allowed_assets": template["assets"], "example_script": template["script"],
-            }, ensure_ascii=False, default=str)},
+            {
+                "role": "system",
+                "content": "You are a short commercial video storyboard planner. Output only one valid JSON object matching the sample script. Use ONLY the sample's exact media asset filenames. Never invent product claims. Obey expression limits. Keep 1-24 scenes, each 0.25-15 seconds.",
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "brief": request.model_dump(),
+                        "product": snapshot["product"],
+                        "allowed_assets": template["assets"],
+                        "example_script": template["script"],
+                    },
+                    ensure_ascii=False,
+                    default=str,
+                ),
+            },
         ],
     }
     req = urllib.request.Request(
@@ -96,7 +136,9 @@ def _call_model(snapshot: dict[str, Any], request: VideoPlanRequest) -> Any:
     return json.loads(answer)
 
 
-async def generate_model_plan(snapshot: dict[str, Any], request: VideoPlanRequest) -> dict[str, Any]:
+async def generate_model_plan(
+    snapshot: dict[str, Any], request: VideoPlanRequest
+) -> dict[str, Any]:
     """One bounded call; errors propagate, never silently pretend template is AI."""
     raw = await asyncio.to_thread(_call_model, snapshot, request)
     script = validate_script(raw, snapshot, request)
