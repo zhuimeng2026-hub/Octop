@@ -1,0 +1,24 @@
+name: Backend Video MVP Focused
+on:
+  push:
+    branches: [feat/video-llm-drafts-20261024]
+    paths:
+      - "src/octop/infra/product_library/**"
+      - "src/octop/api/routers/product_library.py"
+      - "tests/unit/db/test_video_storyboard_drafts.py"
+      - ".github/workflows/backend-video-mvp-focused.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Compile changed Python modules
+        run: python -m compileall -q src/octop/infra/product_library src/octop/api/routers/product_library.py tests/unit/db/test_video_storyboard_drafts.py
+      - name: Targeted unit tests
+        run: uv run pytest -q tests/unit/db/test_video_storyboard_drafts.py tests/unit/db/test_video_planner_mvp.py tests/unit/db/test_product_package_export.py
