@@ -213,13 +213,19 @@ func firstFreePort(start int, probe func(int) (bool, error)) (int, error) {
 	return 0, noFreePortError{From: start, To: last}
 }
 
+// wsaEaddrInuse is the real Windows "address already in use" errno
+// (WSAEADDRINUSE = 10048). Go's Windows syscall package does not export the
+// WSA* errnos, and its synthetic syscall.EADDRINUSE value (536870914) never
+// matches what bind() actually returns on Windows, so compare the raw value.
+const wsaEaddrInuse syscall.Errno = 10048
+
 func listenProbe(host string, port int) (bool, error) {
 	ln, err := net.Listen("tcp", net.JoinHostPort(probeHost(host), strconv.Itoa(port)))
 	if err == nil {
 		_ = ln.Close()
 		return false, nil
 	}
-	if errors.Is(err, syscall.EADDRINUSE) {
+	if errors.Is(err, syscall.EADDRINUSE) || errors.Is(err, wsaEaddrInuse) {
 		return true, nil
 	}
 	return false, err
