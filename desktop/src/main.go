@@ -28,6 +28,10 @@ const trayDoubleClick = 400 * time.Millisecond
 // environment variable nor a bundled local runtime. Empty means local mode.
 var defaultServerURL string
 
+// defaultVideoComponentsURL is an optional installer URL exposed to the UI.
+// The native shell never downloads or executes that installer.
+var defaultVideoComponentsURL string
+
 // resolveRemoteDashboardURL picks the remote dashboard target for boot: the
 // OCTOP_DESKTOP_URL environment variable wins over the build-time default
 // (baked in via -ldflags "-X main.defaultServerURL=..."); an empty result
@@ -68,6 +72,7 @@ func (a *App) ServiceStartup(context.Context, application.ServiceOptions) error 
 func (a *App) ServiceShutdown() error {
 	a.sleep.stop()
 	if a.video != nil {
+		a.video.shutdownEnvironment()
 		a.video.interrupt()
 	}
 	a.mu.Lock()

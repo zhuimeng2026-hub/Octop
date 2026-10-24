@@ -8,7 +8,16 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "octop-desktop-render-smoke-"));
+const runtime = path.join(root, "video-runtime");
 const project = path.join(root, "project");
+fs.mkdirSync(runtime, { recursive: true });
+for (const file of ["desktop-worker.mjs", "render.mjs", "project.mjs", "package.json", "package-lock.json"]) {
+  fs.copyFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), path.join(runtime, file));
+}
+fs.cpSync(fileURLToPath(new URL("../src", import.meta.url)), path.join(runtime, "src"), { recursive: true });
+fs.copyFileSync(process.execPath, path.join(runtime, process.platform === "win32" ? "node.exe" : "node"));
+fs.writeFileSync(path.join(runtime, "runtime.json"), JSON.stringify({ schema: "octop-desktop-video-runtime/1", templateVersion: 1, nodeVersion: process.versions.node, target: "test" }));
+fs.symlinkSync(fileURLToPath(new URL("../node_modules", import.meta.url)), path.join(runtime, "node_modules"), "junction");
 fs.mkdirSync(path.join(project, "assets"), { recursive: true });
 fs.mkdirSync(path.join(project, "src"), { recursive: true });
 fs.writeFileSync(path.join(project, "src", "index.ts"), "throw new Error('Downloaded project code must never run');\n");
@@ -21,12 +30,11 @@ fs.writeFileSync(path.join(project, "manifest.json"), JSON.stringify({
   script_sha256: createHash("sha256").update(script).digest("hex"),
   assets: [],
 }));
-fs.writeFileSync(path.join(root, "runtime.json"), JSON.stringify({ schema: "octop-desktop-video-runtime/1", templateVersion: 1 }));
 try {
-  const worker = fileURLToPath(new URL("../desktop-worker.mjs", import.meta.url));
+  const worker = path.join(runtime, "desktop-worker.mjs");
   const output = path.join(root, "out", "final.mp4");
   const result = await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [worker, "--project", project, "--out", output], { env: { ...process.env, OCTOP_DESKTOP_VIDEO_RUNTIME: root }, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [worker, "--project", project, "--out", output], { env: { ...process.env, OCTOP_DESKTOP_VIDEO_RUNTIME: runtime, OCTOP_DESKTOP_VIDEO_CACHE: path.join(root, "cache") }, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     const timeout = setTimeout(() => child.kill(), 120_000);
@@ -41,6 +49,20 @@ try {
   assert.ok(events.some((event) => event.type === "stage" && event.stage === "rendering"));
   assert.ok(events.some((event) => event.type === "complete" && event.bytes > 0));
   assert.ok(fs.statSync(output).size > 0);
+  for (const action of ["--verify", "--check"]) {
+    const environmentResult = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [worker, action, "--cache", path.join(root, "cache")], { env: { ...process.env, OCTOP_DESKTOP_VIDEO_RUNTIME: runtime }, stdio: ["pipe", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.setEncoding("utf8").on("data", (chunk) => { stdout += chunk; });
+      child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
+      child.on("error", reject);
+      child.on("close", (status) => resolve({ status, stdout, stderr }));
+    });
+    assert.equal(environmentResult.status, 0, environmentResult.stderr);
+    const statuses = environmentResult.stdout.trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    assert.equal(statuses.at(-1).state, "ready");
+  }
   console.log(`Rendered ${output} (${fs.statSync(output).size} bytes)`);
 } finally {
   fs.rmSync(root, { recursive: true, force: true });

@@ -1,7 +1,8 @@
-# Octop desktop (Wails v3 + green portable)
+# Octop desktop (Wails v3)
 
 All desktop-client code lives here. This is **not** `src/octop/infra/desktop`
-(remote desktop streaming).
+(remote desktop streaming). Windows remote releases use a small thin client;
+local/full builds retain the green portable backend.
 
 | Path | Role |
 |------|------|
@@ -32,21 +33,36 @@ first creates the green zip and then packages the matching Wails application.
 
 ## Build a complete desktop release
 
-Run the end-to-end script on the matching native host. It builds the Dashboard,
-creates and verifies the portable runtime, embeds it into Wails, and produces
-the final native package:
+Run the release script on the matching native host. It builds the Dashboard and
+Wails package. Full/local builds also create and verify the portable runtime;
+remote Windows builds default to the thin client and skip Python packaging:
 
 ```bash
 desktop/package-release.sh
 # Reuse an existing desktop/portable/release/Octop-portable-<plat>-<version>.zip:
 desktop/package-release.sh darwin-arm64 --reuse-portable
+# Force a full/local Windows build when required:
+OCTOP_DESKTOP_DEFAULT_SERVER_URL='' desktop/package-release.sh windows-amd64
 ```
 
 Wails requires native packaging, so all six variants are produced by the CI
 matrix on macOS, Linux, and Windows runners rather than cross-compiled locally.
 Windows packaging also needs [NSIS](https://nsis.sourceforge.io/) (`makensis`)
 so the `.exe` is an installer rather than a portable single-file binary.
-The Windows installer build runs `node remotion/build-desktop-runtime.mjs --target win-x64|win-arm64 --output desktop/src/video-runtime` and installs that trusted local Node/Remotion runtime beside `Octop.exe` under `video-runtime/`. This is a build-machine preparation step; end users do not install Node or run npm.
+Remote Windows releases use a thin client: no embedded Python backend and no video runtime. Video creation uses a separate, manually installed **Octop 视频制作组件** package under `%LOCALAPPDATA%\Octop\video-runtime`; users do not install Node or run npm individually. The client detects missing components and provides installation guidance and a local render verification. See [manual component setup](../docs/design/desktop-auto-video/manual-components.md). Existing full local builds remain available with an empty remote server URL.
+
+Build the separate Windows video component installer from a Windows host with:
+
+```powershell
+cd desktop/src
+wails3 task components:package ARCH=amd64 VERSION=0.9.31
+```
+
+The installer is written under `desktop/src/bin/` and installs only into the
+current user's `%LOCALAPPDATA%\Octop\video-runtime`. A build-time
+`VIDEO_COMPONENTS_URL` may expose a download link; leave it empty until an
+official release URL exists. Locally validated, unsigned installers are not
+published release artifacts.
 
 ## Build the Wails shell
 

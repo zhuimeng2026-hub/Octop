@@ -68,20 +68,26 @@ type videoJobRecord struct {
 	ScriptHash string   `json:"scriptHash"`
 }
 type videoManager struct {
-	mu           sync.Mutex
-	base         string
-	root         string
-	client       *http.Client
-	jobs         map[string]*videoJobRecord
-	loaded       map[string]bool
-	active       string
-	cmd          *exec.Cmd
-	cmdJob       string
-	stdin        io.WriteCloser
-	cancelRender context.CancelFunc
-	cancelJob    string
-	listener     net.Listener
-	server       *http.Server
+	mu                 sync.Mutex
+	base               string
+	root               string
+	client             *http.Client
+	jobs               map[string]*videoJobRecord
+	loaded             map[string]bool
+	active             string
+	cmd                *exec.Cmd
+	cmdJob             string
+	stdin              io.WriteCloser
+	cancelRender       context.CancelFunc
+	cancelJob          string
+	environment        VideoEnvironmentStatus
+	environmentRunning bool
+	environmentMode    string
+	environmentCmd     *exec.Cmd
+	environmentStdin   io.WriteCloser
+	environmentLogKey  string
+	listener           net.Listener
+	server             *http.Server
 }
 
 func newVideoManager(base string) *videoManager {
@@ -93,7 +99,7 @@ func newVideoManager(base string) *videoManager {
 	}
 	serverHash := sha256.Sum256([]byte(serverScope))
 	root = filepath.Join(root, hex.EncodeToString(serverHash[:]))
-	return &videoManager{base: strings.TrimRight(base, "/"), root: root, client: &http.Client{}, jobs: map[string]*videoJobRecord{}, loaded: map[string]bool{}}
+	return &videoManager{base: strings.TrimRight(base, "/"), root: root, client: &http.Client{}, jobs: map[string]*videoJobRecord{}, loaded: map[string]bool{}, environment: VideoEnvironmentStatus{State: "unknown"}}
 }
 
 func (m *videoManager) apiURL(path string) string { return m.base + "/api" + path }
@@ -300,12 +306,26 @@ func (m *videoManager) start(token, project string) (VideoJob, error) {
 	if err != nil {
 		return VideoJob{}, err
 	}
+	status := m.environmentSnapshot()
+	if status.State != "ready" {
+		if status.State == "checking" || status.State == "verifying" {
+			return VideoJob{}, videoErr("BUSY")
+		}
+		if status.State == "failed" && status.ErrorCode != "" {
+			return VideoJob{}, videoErr(status.ErrorCode)
+		}
+		return VideoJob{}, videoErr("RUNTIME_MISSING")
+	}
 	scriptHash, err := m.confirmedScriptHash(token, project)
 	if err != nil {
 		return VideoJob{}, err
 	}
 	m.load(owner)
 	m.mu.Lock()
+	if m.environmentRunning && m.environmentMode == "verify" {
+		m.mu.Unlock()
+		return VideoJob{}, videoErr("BUSY")
+	}
 	if m.active != "" {
 		r := m.jobs[m.active]
 		if r != nil && r.Job.OwnerID == owner && r.Job.ProjectID == project && r.ScriptHash == scriptHash {
@@ -483,7 +503,7 @@ func (m *videoManager) run(rec *videoJobRecord, token string) {
 	m.mu.Unlock()
 	runtimeDir, err := videoRuntimeDir()
 	if err != nil {
-		m.fail(rec, "RUNTIME_UNAVAILABLE")
+		m.fail(rec, "RUNTIME_MISSING")
 		return
 	}
 	if err = startVideoWorker(m, rec, runtimeDir); err != nil {
@@ -496,13 +516,25 @@ func (m *videoManager) run(rec *videoJobRecord, token string) {
 
 func videoRuntimeDir() (string, error) {
 	if p := os.Getenv("OCTOP_DESKTOP_VIDEO_RUNTIME"); p != "" {
-		return p, nil
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return p, nil
+		}
 	}
-	exe, e := os.Executable()
-	if e != nil {
-		return "", e
+	if cache, err := os.UserCacheDir(); err == nil {
+		candidate := filepath.Join(cache, "Octop", "video-runtime")
+		if st, err := os.Stat(candidate); err == nil && st.IsDir() {
+			return candidate, nil
+		}
 	}
-	return filepath.Join(filepath.Dir(exe), "video-runtime"), nil
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	candidate := filepath.Join(filepath.Dir(exe), "video-runtime")
+	if st, err := os.Stat(candidate); err == nil && st.IsDir() {
+		return candidate, nil
+	}
+	return "", videoErr("RUNTIME_MISSING")
 }
 func extractVideoPackage(zipPath, dest, project string) (string, error) {
 	zr, err := zip.OpenReader(zipPath)
@@ -638,7 +670,7 @@ func startVideoWorker(m *videoManager, rec *videoJobRecord, runtimeDir string) e
 	var rm runtimeManifest
 	b, e := os.ReadFile(filepath.Join(runtimeDir, "runtime.json"))
 	if e != nil || json.Unmarshal(b, &rm) != nil || rm.Schema != "octop-desktop-video-runtime/1" || rm.TemplateVersion != 1 {
-		return videoErr("RUNTIME_UNAVAILABLE")
+		return videoErr("RUNTIME_MISSING")
 	}
 	node := "node"
 	if runtime.GOOS == "windows" {
@@ -647,10 +679,10 @@ func startVideoWorker(m *videoManager, rec *videoJobRecord, runtimeDir string) e
 	nodePath := filepath.Join(runtimeDir, node)
 	worker := filepath.Join(runtimeDir, "desktop-worker.mjs")
 	if st, e := os.Stat(nodePath); e != nil || !st.Mode().IsRegular() {
-		return videoErr("RUNTIME_UNAVAILABLE")
+		return videoErr("RUNTIME_MISSING")
 	}
 	if st, e := os.Stat(worker); e != nil || !st.Mode().IsRegular() {
-		return videoErr("RUNTIME_UNAVAILABLE")
+		return videoErr("RUNTIME_MISSING")
 	}
 	outDir := filepath.Join(m.dir(rec.Job.OwnerID), rec.Job.ID, "out")
 	if e = os.MkdirAll(outDir, 0700); e != nil {
@@ -658,8 +690,12 @@ func startVideoWorker(m *videoManager, rec *videoJobRecord, runtimeDir string) e
 	}
 	output := filepath.Join(outDir, "final.mp4")
 	cmd := exec.Command(nodePath, worker, "--project", rec.DataDir, "--out", output)
-	cmd.Dir = runtimeDir
-	cmd.Env = os.Environ()
+	cache := m.environmentCache()
+	if e = os.MkdirAll(cache, 0700); e != nil {
+		return e
+	}
+	cmd.Dir = cache
+	cmd.Env = setProcessEnv(os.Environ(), "OCTOP_DESKTOP_VIDEO_CACHE", cache)
 	configureVideoProcess(cmd)
 	stdout, e := cmd.StdoutPipe()
 	if e != nil {
@@ -850,6 +886,16 @@ func (m *videoManager) retry(token, id string) (VideoJob, error) {
 	if e != nil {
 		return VideoJob{}, e
 	}
+	status := m.environmentSnapshot()
+	if status.State != "ready" {
+		if status.State == "checking" || status.State == "verifying" {
+			return VideoJob{}, videoErr("BUSY")
+		}
+		if status.State == "failed" && status.ErrorCode != "" {
+			return VideoJob{}, videoErr(status.ErrorCode)
+		}
+		return VideoJob{}, videoErr("RUNTIME_MISSING")
+	}
 	m.mu.Lock()
 	rec := m.jobs[id]
 	if rec == nil || rec.Job.OwnerID != owner {
@@ -912,6 +958,8 @@ func (a *App) videoAction(action string, payload map[string]json.RawMessage) (an
 		return nil, videoErr("AUTH_REQUIRED")
 	}
 	switch action {
+	case "environment_check", "environment_verify", "environment_status":
+		return a.video.environmentAction(token, action)
 	case "start":
 		return a.video.start(token, project)
 	case "list":

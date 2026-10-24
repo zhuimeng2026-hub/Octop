@@ -81,7 +81,20 @@ async function main() {
       path.join(scratch, nodeDir, "node_modules", "npm", "bin", "npm-cli.js"),
       "ci", "--omit=dev", "--no-audit", "--no-fund",
     ], { cwd: stagedRuntime, stdio: "inherit" });
-    fs.writeFileSync(path.join(stagedRuntime, "runtime.json"), `${JSON.stringify({ schema: "octop-desktop-video-runtime/1", templateVersion: 1, nodeVersion: NODE_VERSION, target }, null, 2)}\n`);
+    if (target !== "win-x64") throw new Error("The bundled Remotion headless shell currently supports Windows x64 only");
+    const browserPrep = path.join(stagedRuntime, "prepare-browser.mjs");
+    fs.writeFileSync(browserPrep, [
+      'import { ensureBrowser } from "@remotion/renderer";',
+      'const result = await ensureBrowser({ chromeMode: "headless-shell" });',
+      'if (result.type === "no-browser" || !result.path) throw new Error("Remotion headless shell was not installed");',
+      'console.log(`Prepared pinned headless shell: ${result.path}`);',
+    ].join("\n"));
+    try {
+      execFileSync(path.join(scratch, nodeDir, "node.exe"), [browserPrep], { cwd: stagedRuntime, stdio: "inherit" });
+    } finally {
+      fs.rmSync(browserPrep, { force: true });
+    }
+    fs.writeFileSync(path.join(stagedRuntime, "runtime.json"), `${JSON.stringify({ schema: "octop-desktop-video-runtime/1", templateVersion: 1, nodeVersion: NODE_VERSION, target, browserMode: "headless-shell" }, null, 2)}\n`);
     if (replaceExisting) fs.rmSync(root, { recursive: true, force: true });
     fs.renameSync(stagedRuntime, root);
     console.log(`Prepared trusted video runtime at ${root}`);

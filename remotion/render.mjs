@@ -20,9 +20,6 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { validateScript } from "./project.mjs";
 
-import { bundle } from "@remotion/bundler";
-import { ensureBrowser, renderMedia, selectComposition } from "@remotion/renderer";
-
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ENTRY_POINT = path.join(HERE, "src", "index.ts");
 const LOCAL_NODE_MODULES = path.join(HERE, "node_modules");
@@ -37,6 +34,9 @@ const LOCAL_NODE_MODULES = path.join(HERE, "node_modules");
 export function detectBrowser() {
   const explicit = process.env.REMOTION_BROWSER_EXECUTABLE;
   if (explicit && fs.existsSync(explicit)) return explicit;
+
+  const bundled = path.join(HERE, "node_modules", ".remotion", "chrome-headless-shell", "win64", "chrome-headless-shell-win64", "chrome-headless-shell.exe");
+  if (fs.existsSync(bundled)) return bundled;
 
   const localAppData = process.env.LOCALAPPDATA;
   if (localAppData) {
@@ -82,7 +82,9 @@ function parseArgs(argv) {
   return args;
 }
 
-export async function renderProject({ projectDir, outPath, quality = "prod", onProgress = () => {}, onStage = () => {}, cancelSignal, trustedTemplate = false }) {
+export async function renderProject({ projectDir, outPath, quality = "prod", onProgress = () => {}, onStage = () => {}, cancelSignal, trustedTemplate = false, browserExecutable: selectedBrowser = null }) {
+  const { bundle } = await import("@remotion/bundler");
+  const { ensureBrowser, renderMedia, selectComposition } = await import("@remotion/renderer");
   const resolvedProjectDir = path.resolve(projectDir);
   const scriptPath = path.join(resolvedProjectDir, "script.json");
   if (!fs.existsSync(scriptPath)) {
@@ -103,20 +105,13 @@ export async function renderProject({ projectDir, outPath, quality = "prod", onP
   console.log(`[render] scenes: ${script.scenes.length}`);
   console.log(`[render] output: ${resolvedOutPath} (${draft ? "draft" : "prod"}, scale ${scale})`);
 
-  const browserExecutable = detectBrowser();
+  const browserExecutable = selectedBrowser ?? detectBrowser();
   if (browserExecutable) {
     console.log(`[render] browser: ${browserExecutable}`);
   } else {
+    if (trustedTemplate) throw Object.assign(new Error("No supported browser is installed"), { code: "BROWSER_MISSING" });
     console.log("[render] ensuring chromium (downloading Remotion's shell)…");
-    await ensureBrowser({
-      onBrowserDownload: () => ({
-        version: null,
-        onProgress: ({ alreadyAvailable, percent }) => {
-          if (alreadyAvailable) return;
-          if (percent % 20 === 0) console.log(`[render] downloading chromium ${percent}%`);
-        },
-      }),
-    });
+    await ensureBrowser();
   }
 
   onStage("preparing");

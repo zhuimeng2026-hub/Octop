@@ -59,52 +59,63 @@ if ! command -v wails3 >/dev/null 2>&1; then
   echo "wails3 is required: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13" >&2
   exit 1
 fi
-if [[ "$plat" == windows-* ]] && ! command -v makensis >/dev/null 2>&1; then
-  echo "makensis is required for the Windows installer: choco install nsis" >&2
+makensis="${OCTOP_DESKTOP_MAKENSIS-makensis}"
+if [[ "$plat" == windows-* && ! -f "$makensis" ]] && ! command -v "$makensis" >/dev/null 2>&1; then
+  echo "NSIS compiler is required (set OCTOP_DESKTOP_MAKENSIS to its workspace-local executable)." >&2
   exit 1
 fi
 
 arch="${plat##*-}"
 ver="$(octop_version)"
 portable_zip="${REPO_ROOT}/desktop/portable/release/$(portable_zip_basename "$plat")"
+default_server_url="${OCTOP_DESKTOP_DEFAULT_SERVER_URL-https://ocbot.aixifs.com/videogen}"
+video_components_url="${OCTOP_DESKTOP_VIDEO_COMPONENTS_URL-}"
+thin_windows=0
+if [[ "$plat" == windows-* && -n "$default_server_url" ]]; then
+  thin_windows=1
+fi
 
 echo "[desktop-release] platform=${plat}"
 echo "[desktop-release] building Dashboard"
 make -C "$REPO_ROOT" build-frontend
 
-if [[ "$reuse_portable" == 1 && -f "$portable_zip" ]]; then
-  echo "[desktop-release] reusing ${portable_zip}"
+if [[ "$thin_windows" == 1 ]]; then
+  echo "[desktop-release] thin Windows client: skip portable Python runtime"
 else
-  echo "[desktop-release] building portable runtime"
-  bash "${REPO_ROOT}/desktop/portable/bootstrap-runtime.sh" "$plat"
-  bash "${REPO_ROOT}/desktop/portable/package.sh" "$plat"
-fi
+  if [[ "$reuse_portable" == 1 && -f "$portable_zip" ]]; then
+    echo "[desktop-release] reusing ${portable_zip}"
+  else
+    echo "[desktop-release] building portable runtime"
+    bash "${REPO_ROOT}/desktop/portable/bootstrap-runtime.sh" "$plat"
+    bash "${REPO_ROOT}/desktop/portable/package.sh" "$plat"
+  fi
 
-staging="${REPO_ROOT}/desktop/portable/release/Octop-${plat}"
-requirements="${REPO_ROOT}/desktop/portable/requirements-${plat}.txt"
-if [[ "$plat" == windows-* ]]; then
-  portable_python="${staging}/runtime/python.exe"
-else
-  portable_python="${staging}/runtime/bin/python3"
-fi
-if [[ ! -f "$portable_python" || ! -f "$requirements" ]]; then
-  echo "portable staging is incomplete for ${plat}" >&2
-  exit 1
-fi
+  staging="${REPO_ROOT}/desktop/portable/release/Octop-${plat}"
+  requirements="${REPO_ROOT}/desktop/portable/requirements-${plat}.txt"
+  if [[ "$plat" == windows-* ]]; then
+    portable_python="${staging}/runtime/python.exe"
+  else
+    portable_python="${staging}/runtime/bin/python3"
+  fi
+  if [[ ! -f "$portable_python" || ! -f "$requirements" ]]; then
+    echo "portable staging is incomplete for ${plat}" >&2
+    exit 1
+  fi
 
-verify_args=(--packages "${staging}/packages" --requirements "$requirements")
-override_file="${REPO_ROOT}/desktop/portable/overrides-${plat}.txt"
-if [[ -f "$override_file" ]]; then
-  verify_args+=(--overrides "$override_file")
+  verify_args=(--packages "${staging}/packages" --requirements "$requirements")
+  override_file="${REPO_ROOT}/desktop/portable/overrides-${plat}.txt"
+  if [[ -f "$override_file" ]]; then
+    verify_args+=(--overrides "$override_file")
+  fi
+  echo "[desktop-release] verifying portable imports"
+  PYTHONNOUSERSITE=1 "$portable_python" \
+    "${REPO_ROOT}/desktop/portable/verify_imports.py" "${verify_args[@]}"
 fi
-echo "[desktop-release] verifying portable imports"
-PYTHONNOUSERSITE=1 "$portable_python" \
-  "${REPO_ROOT}/desktop/portable/verify_imports.py" "${verify_args[@]}"
 
 echo "[desktop-release] packaging Wails application"
 (
   cd "${REPO_ROOT}/desktop/src"
-  wails3 task package "ARCH=${arch}" "PORTABLE_ZIP=${portable_zip}" "VERSION=${ver}"
+  wails3 task package "ARCH=${arch}" "PORTABLE_ZIP=${portable_zip}" "VERSION=${ver}" "DEFAULT_SERVER_URL=${default_server_url}" "VIDEO_COMPONENTS_URL=${video_components_url}" "MAKENSIS=${makensis}"
 )
 
 output="${REPO_ROOT}/desktop/src/bin/$(desktop_pkg_basename "$plat")"

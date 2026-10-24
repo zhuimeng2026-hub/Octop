@@ -31,6 +31,14 @@ const api = vi.hoisted(() => ({
 }));
 const desktopJobs = vi.hoisted(() => ({
   bridgeAvailable: false,
+  environmentSupported: false,
+  environmentStatus: {
+    state: "unknown" as string,
+    stage: null as string | null,
+    progress: null as number | null,
+    requiresInstall: false,
+  },
+  environmentInstallerURL: undefined as string | undefined,
   jobs: [] as {
     id: string;
     projectId: string;
@@ -45,6 +53,9 @@ const desktopJobs = vi.hoisted(() => ({
   cancel: vi.fn(),
   retry: vi.fn(),
   save: vi.fn(),
+  checkEnvironment: vi.fn(),
+  verifyEnvironment: vi.fn(),
+  refreshEnvironment: vi.fn(),
   refresh: vi.fn(),
 }));
 
@@ -183,6 +194,14 @@ describe("product video wizard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     desktopJobs.bridgeAvailable = false;
+    desktopJobs.environmentSupported = false;
+    desktopJobs.environmentStatus = {
+      state: "unknown",
+      stage: null,
+      progress: null,
+      requiresInstall: false,
+    };
+    desktopJobs.environmentInstallerURL = undefined;
     desktopJobs.jobs = [];
     api.products.mockResolvedValue({ items: [product] });
     api.projects.mockResolvedValue({ items: [] });
@@ -398,4 +417,55 @@ describe("product video wizard", () => {
       "Original platform",
     );
   }, 15000);
+
+  it("blocks desktop confirmation until the standalone components are installed", async () => {
+    api.projects.mockResolvedValue({ items: [project] });
+    api.getStoryboard.mockResolvedValue(savedDraft);
+    desktopJobs.bridgeAvailable = true;
+    desktopJobs.environmentSupported = true;
+    desktopJobs.environmentStatus = {
+      state: "needs_setup",
+      stage: "components",
+      progress: null,
+      requiresInstall: true,
+    };
+    renderWizard("/product-library/video-wizard?project=project1");
+    await screen.findByText("videoWizard.storyboardTitle");
+    expect(
+      screen.getByText("videoWizard.environment.installTitle"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("videoWizard.environment.contactAdmin"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "videoWizard.confirmMake" }),
+    ).toBeDisabled();
+    expect(desktopJobs.start).not.toHaveBeenCalled();
+    expect(api.saveStoryboard).not.toHaveBeenCalled();
+  });
+
+  it("uses a configured installer URL without opening or running it", async () => {
+    api.projects.mockResolvedValue({ items: [project] });
+    api.getStoryboard.mockResolvedValue(savedDraft);
+    desktopJobs.bridgeAvailable = true;
+    desktopJobs.environmentSupported = true;
+    desktopJobs.environmentStatus = {
+      state: "needs_setup",
+      stage: "components",
+      progress: null,
+      requiresInstall: true,
+    };
+    desktopJobs.environmentInstallerURL =
+      "https://downloads.example.invalid/video-components.exe";
+    renderWizard("/product-library/video-wizard?project=project1");
+    const installer = await screen.findByRole("link", {
+      name: "videoWizard.environment.downloadComponents",
+    });
+    expect(installer).toHaveAttribute(
+      "href",
+      "https://downloads.example.invalid/video-components.exe",
+    );
+    expect(installer).toHaveAttribute("target", "_blank");
+    expect(desktopJobs.start).not.toHaveBeenCalled();
+  });
 });

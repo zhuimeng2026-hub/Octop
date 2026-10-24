@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DesktopVideoJobsProvider,
@@ -30,13 +31,30 @@ const job: DesktopVideoJob = {
 };
 
 function Probe() {
-  const { jobs, cancel, retry, save } = useDesktopVideoJobs();
+  const {
+    jobs,
+    cancel,
+    retry,
+    save,
+    checkEnvironment,
+    verifyEnvironment,
+    refreshEnvironment,
+    environmentStatus,
+  } = useDesktopVideoJobs();
   return (
     <>
       <span>{jobs.length}</span>
       <button onClick={() => void cancel(job.id)}>cancel</button>
       <button onClick={() => void retry(job.id)}>retry</button>
       <button onClick={() => void save(job.id)}>save</button>
+      <span>{environmentStatus.state}</span>
+      <button onClick={() => void checkEnvironment()}>environment check</button>
+      <button onClick={() => void verifyEnvironment()}>
+        environment verify
+      </button>
+      <button onClick={() => void refreshEnvironment()}>
+        environment status
+      </button>
     </>
   );
 }
@@ -98,5 +116,62 @@ describe("desktop video job bridge", () => {
       </DesktopVideoJobsProvider>,
     );
     await waitFor(() => expect(screen.getByText("0")).toBeInTheDocument());
+  });
+
+  it("uses only authenticated check, verify, and status bridge actions", async () => {
+    (window.octopDesktopVideo as DesktopVideoBridge).environmentVersion = 1;
+    auth.request.mockImplementation((action: string) => {
+      if (action === "environment_check") {
+        return Promise.resolve({
+          state: "needs_setup",
+          stage: "components",
+          progress: null,
+          requiresInstall: true,
+        });
+      }
+      if (action === "environment_verify") {
+        return Promise.resolve({
+          state: "ready",
+          stage: null,
+          progress: null,
+        });
+      }
+      if (action === "environment_status") {
+        return Promise.resolve({
+          state: "ready",
+          stage: null,
+          progress: null,
+        });
+      }
+      if (action === "list") return Promise.resolve([]);
+      return Promise.resolve(job);
+    });
+    const user = userEvent.setup();
+    render(
+      <DesktopVideoJobsProvider>
+        <Probe />
+      </DesktopVideoJobsProvider>,
+    );
+    await user.click(screen.getByText("environment check"));
+    await waitFor(() =>
+      expect(auth.request).toHaveBeenCalledWith("environment_check", {
+        token: "token-7",
+      }),
+    );
+    await user.click(screen.getByText("environment verify"));
+    await waitFor(() => expect(screen.getByText("ready")).toBeInTheDocument());
+    await user.click(screen.getByText("environment status"));
+    await waitFor(() =>
+      expect(auth.request).toHaveBeenCalledWith("environment_status", {
+        token: "token-7",
+      }),
+    );
+    expect(auth.request).toHaveBeenCalledWith("environment_verify", {
+      token: "token-7",
+    });
+    expect(auth.request).not.toHaveBeenCalledWith(
+      "environment_prepare",
+      expect.anything(),
+    );
   });
 });

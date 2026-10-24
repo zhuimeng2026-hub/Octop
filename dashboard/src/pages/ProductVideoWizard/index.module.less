@@ -325,6 +325,44 @@
 .desktopJobCard {
   width: 100%;
 }
+.environmentCard {
+  width: 100%;
+  border-color: var(--fn-border, #e8e8e8);
+  background: var(--fn-bg-container, #fff);
+}
+.environmentBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+}
+.environmentBody :global(.ant-alert) {
+  width: 100%;
+}
+.environmentLoading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--fn-text-primary, #202938);
+}
+.environmentLoading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.environmentLoading span {
+  color: var(--fn-text-secondary, #667085);
+  font-size: 13px;
+}
+.environmentSteps {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--fn-text-primary, #202938);
+}
+.environmentSteps li + li {
+  margin-top: 4px;
+}
 .desktopJobBody {
   display: flex;
   flex-wrap: wrap;

@@ -35,10 +35,38 @@ export interface DesktopVideoJob {
 
 export interface DesktopVideoBridge {
   version: number;
+  environmentVersion?: number;
+  environmentInstallerURL?: string;
   request: <T = unknown>(
-    action: "start" | "list" | "get" | "cancel" | "retry" | "save",
+    action:
+      | "start"
+      | "list"
+      | "get"
+      | "cancel"
+      | "retry"
+      | "save"
+      | "environment_check"
+      | "environment_verify"
+      | "environment_status",
     payload: Record<string, unknown>,
   ) => Promise<T>;
+}
+
+export type DesktopVideoEnvironmentState =
+  | "unknown"
+  | "checking"
+  | "needs_setup"
+  | "verifying"
+  | "ready"
+  | "failed";
+
+export interface DesktopVideoEnvironmentStatus {
+  state: DesktopVideoEnvironmentState;
+  stage: "components" | "browser" | "render_test" | null;
+  progress: number | null;
+  errorCode?: string;
+  checkedAt?: number;
+  requiresInstall?: boolean;
 }
 
 declare global {
@@ -59,11 +87,17 @@ export class DesktopVideoBridgeError extends Error {
 
 interface DesktopVideoJobsContextValue {
   bridgeAvailable: boolean;
+  environmentSupported: boolean;
+  environmentInstallerURL?: string;
+  environmentStatus: DesktopVideoEnvironmentStatus;
   jobs: DesktopVideoJob[];
   start: (projectId: string) => Promise<DesktopVideoJob>;
   cancel: (jobId: string) => Promise<DesktopVideoJob>;
   retry: (jobId: string) => Promise<DesktopVideoJob>;
   save: (jobId: string) => Promise<boolean>;
+  checkEnvironment: (force?: boolean) => Promise<DesktopVideoEnvironmentStatus>;
+  verifyEnvironment: () => Promise<DesktopVideoEnvironmentStatus>;
+  refreshEnvironment: () => Promise<DesktopVideoEnvironmentStatus>;
   refresh: () => Promise<void>;
 }
 
@@ -73,11 +107,17 @@ const missingBridge = async (): Promise<never> => {
 
 const DesktopVideoJobsContext = createContext<DesktopVideoJobsContextValue>({
   bridgeAvailable: false,
+  environmentSupported: false,
+  environmentInstallerURL: undefined,
+  environmentStatus: { state: "unknown", stage: null, progress: null },
   jobs: [],
   start: missingBridge,
   cancel: missingBridge,
   retry: missingBridge,
   save: missingBridge,
+  checkEnvironment: missingBridge,
+  verifyEnvironment: missingBridge,
+  refreshEnvironment: missingBridge,
   refresh: async () => undefined,
 });
 
@@ -108,6 +148,24 @@ export function DesktopVideoJobsProvider({
   );
   const [jobs, setJobs] = useState<DesktopVideoJob[]>([]);
   const [jobsOwnerId, setJobsOwnerId] = useState<string | number | null>(null);
+  const environmentSupported =
+    window.octopDesktopVideo?.version === 1 &&
+    window.octopDesktopVideo.environmentVersion === 1;
+  const [environmentStatus, setEnvironmentStatus] =
+    useState<DesktopVideoEnvironmentStatus>({
+      state: "unknown",
+      stage: null,
+      progress: null,
+    });
+  const [environmentOwnerId, setEnvironmentOwnerId] = useState<
+    string | number | null
+  >(null);
+  const environmentRef = useRef(environmentStatus);
+  environmentRef.current = environmentStatus;
+  const environmentOwnerRef = useRef<string | number | null>(
+    environmentOwnerId,
+  );
+  environmentOwnerRef.current = environmentOwnerId;
 
   useEffect(() => {
     if (window.octopDesktopVideo?.version === 1) {
@@ -125,7 +183,16 @@ export function DesktopVideoJobsProvider({
 
   const call = useCallback(
     async <T,>(
-      action: "start" | "list" | "get" | "cancel" | "retry" | "save",
+      action:
+        | "start"
+        | "list"
+        | "get"
+        | "cancel"
+        | "retry"
+        | "save"
+        | "environment_check"
+        | "environment_verify"
+        | "environment_status",
       payload: Record<string, unknown> = {},
     ): Promise<T> => {
       const token = getAuthToken();
@@ -215,18 +282,129 @@ export function DesktopVideoJobsProvider({
     [call],
   );
 
+  const readEnvironmentAction = useCallback(
+    async (
+      action: "environment_check" | "environment_verify" | "environment_status",
+    ) => {
+      if (!environmentSupported) {
+        throw new DesktopVideoBridgeError("RUNTIME_UNAVAILABLE");
+      }
+      const status = await call<DesktopVideoEnvironmentStatus>(action);
+      if (ownerRef.current !== userId || !userId) {
+        throw new DesktopVideoBridgeError("AUTH_REQUIRED");
+      }
+      environmentOwnerRef.current = userId;
+      environmentRef.current = status;
+      setEnvironmentOwnerId(userId);
+      setEnvironmentStatus(status);
+      return status;
+    },
+    [call, environmentSupported, userId],
+  );
+
+  const checkEnvironment = useCallback(
+    async (force = false) => {
+      if (!userId) throw new DesktopVideoBridgeError("AUTH_REQUIRED");
+      if (
+        !force &&
+        environmentOwnerRef.current === userId &&
+        environmentRef.current.state !== "unknown"
+      ) {
+        return environmentRef.current;
+      }
+      try {
+        return await readEnvironmentAction("environment_check");
+      } catch (error) {
+        if (ownerRef.current === userId) {
+          const failed: DesktopVideoEnvironmentStatus = {
+            state: "failed",
+            stage: null,
+            progress: null,
+            errorCode: nativeErrorCode(error),
+          };
+          environmentOwnerRef.current = userId;
+          environmentRef.current = failed;
+          setEnvironmentOwnerId(userId);
+          setEnvironmentStatus(failed);
+        }
+        throw error;
+      }
+    },
+    [readEnvironmentAction, userId],
+  );
+
+  const verifyEnvironment = useCallback(async () => {
+    try {
+      return await readEnvironmentAction("environment_verify");
+    } catch (error) {
+      if (userId && ownerRef.current === userId) {
+        const failed: DesktopVideoEnvironmentStatus = {
+          state: "failed",
+          stage: null,
+          progress: null,
+          errorCode: nativeErrorCode(error),
+        };
+        environmentOwnerRef.current = userId;
+        environmentRef.current = failed;
+        setEnvironmentOwnerId(userId);
+        setEnvironmentStatus(failed);
+      }
+      throw error;
+    }
+  }, [readEnvironmentAction, userId]);
+
+  const refreshEnvironment = useCallback(
+    () => readEnvironmentAction("environment_status"),
+    [readEnvironmentAction],
+  );
+
+  useEffect(() => {
+    if (environmentOwnerId === userId) return;
+    environmentOwnerRef.current = null;
+    environmentRef.current = { state: "unknown", stage: null, progress: null };
+    setEnvironmentOwnerId(null);
+    setEnvironmentStatus({ state: "unknown", stage: null, progress: null });
+  }, [environmentOwnerId, userId]);
+
+  useEffect(() => {
+    if (
+      environmentOwnerId !== userId ||
+      !["checking", "verifying"].includes(environmentStatus.state)
+    ) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void refreshEnvironment().catch(() => undefined);
+    }, 1500);
+    return () => window.clearInterval(interval);
+  }, [environmentOwnerId, environmentStatus.state, refreshEnvironment, userId]);
+
   const value = useMemo(
     () => ({
       bridgeAvailable,
+      environmentSupported,
+      environmentInstallerURL:
+        window.octopDesktopVideo?.environmentInstallerURL,
+      environmentStatus:
+        environmentOwnerId === userId
+          ? environmentStatus
+          : { state: "unknown" as const, stage: null, progress: null },
       jobs: jobsOwnerId === userId ? jobs : [],
       start,
       cancel,
       retry,
       save,
+      checkEnvironment,
+      verifyEnvironment,
+      refreshEnvironment,
       refresh,
     }),
     [
       bridgeAvailable,
+      environmentSupported,
+      window.octopDesktopVideo?.environmentInstallerURL,
+      environmentStatus,
+      environmentOwnerId,
       jobs,
       jobsOwnerId,
       userId,
@@ -234,6 +412,9 @@ export function DesktopVideoJobsProvider({
       cancel,
       retry,
       save,
+      checkEnvironment,
+      verifyEnvironment,
+      refreshEnvironment,
       refresh,
     ],
   );

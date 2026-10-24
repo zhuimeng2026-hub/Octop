@@ -131,6 +131,7 @@ export default function ProductVideoWizardPage() {
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [nativeBusy, setNativeBusy] = useState(false);
+  const [environmentBusy, setEnvironmentBusy] = useState(false);
   const [nativeSaving, setNativeSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -141,11 +142,29 @@ export default function ProductVideoWizardPage() {
   const [uploads, setUploads] = useState<File[]>([]);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [brief, setBrief] = useState<VideoBrief>({ ...EMPTY_VIDEO_BRIEF });
+  const environmentSupported = desktopVideo.environmentSupported === true;
+  const environmentStatus = desktopVideo.environmentStatus;
+  const environmentReady =
+    !environmentSupported || environmentStatus.state === "ready";
+  const environmentInstallerURL =
+    desktopVideo.environmentInstallerURL &&
+    /^https?:\/\//i.test(desktopVideo.environmentInstallerURL)
+      ? desktopVideo.environmentInstallerURL
+      : undefined;
   const urlsRef = useRef<Record<string, string>>({});
   const requestVersion = useRef(0);
   const productIdRef = useRef<string | null>(null);
   const tRef = useRef(t);
   tRef.current = t;
+
+  useEffect(() => {
+    if (!environmentSupported || environmentStatus.state !== "unknown") return;
+    void desktopVideo.checkEnvironment().catch(() => undefined);
+  }, [
+    desktopVideo.checkEnvironment,
+    environmentStatus.state,
+    environmentSupported,
+  ]);
 
   const cleanUrls = () => {
     Object.values(urlsRef.current).forEach(URL.revokeObjectURL);
@@ -171,6 +190,7 @@ export default function ProductVideoWizardPage() {
     setError("");
     setBusy(false);
     setNativeBusy(false);
+    setEnvironmentBusy(false);
     setNativeSaving(false);
     cleanUrls();
     setImageUrls({});
@@ -490,7 +510,7 @@ export default function ProductVideoWizardPage() {
   };
 
   const persist = async (confirmed: boolean) => {
-    if (!project || !draft) return;
+    if (!project || !draft || (confirmed && !environmentReady)) return;
     let saveRequest: VideoPlanRequest;
     try {
       saveRequest = buildPlanRequest();
@@ -535,7 +555,7 @@ export default function ProductVideoWizardPage() {
   };
 
   const startNativeJob = async () => {
-    if (!project) return;
+    if (!project || !environmentReady) return;
     setNativeBusy(true);
     setError("");
     try {
@@ -561,7 +581,7 @@ export default function ProductVideoWizardPage() {
   };
 
   const retryNativeJob = async () => {
-    if (!desktopJob) return;
+    if (!desktopJob || !environmentReady) return;
     setNativeBusy(true);
     setError("");
     try {
@@ -584,6 +604,28 @@ export default function ProductVideoWizardPage() {
       setError(nativeErrorMessage(nativeError, t));
     } finally {
       setNativeSaving(false);
+    }
+  };
+
+  const recheckEnvironment = async () => {
+    setEnvironmentBusy(true);
+    try {
+      await desktopVideo.checkEnvironment(true);
+    } catch {
+      // The provider retains the localized error code in its status snapshot.
+    } finally {
+      setEnvironmentBusy(false);
+    }
+  };
+
+  const verifyEnvironment = async () => {
+    setEnvironmentBusy(true);
+    try {
+      await desktopVideo.verifyEnvironment();
+    } catch {
+      // The provider retains the localized error code in its status snapshot.
+    } finally {
+      setEnvironmentBusy(false);
     }
   };
 
@@ -681,6 +723,138 @@ export default function ProductVideoWizardPage() {
     if (next === 4 && !draft?.confirmed) return;
     setStep(next);
   };
+
+  const environmentPanel = environmentSupported && (
+    <Card
+      className={styles.environmentCard}
+      classNames={{ body: styles.environmentBody }}
+    >
+      {environmentStatus.state === "ready" ? (
+        <>
+          <Alert
+            type="success"
+            showIcon
+            message={t("videoWizard.environment.ready")}
+            description={t("videoWizard.environment.readyHint")}
+          />
+          <Button
+            loading={environmentBusy}
+            disabled={environmentBusy}
+            onClick={() => void recheckEnvironment()}
+          >
+            {t("videoWizard.environment.recheck")}
+          </Button>
+        </>
+      ) : environmentStatus.state === "checking" ||
+        environmentStatus.state === "verifying" ||
+        environmentStatus.state === "unknown" ? (
+        <>
+          <div className={styles.environmentLoading}>
+            <Spin />
+            <div>
+              <strong>
+                {t(
+                  environmentStatus.state === "verifying"
+                    ? "videoWizard.environment.verifying"
+                    : "videoWizard.environment.checking",
+                )}
+              </strong>
+              {environmentStatus.stage && (
+                <span>
+                  {t(
+                    `videoWizard.environment.stages.${environmentStatus.stage}`,
+                  )}
+                </span>
+              )}
+            </div>
+          </div>
+          {environmentStatus.progress !== null && (
+            <Progress
+              percent={Math.round(
+                Math.max(0, Math.min(1, environmentStatus.progress)) * 100,
+              )}
+              status="active"
+            />
+          )}
+        </>
+      ) : environmentStatus.requiresInstall ||
+        ["RUNTIME_MISSING", "BROWSER_MISSING"].includes(
+          environmentStatus.errorCode ?? "",
+        ) ? (
+        <>
+          <Alert
+            type="warning"
+            showIcon
+            message={t("videoWizard.environment.installTitle")}
+            description={t("videoWizard.environment.installHint")}
+          />
+          <ol className={styles.environmentSteps}>
+            <li>{t("videoWizard.environment.installStepDownload")}</li>
+            <li>{t("videoWizard.environment.installStepRun")}</li>
+            <li>{t("videoWizard.environment.installStepRecheck")}</li>
+          </ol>
+          <Space wrap>
+            {environmentInstallerURL ? (
+              <Button
+                type="primary"
+                href={environmentInstallerURL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {t("videoWizard.environment.downloadComponents")}
+              </Button>
+            ) : (
+              <Typography.Text type="secondary">
+                {t("videoWizard.environment.contactAdmin")}
+              </Typography.Text>
+            )}
+            <Button
+              type={environmentInstallerURL ? "default" : "primary"}
+              loading={environmentBusy}
+              disabled={environmentBusy}
+              onClick={() => void recheckEnvironment()}
+            >
+              {t("videoWizard.environment.recheck")}
+            </Button>
+          </Space>
+        </>
+      ) : (
+        <>
+          <Alert
+            type={environmentStatus.state === "failed" ? "error" : "info"}
+            showIcon
+            message={t(
+              environmentStatus.state === "failed"
+                ? "videoWizard.environment.verifyFailed"
+                : "videoWizard.environment.verifyTitle",
+            )}
+            description={
+              environmentStatus.errorCode
+                ? t(`videoWizard.desktopErrors.${environmentStatus.errorCode}`)
+                : t("videoWizard.environment.verifyHint")
+            }
+          />
+          <Space wrap>
+            <Button
+              type="primary"
+              loading={environmentBusy}
+              disabled={environmentBusy}
+              onClick={() => void verifyEnvironment()}
+            >
+              {t("videoWizard.environment.verify")}
+            </Button>
+            <Button
+              loading={environmentBusy}
+              disabled={environmentBusy}
+              onClick={() => void recheckEnvironment()}
+            >
+              {t("videoWizard.environment.recheck")}
+            </Button>
+          </Space>
+        </>
+      )}
+    </Card>
+  );
 
   return (
     <PageShell
@@ -1369,6 +1543,10 @@ export default function ProductVideoWizardPage() {
                 </div>
               )}
 
+              {environmentSupported &&
+                (step === 3 || step === 4) &&
+                environmentPanel}
+
               {step === 4 && draft?.confirmed && isDesktop && (
                 <section className={styles.exportPanel}>
                   <Card
@@ -1544,6 +1722,7 @@ export default function ProductVideoWizardPage() {
                             type="primary"
                             icon={<RefreshCw size={15} />}
                             loading={nativeBusy}
+                            disabled={!environmentReady}
                             onClick={() => void retryNativeJob()}
                           >
                             {t("videoWizard.retryJob")}
@@ -1561,6 +1740,7 @@ export default function ProductVideoWizardPage() {
                             type="primary"
                             icon={<Play size={15} />}
                             loading={nativeBusy}
+                            disabled={!environmentReady}
                             onClick={() => void startNativeJob()}
                           >
                             {t("videoWizard.startDesktop")}
@@ -1697,6 +1877,7 @@ export default function ProductVideoWizardPage() {
                     disabled={
                       busy ||
                       uploadBusy ||
+                      !environmentReady ||
                       !scriptValid(draft.script, assetByExportName)
                     }
                     onClick={() => void persist(true)}

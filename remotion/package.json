@@ -14,6 +14,7 @@
     "test": "node --test test/*.test.mjs",
     "test:desktop-worker": "node --test test/desktop-worker.test.mjs",
     "smoke:desktop-worker": "node test/desktop-worker-smoke.mjs",
+    "smoke:desktop-components": "node test/desktop-components-smoke.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

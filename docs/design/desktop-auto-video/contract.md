@@ -1,6 +1,6 @@
 # Desktop automatic video MVP — shared implementation contract
 
-Selected visual: `selected-concept.png` (安心制作页). Preserve the current A wizard first four steps; desktop fifth step is 制作视频. No code changes to the independent M1 checkout. Branch: `codex/desktop-auto-video-render`, based on `fix/backend-mvp-v01-integration`.
+Selected visual: `selected-concept.png` (安心制作页). Preserve the current A wizard first four steps; desktop fifth step is 制作视频. No code changes to the independent M1 checkout. Original implementation branch was `codex/desktop-auto-video-render`, pushed to `fix/backend-mvp-v01-integration`. Later lightweight distribution and manual component setup are defined in `environment-contract.md`, which supersedes the original bundled-runtime packaging below.
 
 ## Native bridge
 

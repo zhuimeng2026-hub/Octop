@@ -74,9 +74,6 @@ Section
 
     !insertmacro wails.files
 
-    SetOutPath "$INSTDIR\video-runtime"
-    File /r "..\..\..\video-runtime\*"
-
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortcut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
