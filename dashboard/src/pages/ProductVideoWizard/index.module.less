@@ -182,7 +182,9 @@
   gap: 16px;
   margin-bottom: 18px;
 }
-.formGrid label {
+/* Scope to direct children only: checkbox/radio wrappers are rendered as <label>
+   too, and a bare descendant selector stacked their box above the caption. */
+.formGrid > label {
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -207,6 +209,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px 18px;
+}
+.platformOptions :global(.octop-checkbox-wrapper) {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
 }
 .advanced {
   margin: 18px 0;
