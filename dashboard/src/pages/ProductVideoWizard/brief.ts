@@ -21,6 +21,19 @@ export const EMPTY_VIDEO_BRIEF: VideoBrief = {
 const PREFIX = "OCTOP_VIDEO_BRIEF_V1:";
 const MAX_INSTRUCTIONS_LENGTH = 3000;
 
+/** Split the stored platform string back into individual selections. */
+export function splitPlatforms(raw: string): string[] {
+  return raw
+    .split(/[、,，/|]/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+/** Join selected platforms into the natural-language string stored in the brief. */
+export function joinPlatforms(values: string[]): string {
+  return values.map((value) => value.trim()).filter(Boolean).join("、");
+}
+
 export function encodeVideoBrief(brief: VideoBrief): string {
   const encoded = `${PREFIX}${JSON.stringify(brief)}`;
   if (encoded.length > MAX_INSTRUCTIONS_LENGTH) {

@@ -58,8 +58,22 @@ import {
   decodeVideoBrief,
   EMPTY_VIDEO_BRIEF,
   encodeVideoBrief,
+  joinPlatforms,
+  splitPlatforms,
   type VideoBrief,
 } from "./brief";
+
+/** Platforms offered as checkboxes, in display order. */
+const PLATFORM_KEYS = [
+  "douyin",
+  "xiaohongshu",
+  "channels",
+  "kuaishou",
+  "bilibili",
+  "tiktok",
+  "instagram",
+  "youtube",
+] as const;
 import styles from "./index.module.less";
 
 const initialRequest: VideoPlanRequest = {
@@ -376,6 +390,17 @@ export default function ProductVideoWizardPage() {
       current ? { ...current, confirmed: false } : current,
     );
   };
+  const platformOptions = useMemo(() => {
+    const presets = PLATFORM_KEYS.map((key) =>
+      t(`videoWizard.platforms.${key}`),
+    );
+    const known = new Set(presets);
+    // Keep values stored by older free-text briefs selectable so nothing is lost.
+    const extra = splitPlatforms(brief.platform).filter(
+      (value) => !known.has(value),
+    );
+    return [...presets, ...extra].map((value) => ({ value, label: value }));
+  }, [t, brief.platform]);
   const changeRequest = (patch: Partial<VideoPlanRequest>) => {
     setRequest((current) => ({ ...current, ...patch }));
     setSaved(false);
@@ -1145,17 +1170,19 @@ export default function ProductVideoWizardPage() {
                           }
                         />
                       </label>
-                      <label>
+                      <div className={styles.platformField}>
                         {t("videoWizard.platform")}
-                        <Input
-                          maxLength={200}
-                          value={brief.platform}
-                          onChange={(e) =>
-                            changeBrief({ platform: e.target.value })
+                        <Checkbox.Group
+                          className={styles.platformOptions}
+                          value={splitPlatforms(brief.platform)}
+                          onChange={(values) =>
+                            changeBrief({
+                              platform: joinPlatforms(values as string[]),
+                            })
                           }
-                          placeholder={t("videoWizard.platformHint")}
+                          options={platformOptions}
                         />
-                      </label>
+                      </div>
                       <label>
                         {t("videoWizard.targetDuration")}
                         <Select
