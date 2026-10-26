@@ -366,7 +366,7 @@ describe("product video wizard", () => {
     expect(desktopJobs.start).toHaveBeenCalledTimes(1);
   });
 
-  it("restores structured requirements and replaces the platform without retaining stale values", async () => {
+  it("restores structured requirements and replaces the platform selection", async () => {
     const user = userEvent.setup();
     const instructions = encodeVideoBrief({
       purpose: "launch",
@@ -392,18 +392,19 @@ describe("product video wizard", () => {
       screen.getByRole("button", { name: "videoWizard.previous" }),
     );
     await screen.findByText("videoWizard.requirementsTitle");
-    expect(screen.getByPlaceholderText("videoWizard.platformHint")).toHaveValue(
-      "Original platform",
-    );
+    // A free-text value from an older brief stays visible and selected.
+    const legacy = screen.getByRole("checkbox", { name: "Original platform" });
+    expect(legacy).toBeChecked();
     expect(
       screen.getByRole("combobox", { name: "videoWizard.targetDuration" }),
     ).toHaveValue("60");
     expect(
       screen.getByRole("combobox", { name: "videoWizard.style" }),
     ).toHaveValue("elegant");
-    const platform = screen.getByPlaceholderText("videoWizard.platformHint");
-    await user.clear(platform);
-    await user.type(platform, "New platform");
+    await user.click(legacy);
+    await user.click(
+      screen.getByRole("checkbox", { name: "videoWizard.platforms.douyin" }),
+    );
     await user.click(
       screen.getByRole("button", { name: "videoWizard.generate" }),
     );
@@ -411,7 +412,7 @@ describe("product video wizard", () => {
     const sentBrief = decodeVideoBrief(
       api.generateStoryboard.mock.calls[0][1].instructions,
     );
-    expect(sentBrief.platform).toBe("New platform");
+    expect(sentBrief.platform).toBe("videoWizard.platforms.douyin");
     expect(sentBrief.extra).toBe("Keep the package visible");
     expect(api.generateStoryboard.mock.calls[0][1].instructions).not.toContain(
       "Original platform",

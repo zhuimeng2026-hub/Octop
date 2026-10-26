@@ -411,6 +411,16 @@
     "audience": "Audience",
     "platform": "Platform",
     "platformHint": "For example: Instagram, TikTok, YouTube",
+    "platforms": {
+      "douyin": "Douyin",
+      "xiaohongshu": "Xiaohongshu",
+      "channels": "WeChat Channels",
+      "kuaishou": "Kuaishou",
+      "bilibili": "Bilibili",
+      "tiktok": "TikTok",
+      "instagram": "Instagram",
+      "youtube": "YouTube"
+    },
     "language": "Video language",
     "chinese": "Chinese",
     "format": "Aspect ratio",
