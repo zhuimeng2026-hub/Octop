@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import suppress
@@ -269,6 +270,34 @@ def _purge_stale_logs(log_dir: Path, retention_days: int) -> None:
         if entry.stat().st_mtime < cutoff:
             with suppress(OSError):
                 entry.unlink()
+
+
+_thread_hook_installed = False
+
+
+def _install_thread_excepthook() -> None:
+    """Log unhandled exceptions from worker threads instead of losing them.
+
+    ``run_in_executor`` work (harness runs, sync I/O) runs on ``threading.Thread``
+    workers; without a hook such a crash only reaches stderr, which a service
+    manager discards.
+    """
+    global _thread_hook_installed
+    if _thread_hook_installed:
+        return
+    _thread_hook_installed = True
+
+    def _hook(args: threading.ExceptHookArgs) -> None:
+        if args.exc_type is SystemExit:
+            return
+        exc = args.exc_value or args.exc_type()
+        logger.error(
+            "unhandled exception in thread %s",
+            getattr(args.thread, "name", "?"),
+            exc_info=(args.exc_type, exc, args.exc_traceback),
+        )
+
+    threading.excepthook = _hook
 
 
 def _attach_log_handler(target: logging.Logger, handler: TimedRotatingFileHandler) -> None:
@@ -767,6 +796,7 @@ class OctopServer:
     # ----- helpers -----
 
     def _setup_logging(self) -> None:
+        self._install_excepthooks()
         log_dir = self.paths.logs_dir
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = self.paths.log
@@ -804,6 +834,10 @@ class OctopServer:
             # secrets (OAuth access_token, corpsecret) into the log file.
             logging.getLogger("httpx").setLevel(logging.WARNING)
             logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    def _install_excepthooks(self) -> None:
+        """Route otherwise-silent thread crashes into the log file."""
+        _install_thread_excepthook()
 
     def _ensure_jwt_secret(self) -> None:
         assert self.services is not None
