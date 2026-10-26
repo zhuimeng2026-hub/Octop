@@ -1,4 +1,5 @@
 """Targeted checks for storyboard validation and local draft persistence."""
+
 import pytest
 
 from octop.infra.product_library.llm_video_planner import validate_script
@@ -7,9 +8,18 @@ from octop.infra.product_library.video_planner import VideoPlanRequest, build_vi
 
 
 def snapshot():
-    return {"product": {"name": "Bag", "model": "", "selling_points": ["Capacity"]},
-            "assets": [{"id": "a1", "filename": "bag.jpg", "media_type": "image/jpeg",
-                        "usage": "scene", "priority": 1}]}
+    return {
+        "product": {"name": "Bag", "model": "", "selling_points": ["Capacity"]},
+        "assets": [
+            {
+                "id": "a1",
+                "filename": "bag.jpg",
+                "media_type": "image/jpeg",
+                "usage": "scene",
+                "priority": 1,
+            }
+        ],
+    }
 
 
 def test_validate_and_save_confirmed_storyboard(tmp_path):

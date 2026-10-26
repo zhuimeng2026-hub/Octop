@@ -1,4 +1,4 @@
-//go:build production && !darwin
+//go:build production && !darwin && !thin
 
 package main
 

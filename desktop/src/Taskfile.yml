@@ -16,6 +16,9 @@ vars:
   # task-level default would be invisible to BUILD_FLAGS. Override per build
   # with: wails3 task build DEFAULT_SERVER_URL=https://host/prefix
   DEFAULT_SERVER_URL: "https://ocbot.aixifs.com/videogen"
+  # Optional HTTPS URL for the separately built video component installer.
+  # Leave empty until an official release asset is available.
+  VIDEO_COMPONENTS_URL: ""
 
 tasks:
   build:
