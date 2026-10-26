@@ -53,6 +53,30 @@ The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in
 `octop.infra.utils.paths`.
 
+## Logging
+
+`OctopServer.start()` configures logging once, before anything else runs
+(`_setup_logging` in `infra/server.py`):
+
+- **Destination** — `~/.octop/logs/octop.log`, plus uvicorn's request/error
+  loggers attached to the same rotating file.
+- **Rotation** — daily at midnight, and early once the active file exceeds
+  `OCTOP_LOG_MAX_BYTES`; rotated files are `octop.YYYY-MM-DD.log`, gzipped on
+  the next cycle, pruned after `OCTOP_LOG_RETENTION_DAYS`.
+- **Level** — `OCTOP_LOG_LEVEL` (`debug`/`info`/`warning`/`error`), applied to
+  the root logger. `httpx`/`httpcore` are pinned to `WARNING` unless the level
+  is `debug`, because their INFO lines carry query strings with secrets.
+- **Line format** — `%(asctime)s %(levelname)-5s %(name)s — %(message)s`, with
+  ` [agent=<id>]` appended when a harness agent is in scope.
+- **Access log** — one line per HTTP request from
+  `api/middleware/access_log.py`: `INFO` for 2xx/3xx, `WARNING` for 4xx,
+  `ERROR` (with traceback when the handler raised) for 5xx. It logs the method,
+  path, status, duration, user id and client IP — never the query string or the
+  `Authorization` header, since an access token is accepted in both.
+- **Worker threads** — a `threading.excepthook` routes an unhandled exception
+  from a worker thread (harness runs, `run_in_executor` I/O) into the same file
+  instead of dropping it on stderr.
+
 ## Local knowledge indexing and systemd resource limits
 
 Local ONNX embeddings process one chunk at a time with two inference threads.
