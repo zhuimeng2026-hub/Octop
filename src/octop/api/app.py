@@ -18,9 +18,6 @@ from octop.api.middleware.request_logging import (
     STALE_ASSET_HINT,
     log_request_failure,
 )
-from octop.api.middleware.request_logging import (
-    install as install_request_logging,
-)
 from octop.api.middleware.setup_lockdown import install as install_setup_lockdown
 from octop.api.openapi_meta import API_DESCRIPTION, OPENAPI_TAGS, configure_openapi
 from octop.infra.errors import ErrorCode, OctopError
@@ -82,11 +79,6 @@ def _dashboard_fallback(
                 hint=STALE_ASSET_HINT,
             )
         raise HTTPException(status_code=404, detail="Not Found")
-    logger.info(
-        "spa shell | GET %s%s → index.html",
-        full_path or "/",
-        f"?{request.url.query}" if request is not None and request.url.query else "",
-    )
     return _dashboard_response(index_file, "")
 
 
@@ -162,12 +154,8 @@ def build_app(server: OctopServer) -> FastAPI:
     install_bridge_proxy(app, server)
     install_jwt_auth(app, server)
     install_setup_lockdown(app, server)
-    # Failure diagnostics (raw path, matched route, referer, user agent).
-    # Outside the JWT gate and the setup lockdown above, so their rejections
-    # are logged too.
-    install_request_logging(app)
     # Outermost of all: one access line per request with its final status,
-    # duration, user and client IP.
+    # duration, user, client IP and the matched route template.
     install_access_log(app)
 
     if server.app_runtime is not None and server.app_runtime.bridge_manager is not None:

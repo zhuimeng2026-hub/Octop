@@ -108,6 +108,26 @@ async def test_query_string_is_not_logged(
     assert all("?" not in line for line in lines)
 
 
+async def test_route_template_is_logged(
+    client: httpx.AsyncClient, captured: list[logging.LogRecord]
+) -> None:
+    await client.get("/_test/ok")
+    (record,) = [rec for rec in captured if "/_test/ok" in rec.getMessage()]
+    assert "route=/_test/ok" in record.getMessage()
+
+
+async def test_user_agent_is_logged_but_truncated(
+    client: httpx.AsyncClient, captured: list[logging.LogRecord]
+) -> None:
+    agent = "A" * 500
+    await client.get("/_test/ok", headers={"user-agent": agent})
+    (record,) = [rec for rec in captured if "/_test/ok" in rec.getMessage()]
+    message = record.getMessage()
+    assert "ua=AAAA" in message
+    assert agent not in message
+    assert len(message) < len(agent) + 200
+
+
 async def test_install_is_idempotent(tmp_path: Path) -> None:
     write_octop_config(tmp_path, enable_dashboard=False)
     srv = OctopServer(home=tmp_path)
