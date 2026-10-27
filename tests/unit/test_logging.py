@@ -10,6 +10,7 @@ import gzip
 import logging
 import os
 import re
+import sys
 import time
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
@@ -397,3 +398,40 @@ def test_purge_stale_logs_still_removes_legacy_names(tmp_path: Path):
     assert not old.exists()
     assert not old_gz.exists()
     assert new.exists()
+
+
+def test_thread_excepthook_logs_unhandled_worker_crash(monkeypatch):
+    """A crash in a worker thread lands in the log instead of vanishing on stderr."""
+    import threading
+
+    from octop.infra import server as server_mod
+
+    monkeypatch.setattr(server_mod, "_thread_hook_installed", False)
+    monkeypatch.setattr(threading, "excepthook", sys.excepthook)
+    records: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _Capture(level=logging.DEBUG)
+    logger = logging.getLogger(server_mod.__name__)
+    logger.addHandler(handler)
+    old_level = logger.level
+    logger.setLevel(logging.DEBUG)
+    try:
+        server_mod._install_thread_excepthook()
+
+        def _boom() -> None:
+            raise RuntimeError("worker died")
+
+        thread = threading.Thread(target=_boom, name="octop-test-worker")
+        thread.start()
+        thread.join()
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(old_level)
+
+    (record,) = [r for r in records if "octop-test-worker" in r.getMessage()]
+    assert record.levelno == logging.ERROR
+    assert record.exc_info is not None
