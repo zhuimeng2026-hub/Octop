@@ -128,6 +128,10 @@ else
   warn "没找到私钥，会提示输入密码"
 fi
 
+# 始终复用单条 SSH 连接：既省握手，也避免 sshd MaxStartups 限流把多次探活打断
+CTRL_DIR="$(mktemp -d 2>/dev/null || echo /tmp)"
+SSH_ARGS+=(-o ControlMaster=auto -o ControlPath="$CTRL_DIR/octop-deploy-%r@%h:%p" -o ControlPersist=180)
+
 # 先用 BatchMode 探一次，决定后面是否可能多次要密码
 say "连接探测"
 if ssh "${SSH_ARGS[@]}" -o BatchMode=yes "${REMOTE_USER}@${HOST}" true 2>/dev/null; then
@@ -136,7 +140,6 @@ if ssh "${SSH_ARGS[@]}" -o BatchMode=yes "${REMOTE_USER}@${HOST}" true 2>/dev/nu
 else
   AUTH_MODE="密码"
   warn "免密不可用，下面会提示输入密码（只输一次，脚本会复用连接）"
-  SSH_ARGS+=(-o ControlMaster=auto -o ControlPath="$TMPDIR/octop-deploy-%r@%h:%p" -o ControlPersist=180)
 fi
 
 REMOTE_INFO="$(ssh "${SSH_ARGS[@]}" "${REMOTE_USER}@${HOST}" \
