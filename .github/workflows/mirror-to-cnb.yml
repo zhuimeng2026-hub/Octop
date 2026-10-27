@@ -20,9 +20,15 @@ on:
       - '**'
     tags:
       - 'v*'
+  # 本仓库是上游仓库的 fork。GitHub 默认不为 fork 触发 push / schedule 事件：
+  # 仓库历史上全部 run 都是 pull_request 事件，连 main 上配了 `on: push: tags`
+  # 的 release.yml 都从未因推送而运行过（v1.1.0 标签推过，也没有对应 run）。
+  # 因此把 pull_request 也列为触发器 —— 这是本 fork 里实际能触发工作流的事件，
+  # 顺带让「PR 一开，CNB 镜像就跟着更新」。
+  pull_request:
   workflow_dispatch:
   schedule:
-    # 02:30 UTC+8（每天兜底一次）
+    # 02:30 UTC+8（每天兜底一次；注意 fork 下 schedule 通常不会触发）
     - cron: '30 18 * * *'
 
 permissions:
