@@ -8,7 +8,7 @@ name: Mirror to CNB
 #
 # 需要在仓库 Secrets 里配置：
 #   CNB_TOKEN     必填。CNB 平台的访问令牌（Personal Access Token）。
-#   CNB_USERNAME  选填，默认 cnb-ci（CNB 用 token 做密码，用户名通常不校验）。
+#   CNB_USERNAME  选填，默认 cnb（与本机已验证可用的凭据用户名一致）。
 #   CNB_REPO      选填，默认 mengxa.com/Octop。
 #
 # 同步范围：全部分支 + 全部标签。只做快进推送，不带 --force；
@@ -52,7 +52,7 @@ jobs:
           set -euo pipefail
 
           repo="${CNB_REPO:-mengxa.com/Octop}"
-          user="${CNB_USERNAME:-cnb-ci}"
+          user="${CNB_USERNAME:-cnb}"
           url="https://${user}:${CNB_TOKEN}@cnb.cool/${repo}.git"
 
           git config user.name "github-actions[bot]"
