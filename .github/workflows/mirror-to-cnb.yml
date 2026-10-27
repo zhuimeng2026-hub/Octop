@@ -42,7 +42,10 @@ jobs:
   mirror:
     name: Mirror all branches and tags to CNB
     runs-on: ubuntu-latest
-    if: ${{ secrets.CNB_TOKEN != '' }}
+    env:
+      CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+      CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
+      CNB_REPO: ${{ secrets.CNB_REPO }}
     steps:
       - name: Checkout (full history, all refs)
         uses: actions/checkout@v4
@@ -50,10 +53,7 @@ jobs:
           fetch-depth: 0
 
       - name: Mirror to CNB
-        env:
-          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
-          CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
-          CNB_REPO: ${{ secrets.CNB_REPO }}
+        if: ${{ env.CNB_TOKEN != '' }}
         run: |
           set -euo pipefail
 
