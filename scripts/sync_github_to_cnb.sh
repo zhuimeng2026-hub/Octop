@@ -160,6 +160,59 @@ if [ -n "$MISMATCH" ]; then
     anomaly "同步后校验仍不一致：$MISMATCH"
 fi
 
+# ---------- 4.5 清理：删除 CNB 上 GitHub 已不存在的分支 ----------
+# 镜像的目标是对齐 GitHub。GitHub 侧合并 PR 后会清理分支，CNB 侧若不删就会
+# 一直堆积陈旧分支，两端就不再"对齐"。
+# 安全阀：只有当该分支的提交已并入 origin/main 或 origin/develop 时才删除；
+# 内容独有的分支一律保留并记录，绝不因为镜像而丢代码。
+DELETED_BRANCHES=""
+KEPT_BRANCHES=""
+if [ "$FETCH_OK" = "1" ] && [ -n "$CNB_ONLY" ]; then
+    ORIGIN_MAIN_SHA="$(awk '$2 == "refs/heads/main" {print $1}' <<<"$ORIGIN_REFS")"
+    ORIGIN_DEVELOP_SHA="$(awk '$2 == "refs/heads/develop" {print $1}' <<<"$ORIGIN_REFS")"
+    for branch in $CNB_ONLY; do
+        cnb_sha="$(git ls-remote --heads "$CNB_REMOTE" "refs/heads/$branch" 2>/dev/null | awk '{print $1}')"
+        [ -z "$cnb_sha" ] && continue
+        if ! git cat-file -e "$cnb_sha^{commit}" 2>/dev/null; then
+            git fetch --no-tags "$CNB_REMOTE" \
+                "+refs/heads/$branch:refs/remotes/$CNB_REMOTE/$branch" >/dev/null 2>&1 || true
+        fi
+        if ! git cat-file -e "$cnb_sha^{commit}" 2>/dev/null; then
+            KEPT_BRANCHES="${KEPT_BRANCHES}${branch}(对象缺失) "
+            continue
+        fi
+        merged=0
+        for base_sha in "$ORIGIN_MAIN_SHA" "$ORIGIN_DEVELOP_SHA"; do
+            [ -z "$base_sha" ] && continue
+            git cat-file -e "$base_sha^{commit}" 2>/dev/null || continue
+            if git merge-base --is-ancestor "$cnb_sha" "$base_sha" 2>/dev/null; then
+                merged=1
+                break
+            fi
+            # 祖先关系是 SHA 级的：被 cherry-pick / rebase 过的分支会被误判成
+            # "未合并"。再用 patch-id 比对内容——git cherry 输出中若没有 "+"
+            # （未出现在上游的提交），说明内容已在上游，可安全删除。
+            plus_count="$(git cherry "$base_sha" "$cnb_sha" 2>/dev/null | grep -c '^+' || true)"
+            if [ "$plus_count" = "0" ]; then
+                merged=1
+                break
+            fi
+        done
+        if [ "$merged" = "1" ]; then
+            if git push "$CNB_REMOTE" --delete "$branch" >/dev/null 2>&1; then
+                DELETED_BRANCHES="${DELETED_BRANCHES}${branch} "
+                log "  - 已删除陈旧分支 $branch（内容已并入主线）"
+            else
+                KEPT_BRANCHES="${KEPT_BRANCHES}${branch}(删除失败) "
+                anomaly "删除陈旧分支 $branch 失败"
+            fi
+        else
+            KEPT_BRANCHES="${KEPT_BRANCHES}${branch} "
+            log "  = 保留 $branch（内容未并入 main/develop）"
+        fi
+    done
+fi
+
 # ---------- 5. 出报告 ----------
 {
     echo "# GitHub → CNB 同步报告"
@@ -182,10 +235,20 @@ fi
         echo
     fi
     if [ -n "$CNB_ONLY" ]; then
-        echo "## 仅 CNB 存在（已保留，未删除）"
+        echo "## 仅 CNB 存在"
         echo
-        echo "\`$CNB_ONLY\`"
-        echo
+        if [ -n "$DELETED_BRANCHES" ]; then
+            echo "已删除（内容已并入主线，GitHub 上已无此分支）："
+            echo
+            for b in $DELETED_BRANCHES; do echo "- \`$b\`"; done
+            echo
+        fi
+        if [ -n "$KEPT_BRANCHES" ]; then
+            echo "保留（内容未并入 main/develop，删除会丢代码）："
+            echo
+            for b in $KEPT_BRANCHES; do echo "- \`$b\`"; done
+            echo
+        fi
     fi
     echo "## 引用"
     echo
