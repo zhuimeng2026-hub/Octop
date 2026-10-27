@@ -68,35 +68,42 @@ else
 fi
 
 # ---------- 2. 逐分支快进推送 ----------
+# 以 ls-remote 取 GitHub 的权威 SHA，不用 refs/remotes/origin/*：
+# origin 配了多个 push URL 时，git push 会更新远程追踪引用，哪怕只有其中一个
+# pushurl 成功，追踪引用就可能指向"仅存在于另一端"的提交。
 PUSH_FAILURES=()
 if [ "$FETCH_OK" = "1" ]; then
-    BRANCHES="$(git for-each-ref --format='%(refname:strip=3)' "refs/remotes/$ORIGIN_REMOTE" \
-        | grep -v '^HEAD$' || true)"
-    if [ -z "$BRANCHES" ]; then
-        anomaly "$ORIGIN_REMOTE 上没有任何分支可同步"
+    ORIGIN_HEADS="$(git ls-remote --heads "$ORIGIN_REMOTE" 2>/dev/null)"
+    if [ -z "$ORIGIN_HEADS" ]; then
+        anomaly "无法读取 $ORIGIN_REMOTE 的分支列表（凭据或网络问题）"
     fi
-    while IFS= read -r branch; do
-        [ -z "$branch" ] && continue
-        if OUT="$(git push "$CNB_REMOTE" "refs/remotes/$ORIGIN_REMOTE/$branch:refs/heads/$branch" 2>&1)"; then
+    while IFS=$'\t' read -r sha ref; do
+        [ -z "${sha:-}" ] && continue
+        branch="${ref#refs/heads/}"
+        if OUT="$(git push "$CNB_REMOTE" "$sha:refs/heads/$branch" 2>&1)"; then
             log "  ✓ $branch"
         else
             log "  ✗ $branch"
             PUSH_FAILURES+=("$branch")
             anomaly "分支 $branch 推送失败：$(tr '\n' ' ' <<<"$OUT" | tail -c 400)"
         fi
-    done <<<"$BRANCHES"
+    done <<<"$ORIGIN_HEADS"
 fi
 
 # ---------- 3. 推送标签 ----------
-TAG_OUT=""
+# 同样按 GitHub 上的权威 SHA 推送；附注标签只推标签对象本身，
+# '^{}' 解引用项随标签本体一起生效，不单独推。
 if [ "$FETCH_OK" = "1" ]; then
-    if TAGS="$(git tag)"; then
-        if [ -n "$TAGS" ]; then
-            if ! TAG_OUT="$(git push "$CNB_REMOTE" 'refs/tags/*:refs/tags/*' 2>&1)"; then
-                anomaly "标签推送失败：$(tr '\n' ' ' <<<"$TAG_OUT" | tail -c 400)"
-            fi
+    while IFS=$'\t' read -r sha ref; do
+        [ -z "${sha:-}" ] && continue
+        case "$ref" in
+            refs/tags/*'^{}') continue ;;
+        esac
+        tag="${ref#refs/tags/}"
+        if ! TAG_OUT="$(git push "$CNB_REMOTE" "$sha:refs/tags/$tag" 2>&1)"; then
+            anomaly "标签 $tag 推送失败：$(tr '\n' ' ' <<<"$TAG_OUT" | tail -c 400)"
         fi
-    fi
+    done <<<"$(git ls-remote --tags "$ORIGIN_REMOTE" 2>/dev/null)"
 fi
 
 # ---------- 4. 校验：远端逐 ref 比对 ----------
