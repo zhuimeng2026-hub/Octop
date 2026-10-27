@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 同步 GitHub (origin) → CNB (cnb)：全部分支 + 全���标签。
+# 同步 GitHub (origin) → CNB (cnb)：全部分支 + 全部标签。
 #
 # 设计要点：
 #   1. 独立运行，不依赖 Claude。同步与校验全部由本脚本完成；
