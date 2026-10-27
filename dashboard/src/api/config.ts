@@ -1,5 +1,7 @@
 import { BASE_PATH, rootPath } from "../utils/basePath";
 
+declare const API_BASE_URL: string;
+
 /**
  * Get the full API URL with /api prefix
  * @param path - API path (e.g., "/models", "/skills")
@@ -8,7 +10,8 @@ import { BASE_PATH, rootPath } from "../utils/basePath";
 export function getApiUrl(path: string): string {
   const apiPrefix = "/api";
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${BASE_PATH}${apiPrefix}${normalizedPath}`;
+  const apiBase = typeof API_BASE_URL === "string" ? API_BASE_URL : "";
+  return `${apiBase}${BASE_PATH}${apiPrefix}${normalizedPath}`;
 }
 
 /**
@@ -21,7 +24,8 @@ export function getApiUrl(path: string): string {
 export function getWsUrl(path: string): string {
   const apiPrefix = "/api";
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const httpUrl = `${BASE_PATH}${apiPrefix}${normalizedPath}`;
+  const apiBase = typeof API_BASE_URL === "string" ? API_BASE_URL : "";
+  const httpUrl = `${apiBase}${BASE_PATH}${apiPrefix}${normalizedPath}`;
 
   if (httpUrl.startsWith("http://")) {
     return httpUrl.replace("http://", "ws://");

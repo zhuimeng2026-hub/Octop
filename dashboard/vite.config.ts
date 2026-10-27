@@ -86,17 +86,27 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
 }
 
+function normalizeViteBase(raw: string | undefined): string {
+  const value = (raw || "/").trim() || "/";
+  if (value === "/") return "/";
+  const withLeading = value.startsWith("/") ? value : `/${value}`;
+  return withLeading.endsWith("/") ? withLeading : `${withLeading}/`;
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  // Deployment sub-path, e.g. "/videogen". Empty = served from the server
-  // root, which must keep working exactly as before.
-  // Normalized to a leading slash and NO trailing slash: the trailing slash
-  // would produce "//api/…" once concatenated with the API prefix.
-  const basePath = (env.BASE_URL ?? "").trim().replace(/\/+$/, "");
-  const normalizedBasePath =
-    basePath && !basePath.startsWith("/") ? `/${basePath}` : basePath;
-  // vite's `base` always wants a trailing slash.
-  const viteBase = normalizedBasePath ? `${normalizedBasePath}/` : "/";
+  // Keep BASE_URL path semantics for existing deployments, while also accepting
+  // the upstream VITE_BASE_PATH name and an absolute BASE_URL API origin.
+  const configuredBaseUrl = (env.BASE_URL ?? "").trim();
+  const apiBaseUrl = /^https?:\/\//i.test(configuredBaseUrl)
+    ? configuredBaseUrl.replace(/\/+$/, "")
+    : "";
+  const configuredBasePath =
+    process.env.VITE_BASE_PATH ??
+    env.VITE_BASE_PATH ??
+    (apiBaseUrl ? "" : configuredBaseUrl);
+  const viteBase = normalizeViteBase(configuredBasePath);
+  const normalizedBasePath = viteBase === "/" ? "" : viteBase.slice(0, -1);
   // Allow overriding the backend port via VITE_API_PORT env variable (default: 8088)
   const apiPort = process.env.VITE_API_PORT ?? env.VITE_API_PORT ?? "8088";
   // Full proxy target override, e.g. VITE_API_TARGET=https://ocbot.aixifs.com
@@ -105,9 +115,7 @@ export default defineConfig(({ mode }) => {
   // (`location /videogen/` + `proxy_pass` without a trailing slash) passes the
   // full "/videogen/api/…" path through to the backend.
   const remoteTarget = (
-    process.env.VITE_API_TARGET ??
-    env.VITE_API_TARGET ??
-    ""
+    process.env.VITE_API_TARGET ?? env.VITE_API_TARGET ?? apiBaseUrl
   )
     .trim()
     .replace(/\/+$/, "");
@@ -240,8 +248,8 @@ export default defineConfig(({ mode }) => {
       minifyIdentifiers: false,
     },
     define: {
-      // No trailing slash — the frontend concatenates "/api" onto this.
       BASE_URL: JSON.stringify(normalizedBasePath),
+      API_BASE_URL: JSON.stringify(apiBaseUrl),
       MOBILE: false,
     },
     plugins: [

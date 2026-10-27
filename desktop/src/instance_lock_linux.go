@@ -37,6 +37,8 @@ func acquireInstanceLock() (*instanceLock, error) {
 	return &instanceLock{file: f}, nil
 }
 
+func (l *instanceLock) listen(onLaunch func()) {}
+
 func (l *instanceLock) Close() error {
 	if l == nil || l.file == nil {
 		return nil

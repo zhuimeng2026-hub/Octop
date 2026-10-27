@@ -1,5 +1,44 @@
 # 桌面端进程互斥（单实例）复核
 
+## 2026-10-27：Windows 在 Wails 初始化前拦截重复启动
+
+针对重复启动后系统托盘出现残留图标的反馈，Windows 增加了入口级保护：
+
+- `instance_lock_windows.go` 在 `main()` 开头原子创建命名自动重置事件
+  `Local\com.octop.desktop.instance`。只有创建者可以继续初始化 Wails、窗口和托盘。
+- 后续进程只发送事件通知并退出，不进入 `application.New`。事件会保留首实例
+  尚未完成启动时收到的通知，多次点击会合并。
+- 首实例在 `ApplicationStarted` 后开始监听，将恢复、显示和聚焦窗口的工作
+  排入 UI 线程；退出时停止监听并关闭句柄，进程崩溃时由 Windows 释放句柄。
+- 保留 Wails `SingleInstance`，以便与尚在运行的旧版 Windows exe 互斥；
+  新版进程之间通过入口事件完成拦截和唤醒。macOS 与 Linux 的行为保持不变。
+
+这项保护用于防止后续重复启动创建新托盘图标，不清理历史残留图标，也不替代
+对其他崩溃原因的排查。下文为此前实现的复核记录，其中 Windows 仅依赖 Wails
+的描述已由本节更新。
+
+验证命令（在 `desktop/src`）：
+
+```powershell
+go test ./...
+go test -count=10 -run TestWindowsInstance .
+go test -tags production ./...
+go vet ./...
+```
+
+Windows 回归测试覆盖跨进程并发拒绝、启动期间通知保留、就绪后再次唤醒、
+正常关闭后重启，以及持锁进程异常退出后的自动释放。托盘外观仍需交互式桌面
+验证：连续双击启动后仅一个主实例、一个托盘图标，并能唤起已有窗口。
+
+本次验证：上述 Go 检查通过，生产构建成功。另以系统事件模拟已运行实例，
+对实际新 exe 发起 10 次启动，均在 Wails 初始化前以退出码 0 返回，唤醒通知
+保留，未创建测试用 `OCTOP_HOME`。这项进程测试不等同于托盘外观实测；当前
+桌面控制返回“拒绝访问”，未完成交互式确认。初次 `make all` 因缺少 `make`
+未能执行；提交检查已补齐工具并按 `uv.lock` 创建独立 Python 环境。中文 Windows
+运行 Python 检查需设置 `PYTHONUTF8=1`，以 UTF-8 读取迁移 SQL 文件。
+
+---
+
 - 复核日期：2026-10-23
 - 分支：`feature/local-studio-package`
 - 桌面壳技术栈：Wails v3（`github.com/wailsapp/wails/v3 v3.0.0-beta.13`）+ WebView2

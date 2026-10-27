@@ -1,6 +1,6 @@
 # Octop desktop (Wails v3)
 
-All desktop-client code lives here. This is **not** `src/octop/infra/desktop`
+All desktop-client code lives here. This is **not** `src/octop/infra/control/desktop`
 (remote desktop streaming). Windows remote releases use a small thin client;
 local/full builds retain the green portable backend.
 

@@ -1,3 +1,4 @@
+
 /**
  * Service Worker registration and lifecycle management.
  *
