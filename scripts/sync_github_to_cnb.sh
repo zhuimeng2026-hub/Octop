@@ -80,6 +80,15 @@ if [ "$FETCH_OK" = "1" ]; then
     while IFS=$'\t' read -r sha ref; do
         [ -z "${sha:-}" ] && continue
         branch="${ref#refs/heads/}"
+        # fetch 与 ls-remote 之间存在竞态：分支可能刚被创建，本地还没有该对象。
+        # 先确认对象在本地，缺失则按需抓取一次再推。
+        if ! git cat-file -e "$sha^{commit}" 2>/dev/null; then
+            git fetch --no-tags "$ORIGIN_REMOTE" "+$ref:refs/remotes/$ORIGIN_REMOTE/$branch" >/dev/null 2>&1 || true
+        fi
+        if ! git cat-file -e "$sha^{commit}" 2>/dev/null; then
+            anomaly "分支 $branch 的提交 $sha 本地不存在（可能刚被创建），本次跳过，下轮重试"
+            continue
+        fi
         if OUT="$(git push "$CNB_REMOTE" "$sha:refs/heads/$branch" 2>&1)"; then
             log "  ✓ $branch"
         else
@@ -100,6 +109,13 @@ if [ "$FETCH_OK" = "1" ]; then
             refs/tags/*'^{}') continue ;;
         esac
         tag="${ref#refs/tags/}"
+        if ! git cat-file -e "$sha" 2>/dev/null; then
+            git fetch --no-tags "$ORIGIN_REMOTE" "+$ref:refs/tags/$tag" >/dev/null 2>&1 || true
+        fi
+        if ! git cat-file -e "$sha" 2>/dev/null; then
+            anomaly "标签 $tag 的对象 $sha 本地不存在（可能刚被创建），本次跳过，下轮重试"
+            continue
+        fi
         if ! TAG_OUT="$(git push "$CNB_REMOTE" "$sha:refs/tags/$tag" 2>&1)"; then
             anomaly "标签 $tag 推送失败：$(tr '\n' ' ' <<<"$TAG_OUT" | tail -c 400)"
         fi
