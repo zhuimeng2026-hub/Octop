@@ -1,0 +1,91 @@
+name: Mirror to CNB
+
+# GitHub (origin) → CNB (cnb) 镜像。
+#
+# 与服务器上的 /etc/cron.d/octop-git-sync 互补：
+#   - 本工作流：推送到 GitHub 后即时同步（秒级）；
+#   - cron 任务：凌晨 01:15 兜底同步 + 异常时调用大模型初判。
+#
+# 需要在仓库 Secrets 里配置：
+#   CNB_TOKEN     必填。CNB 平台的访问令牌（Personal Access Token）。
+#   CNB_USERNAME  选填，默认 cnb-ci（CNB 用 token 做密码，用户名通常不校验）。
+#   CNB_REPO      选填，默认 mengxa.com/Octop。
+#
+# 同步范围：全部分支 + 全部标签。只做快进推送，不带 --force；
+# 若 CNB 端被直接改动导致分叉，推送会被拒绝、工作流变红，交由人工判断。
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+  schedule:
+    # 02:30 UTC+8（每天兜底一次）
+    - cron: '30 18 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-to-cnb
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Mirror all branches and tags to CNB
+    runs-on: ubuntu-latest
+    if: ${{ secrets.CNB_TOKEN != '' }}
+    steps:
+      - name: Checkout (full history, all refs)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mirror to CNB
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+          CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
+          CNB_REPO: ${{ secrets.CNB_REPO }}
+        run: |
+          set -euo pipefail
+
+          repo="${CNB_REPO:-mengxa.com/Octop}"
+          user="${CNB_USERNAME:-cnb-ci}"
+          url="https://${user}:${CNB_TOKEN}@cnb.cool/${repo}.git"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add cnb "$url"
+
+          # 用 ls-remote 按 SHA 枚举，避免浅克隆/HEAD 带来的引用缺失。
+          # 逐 ref 推送：任何一个被拒绝就整体失败（红），不自动覆盖 CNB 上的改动。
+          echo "::group::pushing branches"
+          git ls-remote --heads origin | while read -r sha ref; do
+            branch="${ref#refs/heads/}"
+            echo "push branch ${branch}"
+            git push cnb "${sha}:refs/heads/${branch}"
+          done
+          echo "::endgroup::"
+
+          echo "::group::pushing tags"
+          git ls-remote --tags origin | while read -r sha ref; do
+            case "$ref" in
+              refs/tags/*'^{}') continue ;;   # 附注标签的解引用项，随标签本体一起推
+            esac
+            tag="${ref#refs/tags/}"
+            echo "push tag ${tag}"
+            git push cnb "${sha}:refs/tags/${tag}"
+          done
+          echo "::endgroup::"
+
+          echo "::group::verifying"
+          git ls-remote --heads --tags cnb | sort > /tmp/cnb-refs.txt
+          git ls-remote --heads --tags origin | sort > /tmp/origin-refs.txt
+          if ! diff -u /tmp/origin-refs.txt /tmp/cnb-refs.txt; then
+            echo "::error::CNB 与 origin 的引用仍不一致，请人工介入"
+            exit 1
+          fi
+          echo "::endgroup::"
+          echo "CNB 镜像完成：全部分支与标签已对齐。"
