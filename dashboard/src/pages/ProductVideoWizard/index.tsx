@@ -76,6 +76,31 @@ const PLATFORM_KEYS = [
 ] as const;
 import styles from "./index.module.less";
 
+/** Aspect ratio a platform expects for short-form video. */
+type VideoFormat = VideoPlanRequest["format"];
+
+/**
+ * Vertical-first apps take 9:16; long-form video sites take 16:9. Kept in one
+ * place so the ratio picker can follow the platform selection instead of
+ * silently producing a single ratio for a mixed list.
+ */
+const PLATFORM_FORMATS: Record<(typeof PLATFORM_KEYS)[number], VideoFormat> = {
+  douyin: "portrait",
+  xiaohongshu: "portrait",
+  channels: "portrait",
+  kuaishou: "portrait",
+  bilibili: "landscape",
+  tiktok: "portrait",
+  instagram: "portrait",
+  youtube: "landscape",
+};
+
+const FORMAT_LABELS: Record<VideoFormat, string> = {
+  portrait: "9:16",
+  landscape: "16:9",
+  square: "1:1",
+};
+
 const initialRequest: VideoPlanRequest = {
   instructions: "",
   format: "portrait",
@@ -401,6 +426,59 @@ export default function ProductVideoWizardPage() {
     );
     return [...presets, ...extra].map((value) => ({ value, label: value }));
   }, [t, brief.platform]);
+
+  /** Ratio buckets for the platforms currently selected. */
+  const platformFormatGroups = useMemo(() => {
+    const selected = new Set(splitPlatforms(brief.platform));
+    const groups: Record<VideoFormat, string[]> = {
+      portrait: [],
+      landscape: [],
+      square: [],
+    };
+    (Object.keys(PLATFORM_FORMATS) as (typeof PLATFORM_KEYS)[number][]).forEach(
+      (key) => {
+        const label = t(`videoWizard.platforms.${key}`);
+        if (selected.has(label)) groups[PLATFORM_FORMATS[key]].push(label);
+      },
+    );
+    return groups;
+  }, [brief.platform, t]);
+
+  const requiredFormats = useMemo(
+    () =>
+      (Object.keys(platformFormatGroups) as VideoFormat[]).filter(
+        (format) => platformFormatGroups[format].length > 0,
+      ),
+    [platformFormatGroups],
+  );
+
+  /**
+   * One ratio → tell the user it followed their platforms. Several ratios →
+   * spell out which platform wants which ratio, so nobody ships a 9:16 file to
+   * a 16:9 site again.
+   */
+  const formatNote = useMemo(() => {
+    if (requiredFormats.length === 0) return "";
+    if (requiredFormats.length === 1) {
+      return t("videoWizard.formatAuto", {
+        format: FORMAT_LABELS[requiredFormats[0]],
+      });
+    }
+    const groups = requiredFormats
+      .map((format) =>
+        t("videoWizard.formatConflictGroup", {
+          format: FORMAT_LABELS[format],
+          platforms: platformFormatGroups[format].join(
+            t("videoWizard.platformSeparator"),
+          ),
+        }),
+      )
+      .join(t("videoWizard.formatGroupSeparator"));
+    return t("videoWizard.formatConflict", {
+      groups,
+      current: FORMAT_LABELS[request.format],
+    });
+  }, [requiredFormats, platformFormatGroups, request.format, t]);
   const changeRequest = (patch: Partial<VideoPlanRequest>) => {
     setRequest((current) => ({ ...current, ...patch }));
     setSaved(false);
@@ -1175,11 +1253,30 @@ export default function ProductVideoWizardPage() {
                         <Checkbox.Group
                           className={styles.platformOptions}
                           value={splitPlatforms(brief.platform)}
-                          onChange={(values) =>
-                            changeBrief({
-                              platform: joinPlatforms(values as string[]),
-                            })
-                          }
+                          onChange={(values) => {
+                            const next = values as string[];
+                            changeBrief({ platform: joinPlatforms(next) });
+                            const selected = new Set(next);
+                            const formats = new Set<VideoFormat>();
+                            (
+                              Object.keys(
+                                PLATFORM_FORMATS,
+                              ) as (typeof PLATFORM_KEYS)[number][]
+                            ).forEach((key) => {
+                              if (
+                                selected.has(t(`videoWizard.platforms.${key}`))
+                              ) {
+                                formats.add(PLATFORM_FORMATS[key]);
+                              }
+                            });
+                            // Every chosen platform agrees on one ratio: follow it.
+                            if (
+                              formats.size === 1 &&
+                              [...formats][0] !== request.format
+                            ) {
+                              changeRequest({ format: [...formats][0] });
+                            }
+                          }}
                           options={platformOptions}
                         />
                       </div>
@@ -1244,6 +1341,17 @@ export default function ProductVideoWizardPage() {
                             { value: "square", label: "1:1" },
                           ]}
                         />
+                        {formatNote && (
+                          <span
+                            className={
+                              requiredFormats.length > 1
+                                ? styles.formatHintWarning
+                                : styles.formatHint
+                            }
+                          >
+                            {formatNote}
+                          </span>
+                        )}
                       </label>
                     </div>
                     <Checkbox
