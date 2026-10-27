@@ -419,6 +419,32 @@ describe("product video wizard", () => {
     );
   }, 15000);
 
+  it("follows the platform selection and warns when ratios conflict", async () => {
+    const user = userEvent.setup();
+    api.projects.mockResolvedValue({ items: [project] });
+    api.getStoryboard.mockResolvedValue(savedDraft);
+    renderWizard("/product-library/video-wizard?project=project1");
+    await screen.findByText("videoWizard.storyboardTitle");
+    await user.click(
+      screen.getByRole("button", { name: "videoWizard.previous" }),
+    );
+    await screen.findByText("videoWizard.requirementsTitle");
+
+    // A long-form platform alone switches the ratio to 16:9.
+    await user.click(
+      screen.getByRole("checkbox", { name: "videoWizard.platforms.bilibili" }),
+    );
+    expect(screen.getByRole("radio", { name: "16:9" })).toBeChecked();
+
+    // Adding a vertical platform creates a conflict; the ratio is kept and a
+    // note explains which platform wants which ratio.
+    await user.click(
+      screen.getByRole("checkbox", { name: "videoWizard.platforms.douyin" }),
+    );
+    expect(screen.getByRole("radio", { name: "16:9" })).toBeChecked();
+    expect(screen.getByText("videoWizard.formatConflict")).toBeInTheDocument();
+  }, 15000);
+
   it("blocks desktop confirmation until the standalone components are installed", async () => {
     api.projects.mockResolvedValue({ items: [project] });
     api.getStoryboard.mockResolvedValue(savedDraft);
