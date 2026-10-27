@@ -130,6 +130,10 @@ async def run_foreground(
     if plan.dual_listeners:
         assert plan.https_port is not None
         assert plan.http_port is not None
+        # access_log=False: the app logs one access line per request itself
+        # (api/middleware/access_log.py), without the query string.  Uvicorn's
+        # own access log would only duplicate it — and it writes the query
+        # string, which can carry an access token.
         https_config = uvicorn.Config(
             app,
             host=plan.bind_host,
@@ -140,6 +144,7 @@ async def run_foreground(
             ssl_certfile=plan.ssl_certfile,
             ssl_keyfile=plan.ssl_keyfile,
             ws_max_size=BRIDGE_WS_MAX_BYTES,
+            access_log=False,
         )
         companion = build_http_companion_app(https_port=plan.https_port)
         http_config = uvicorn.Config(
@@ -160,6 +165,7 @@ async def run_foreground(
             plan.http_port,
         )
     else:
+        # See the comment above: the app writes its own access log.
         single_config = uvicorn.Config(
             app,
             host=plan.bind_host,
@@ -170,6 +176,7 @@ async def run_foreground(
             ssl_certfile=plan.ssl_certfile,
             ssl_keyfile=plan.ssl_keyfile,
             ws_max_size=BRIDGE_WS_MAX_BYTES,
+            access_log=False,
         )
         servers.append(uvicorn.Server(single_config))
 

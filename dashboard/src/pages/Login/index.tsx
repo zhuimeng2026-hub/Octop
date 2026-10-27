@@ -158,7 +158,10 @@ export default function LoginPage() {
       if (event.data.access_token) {
         setAuthToken(event.data.access_token, event.data.remember ?? true);
       }
-      window.location.replace(event.data.redirect || withBase("/chat"));
+      // The redirect arrives as an internal path ("/chat"); a hard navigation
+      // bypasses the router's basename, so the deployment sub-path must be
+      // applied here or a sub-path deployment lands outside it (404).
+      window.location.replace(withBase(event.data.redirect || "/chat"));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);

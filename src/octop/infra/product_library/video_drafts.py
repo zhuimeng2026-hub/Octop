@@ -3,6 +3,7 @@
 Drafts live in OCTOP_HOME/product-library/video-drafts and are not source snapshots.
 Production database-backed drafts may replace this implementation later.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,9 +23,14 @@ def draft_path(home: Path, owner_id: int, project_id: str) -> Path:
 
 
 def save_draft(
-    home: Path, owner_id: int, project_id: str,
-    snapshot: dict[str, Any], request: VideoPlanRequest,
-    script: dict[str, Any], *, confirmed: bool = False,
+    home: Path,
+    owner_id: int,
+    project_id: str,
+    snapshot: dict[str, Any],
+    request: VideoPlanRequest,
+    script: dict[str, Any],
+    *,
+    confirmed: bool = False,
 ) -> dict[str, Any]:
     validated = validate_script(script, snapshot, request)
     record = {

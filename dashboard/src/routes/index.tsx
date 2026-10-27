@@ -8,6 +8,9 @@ const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
 const SkillPackagesPage = lazy(() => import("../pages/SkillPackages"));
 const KnowledgeBasesPage = lazy(() => import("../pages/KnowledgeBases"));
 const ProductLibraryPage = lazy(() => import("../pages/ProductLibrary"));
+const ProductVideoWizardPage = lazy(
+  () => import("../pages/ProductVideoWizard"),
+);
 const BridgePage = lazy(() => import("../pages/Settings/Bridge"));
 const PersonalizationPage = lazy(
   () => import("../pages/Agent/Personalization"),
@@ -56,6 +59,7 @@ export const pathToKey: Record<string, string> = {
   "/skill-packages": "skill-packages",
   "/knowledge-bases": "knowledge-bases",
   "/product-library": "product-library",
+  "/product-library/video-wizard": "product-library",
   "/bridge": "bridge",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
@@ -158,6 +162,10 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/skill-packages", element: <SkillPackagesPage /> },
   { path: "/knowledge-bases", element: <KnowledgeBasesPage /> },
   { path: "/product-library", element: <ProductLibraryPage /> },
+  {
+    path: "/product-library/video-wizard",
+    element: <ProductVideoWizardPage />,
+  },
   { path: "/bridge", element: <BridgePage /> },
   {
     path: "/personalization/acp",

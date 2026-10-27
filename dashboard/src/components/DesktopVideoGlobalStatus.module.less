@@ -1,0 +1,50 @@
+.status {
+  position: fixed;
+  z-index: 1000;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 12px 14px;
+  border: 1px solid var(--fn-border, #e8e8e8);
+  border-radius: 12px;
+  background: var(--fn-bg-container, #fff);
+  box-shadow: 0 8px 28px rgb(16 24 40 / 14%);
+}
+
+.spinner {
+  flex: 0 0 auto;
+  color: var(--fn-color-primary, #f04e70);
+  animation: spin 1.2s linear infinite;
+}
+
+.copy {
+  display: flex;
+  min-width: 110px;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  span {
+    color: var(--fn-text-secondary, #667085);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 560px) {
+  .status {
+    right: 10px;
+    bottom: 10px;
+    gap: 8px;
+    padding: 9px 10px;
+  }
+  .copy {
+    min-width: 78px;
+  }
+}

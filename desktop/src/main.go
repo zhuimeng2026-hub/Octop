@@ -28,6 +28,10 @@ const trayDoubleClick = 400 * time.Millisecond
 // environment variable nor a bundled local runtime. Empty means local mode.
 var defaultServerURL string
 
+// defaultVideoComponentsURL is an optional installer URL exposed to the UI.
+// The native shell never downloads or executes that installer.
+var defaultVideoComponentsURL string
+
 // resolveRemoteDashboardURL picks the remote dashboard target for boot: the
 // OCTOP_DESKTOP_URL environment variable wins over the build-time default
 // (baked in via -ldflags "-X main.defaultServerURL=..."); an empty result
@@ -57,6 +61,8 @@ type App struct {
 	ownsListenPort bool
 	webviewReady   bool
 	pendingURL     string
+	video          *videoManager
+	videoNonce     string
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -65,6 +71,10 @@ func (a *App) ServiceStartup(context.Context, application.ServiceOptions) error 
 
 func (a *App) ServiceShutdown() error {
 	a.sleep.stop()
+	if a.video != nil {
+		a.video.shutdownEnvironment()
+		a.video.interrupt()
+	}
 	a.mu.Lock()
 	cmd := a.cmd
 	a.cmd = nil
@@ -189,14 +199,19 @@ func (a *App) boot() {
 		locale = a.store.get().Locale
 	}
 	if url := resolveRemoteDashboardURL(); url != "" {
+		navLogf("boot: remote target %s", redactURL(url))
 		a.setStatus(desktopText(locale, copyStatusConnecting))
+		started := time.Now()
 		if err := waitHealth(locale, url, 60*time.Second); err != nil {
+			navLogf("boot: health probe failed after %s: %v", time.Since(started).Round(time.Millisecond), err)
 			a.setStatus(err.Error())
 			return
 		}
+		navLogf("boot: health probe ok in %s, showing %s", time.Since(started).Round(time.Millisecond), redactURL(url))
 		a.showDashboard(url)
 		return
 	}
+	navLogf("boot: no remote target, starting bundled runtime")
 	a.setStatus(desktopText(locale, copyStatusCheckingRuntime))
 	if err := ensurePortable(locale, a.setStatus); err != nil {
 		a.setStatus(err.Error())
@@ -268,8 +283,10 @@ func (a *App) navigate(base string) {
 	}
 	a.mu.Unlock()
 	if !ready {
+		navLogf("navigate: deferred %s (webview not ready)", redactURL(base))
 		return
 	}
+	navLogf("navigate: set URL %s", redactURL(base))
 	a.window.SetURL(base)
 }
 
@@ -294,6 +311,9 @@ func (a *App) showDashboard(base string) {
 		return
 	}
 	a.navigate(base)
+	if a.video == nil {
+		a.video = newVideoManager(base)
+	}
 	a.scheduleDragOverlay()
 	s := a.store.get()
 	go func() {
@@ -360,6 +380,14 @@ func (a *App) installDragOverlay() {
 	}
 	a.window.ExecJS(dragOverlayJS())
 	a.window.ExecJS(fileDropJS())
+	a.installVideoBridge()
+}
+
+func (a *App) installVideoBridge() {
+	if a.window == nil || a.video == nil || a.videoNonce == "" {
+		return
+	}
+	a.window.ExecJS(videoBridgeJS(a.video.base, a.videoNonce))
 }
 
 func (a *App) scheduleDragOverlay() {
@@ -396,11 +424,17 @@ func main() {
 	}
 	defer lock.Close()
 
+	// Start the navigation log before anything can navigate: boot problems then
+	// leave a trace even when no window is ever shown.
+	navLog.start()
+	defer navLog.close()
+
 	store := &settingsStore{cur: loadSettings()}
 	api := &App{
 		store: store,
 		sleep: &sleepGuard{},
 	}
+	api.videoNonce, _ = randomToken()
 
 	app := application.New(application.Options{
 		Name:        "Octop",
@@ -427,6 +461,7 @@ func main() {
 	api.app = app
 	attachOpenURLEventListener(app, api.OpenExternal)
 	attachFileDropEventListener(app, api)
+	attachVideoEventListener(app, api, api.videoNonce)
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
 		applyAppIcon(app)
 		lock.listen(func() { application.InvokeAsync(api.showWindow) })
@@ -443,6 +478,9 @@ func main() {
 		BackgroundColour:     application.NewRGB(247, 248, 250),
 	})
 	api.window = win
+	// Navigation log: records what the webview really loads (and what the page
+	// itself reports about failed requests). Appended to ~/.octop/logs/.
+	armNavigationLog(win)
 	// Arm the readiness listener before app.Run(): the first navigation is
 	// what proves the webview is usable, and the event is delivered by the
 	// app's event loop, which only starts there. Arming it later — from
