@@ -197,6 +197,19 @@
 .formGrid :global(.ant-input-number) {
   width: 100%;
 }
+/* Platform/ratio mismatch notes; scoped so they sit right under the control. */
+.formatHint,
+.formatHintWarning {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.formatHint {
+  color: var(--fn-text-tertiary, #98a2b3);
+}
+.formatHintWarning {
+  color: var(--fn-warning, #d97706);
+}
 .platformField {
   grid-column: 1 / -1;
   display: flex;
