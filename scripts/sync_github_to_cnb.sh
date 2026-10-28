@@ -28,7 +28,15 @@ STATE_DIR="${STATE_DIR:-$REPO_DIR/.git-sync}"
 ANOMALY_DIR="$STATE_DIR/anomalies"
 REPORT="$STATE_DIR/latest-report.md"
 LOCK_FILE="$STATE_DIR/sync.lock"
-CLAUDE_BIN="${CLAUDE_BIN:-/root/.nvm/versions/node/v20.20.2/bin/claude}"
+# claude CLI 随 nvm 切换版本，写死版本号路径会永远找不到（实测 v20.20.2 已不存在）。
+# 优先用 PATH 里的 claude，其次扫 nvm 版本目录取最高版本。
+if [ -z "${CLAUDE_BIN:-}" ]; then
+    if command -v claude >/dev/null 2>&1; then
+        CLAUDE_BIN="$(command -v claude)"
+    else
+        CLAUDE_BIN="$(ls -1d /root/.nvm/versions/node/*/bin/claude 2>/dev/null | sort -V | tail -1)"
+    fi
+fi
 CLAUDE_TIMEOUT="${CLAUDE_TIMEOUT:-300}"
 TRIAGE_MODEL="${TRIAGE_MODEL:-sonnet}"
 
