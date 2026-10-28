@@ -9,6 +9,7 @@ on:
       - "src/octop/api/routers/product_library.py"
       - "tests/unit/db/test_product*.py"
       - ".github/workflows/product-library-mvp.yml"
+      - "docs/design/product-library-mvp.md"
   workflow_dispatch:
 
 permissions:
