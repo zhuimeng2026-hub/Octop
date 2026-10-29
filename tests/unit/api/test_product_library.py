@@ -121,6 +121,39 @@ async def test_other_user_cannot_export_package(
 
 
 @pytest.mark.asyncio
+async def test_delete_project_drops_record_and_draft_but_keeps_product_assets(
+    library: SimpleNamespace,
+) -> None:
+    from octop.api.routers import product_library
+    from octop.infra.product_library.video_drafts import draft_path
+
+    draft = draft_path(library.server.services.paths.root, 1, library.project["id"])
+    draft.parent.mkdir(parents=True, exist_ok=True)
+    draft.write_text("{}", encoding="utf-8")
+
+    await product_library.delete_project(
+        library.project["id"], user=SimpleNamespace(id=1), server=library.server
+    )
+
+    assert library.repo.get_project(1, library.project["id"]) is None
+    assert not draft.exists()
+    remaining = [row["id"] for row in library.repo.list_assets(1, library.project["product_id"])]
+    assert remaining == [library.asset["id"]]
+
+
+@pytest.mark.asyncio
+async def test_other_user_cannot_delete_a_project(library: SimpleNamespace) -> None:
+    from octop.api.routers import product_library
+
+    with pytest.raises(OctopError) as denied:
+        await product_library.delete_project(
+            library.project["id"], user=SimpleNamespace(id=2), server=library.server
+        )
+    assert denied.value.code is ErrorCode.NOT_FOUND
+    assert library.repo.get_project(1, library.project["id"]) is not None
+
+
+@pytest.mark.asyncio
 async def test_package_download_needs_no_workspace_and_cleans_temporary_file(
     library: SimpleNamespace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

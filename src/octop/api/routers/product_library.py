@@ -23,7 +23,7 @@ from octop.infra.product_library.service import (
     ProductLibraryService,
     project_payload,
 )
-from octop.infra.product_library.video_drafts import load_draft, save_draft
+from octop.infra.product_library.video_drafts import delete_draft, load_draft, save_draft
 from octop.infra.product_library.video_planner import VideoPlanRequest, build_video_plan
 
 router = APIRouter()
@@ -280,6 +280,19 @@ async def list_projects(
     user: Any = Depends(current_user), server: Any = Depends(get_server)
 ) -> dict[str, Any]:
     return {"items": _service(server).list_projects(user.id)}
+
+
+@router.delete(
+    "/product-library/projects/{project_id}",
+    status_code=204,
+    summary="Delete one of my video projects",
+)
+async def delete_project(
+    project_id: str, user: Any = Depends(current_user), server: Any = Depends(get_server)
+) -> None:
+    _service(server).delete_project(user.id, project_id)
+    # Product assets stay because the snapshot only referenced them; the draft is ours.
+    await asyncio.to_thread(delete_draft, server.services.paths.root, user.id, project_id)
 
 
 @router.post(

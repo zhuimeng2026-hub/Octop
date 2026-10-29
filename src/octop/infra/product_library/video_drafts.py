@@ -65,3 +65,8 @@ def load_draft(home: Path, owner_id: int, project_id: str) -> dict[str, Any] | N
     if not isinstance(data, dict) or data.get("project_id") != project_id:
         raise ValueError("invalid persisted draft")
     return data
+
+
+def delete_draft(home: Path, owner_id: int, project_id: str) -> None:
+    """Drop the storyboard draft of a removed project; missing drafts are fine."""
+    draft_path(home, owner_id, project_id).unlink(missing_ok=True)
