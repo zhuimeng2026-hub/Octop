@@ -124,6 +124,10 @@ export const productLibraryApi = {
     requestBlob(`/product-library/assets/${id}/download`),
   projects: () =>
     request<{ items: ProductProject[] }>("/product-library/projects"),
+  deleteProject: (projectId: string) =>
+    request<void>(`/product-library/projects/${projectId}`, {
+      method: "DELETE",
+    }),
   downloadPackage: (projectId: string) =>
     requestBlob(`/product-library/projects/${projectId}/package`),
   createProject: (body: {

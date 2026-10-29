@@ -106,6 +106,7 @@ export default function ProductLibraryPage() {
   const [projectBusy, setProjectBusy] = useState(false);
   const [preparingId, setPreparingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
 
   const selectProduct = (product: Product | null) => {
     if (activeProductId.current !== product?.id) {
@@ -379,6 +380,18 @@ export default function ProductLibraryPage() {
       message.error(t("productLibrary.prepareFailed"));
     } finally {
       setPreparingId(null);
+    }
+  };
+  const removeProject = async (project: ProductProject) => {
+    setDeletingProjectId(project.id);
+    try {
+      await productLibraryApi.deleteProject(project.id);
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      message.success(t("productLibrary.projectDeleted"));
+    } catch {
+      message.error(t("productLibrary.projectDeleteFailed"));
+    } finally {
+      setDeletingProjectId(null);
     }
   };
   const downloadPackage = async (project: ProductProject) => {
@@ -983,6 +996,18 @@ export default function ProductLibraryPage() {
                     </Button>
                   </Space>
                 </details>
+                <Button
+                  danger
+                  loading={deletingProjectId === p.id}
+                  onClick={() =>
+                    Modal.confirm({
+                      title: t("productLibrary.deleteProjectConfirm"),
+                      onOk: () => removeProject(p),
+                    })
+                  }
+                >
+                  {t("productLibrary.delete")}
+                </Button>
               </div>
             ))
           ) : (

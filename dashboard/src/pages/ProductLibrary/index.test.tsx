@@ -20,6 +20,7 @@ const api = vi.hoisted(() => ({
   assets: vi.fn(),
   upload: vi.fn(),
   createProduct: vi.fn(),
+  deleteProject: vi.fn(),
   downloadAsset: vi.fn().mockResolvedValue(new Blob()),
 }));
 vi.mock("../../api/modules/productLibrary", async () => {
@@ -131,5 +132,33 @@ describe("product library MVP", () => {
     await user.click(screen.getByRole("button", { name: "productLibrary.upload" }));
     await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(3));
     expect(api.upload.mock.calls[2][2]).toBe("reference");
+  });
+
+  it("deletes a project row only after the confirmation dialog is accepted", async () => {
+    const user = userEvent.setup();
+    const project = {
+      id: "project-1",
+      product_id: product.id,
+      name: "Autumn launch",
+      snapshot: { product, assets: [], version: 1 },
+      created_at: 0,
+    };
+    api.products.mockResolvedValue({ items: [product] });
+    api.projects.mockResolvedValue({ items: [project] });
+    api.deleteProject.mockResolvedValue(undefined);
+    renderPage();
+
+    const continueButtons = await screen.findAllByRole("button", { name: "productLibrary.continueVideo" });
+    expect(continueButtons).toHaveLength(1);
+    expect(api.deleteProject).not.toHaveBeenCalled();
+
+    const deleteButtons = screen.getAllByRole("button", { name: "productLibrary.delete" });
+    await user.click(deleteButtons[deleteButtons.length - 1]);
+    await user.click(await screen.findByRole("button", { name: "OK" }));
+
+    await waitFor(() => expect(api.deleteProject).toHaveBeenCalledWith("project-1"));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "productLibrary.continueVideo" })).not.toBeInTheDocument(),
+    );
   });
 });
