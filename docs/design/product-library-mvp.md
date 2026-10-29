@@ -85,3 +85,32 @@
 - 已检查目标分支中存在上述代码与工作流。当前连接器的 commit status 返回空列表，按提交查询的工作流运行也未返回结果（该接口仅覆盖 PR 触发的运行）；**不能据此判定 CI 成功或失败**。因此前端构建、定向测试与后端回归仍应以 GitHub Actions 实际运行记录为准，不标记为已通过。
 - 分支与主干已有明显分叉：本次复核时相对 `main` 领先 16、落后 58 个提交。按照本轮约定不合并主干；未来合并前必须先处理基线差异与回归风险。
 - 真实 Windows 安装、线上 LLM、Remotion 实际 MP4 成片尚未在本次核验中完成，不属于已验收项目。
+
+## 11. 本地验收记录（2026-10-29）
+
+复核基线：`5cae953b`（`fix/backend-mvp-v01-integration` 远端头，相对设计基线 `d16bd024` 前进 33 个提交）。复核方式：本地重新编译前端、启动分支服务端、用无头浏览器实际走通产品库与视频向导。
+
+### 11.1 复核中发现并修复的两个问题
+
+1. **定向组件测试在 jsdom 下必然失败**（阻断 CI 门禁）。`dashboard/src/pages/ProductLibrary/index.tsx` 在 effect 清理中调用 `URL.revokeObjectURL`，而 jsdom 25 未实现 `URL.createObjectURL` / `URL.revokeObjectURL`；`Array.prototype.forEach` 即使数组为空也会校验回调可调用性，因此该行无条件抛 `TypeError`。旧代码已有同样写法，只是本轮才第一次为该页面补测试，问题才暴露。修复方式：在 `dashboard/src/test/setup.ts` 补上两个 API 的桩，不改产品代码。
+2. **向导用例受默认 5 秒超时影响**。产品库与向导用例需要真实渲染 antd + React 树，单例耗时 6–8 秒，超过 vitest 默认 `testTimeout: 5000`，在慢机器上必然超时。修复方式：`dashboard/vitest.config.ts` 提升 `testTimeout` 至 30000。
+
+### 11.2 检查结果
+
+| 检查项 | 命令 | 结果 |
+| --- | --- | --- |
+| TypeScript 检查 + 生产构建 | `npm run build`（`tsc -b && vite build`） | PASS，产物输出 `src/octop/dashboard` |
+| 带 base path 的生产构建 | `BASE_URL=/videogen npm run build` | PASS，与 `~/.octop/config.json` 的 `base_path` 一致 |
+| 定向组件测试 | `npx vitest run src/pages/ProductLibrary src/pages/ProductVideoWizard` | PASS，3 个文件 18 个用例全通过 |
+| 后端隔离／持久化／快照／打包回归 | `uv run pytest -q tests/unit/db/test_product_library_repo.py tests/unit/db/test_product_package_export.py tests/unit/api/test_product_library.py` | PASS，13 个用例全通过 |
+| 对象 URL 相关用例回归 | `npx vitest run src/pages/Admin/Users/ProfileAvatar.test.tsx src/pages/Agent/Workspace/components/WorkspaceDrawer.test.tsx` | PASS，7 个用例全通过 |
+| 接口闭环（真实服务） | 创建产品 → 混合上传 → 快照 → 跨用户访问 → 未确认导出 | PASS，17 项断言全通过 |
+
+接口闭环在分支自带的服务实例上实际执行，跨用户读取产品、项目、素材与制作包均返回 404，未登录返回 401，未确认导出返回 409，快照在后续修改素材用途后保持不变。
+
+浏览器实测确认的交互：新建产品后自动选中并直接进入素材区；素材区显示“已选 N 个可用于视频的素材”；默认按扩展名自动分类（图片／视频→画面素材，文档→理解参考）；图片自动加载预览、视频按需“预 览”；取消旧素材后补传新素材，旧素材保持取消，新素材自动勾选；混合批次失败时提示“已上传 1 个文件”“1 个文件失败，已保留在队列中，可重试”，失败项仍留在队列且上传按钮可再次点击；跳转向导时携带 `?product=<id>` 与路由 state，向导重新读取后只保留所选且可用于视频的素材；已有项目“继续制作”仍优先进入原项目并停在第 2 步。控制台无异常。
+
+### 11.3 仍未验收
+
+真实 LLM 生成、Remotion 实际 MP4 出片、Windows 桌面安装包，仍需部署环境验收；本轮结论不覆盖这三项。
+
