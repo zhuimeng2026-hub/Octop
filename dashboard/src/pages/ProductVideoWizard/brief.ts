@@ -31,7 +31,10 @@ export function splitPlatforms(raw: string): string[] {
 
 /** Join selected platforms into the natural-language string stored in the brief. */
 export function joinPlatforms(values: string[]): string {
-  return values.map((value) => value.trim()).filter(Boolean).join("、");
+  return values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join("、");
 }
 
 export function encodeVideoBrief(brief: VideoBrief): string {

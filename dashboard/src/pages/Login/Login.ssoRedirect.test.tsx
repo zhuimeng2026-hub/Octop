@@ -47,9 +47,7 @@ const ORIGIN = "https://example.test";
 
 function dispatchPopupMessage(data: Record<string, unknown>) {
   act(() => {
-    window.dispatchEvent(
-      new MessageEvent("message", { data, origin: ORIGIN }),
-    );
+    window.dispatchEvent(new MessageEvent("message", { data, origin: ORIGIN }));
   });
 }
 

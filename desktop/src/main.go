@@ -412,8 +412,7 @@ func (a *App) requestQuit() {
 func main() {
 	// A desktop instance owns the GUI and its child server for this user.
 	// Reject a second launch before constructing windows or spawning Python.
-	// On Linux this is the flock-based lock; Windows and macOS rely on Wails'
-	// SingleInstance support, which runs inside application.New below.
+	// Windows uses a named event, Linux a flock; macOS uses Wails below.
 	lock, err := acquireInstanceLock()
 	if err != nil {
 		if errors.Is(err, errInstanceRunning) {
@@ -455,10 +454,8 @@ func main() {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
-		// 进程互斥：Windows/macOS 由 Wails 的 SingleInstance 处理——第二个实例
-		// 退出前把启动参数通过 OnSecondInstanceLaunch 通知首实例，首实例把窗口
-		// 提到前台（双击图标/重开应聚焦而非多开）；Linux 该选项为 nil，改由
-		// instance_lock_linux.go 的 flock 保证互斥（见 singleinstance_*.go）。
+		// Windows/Linux acquire early locks; Wails also handles older Windows
+		// binaries and macOS launches.
 		SingleInstance: singleInstanceOptions(api),
 	})
 	api.app = app
@@ -467,6 +464,7 @@ func main() {
 	attachVideoEventListener(app, api, api.videoNonce)
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
 		applyAppIcon(app)
+		lock.listen(func() { application.InvokeAsync(api.showWindow) })
 	})
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{

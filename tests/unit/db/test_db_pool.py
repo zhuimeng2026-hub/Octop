@@ -111,7 +111,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
         sso_indexes = {
             r["name"] for r in conn.execute("PRAGMA index_list(sso_providers)").fetchall()
         }
-    assert v == 22
+    assert v == 26
     assert product is not None
     assert product["name"] == "Product"
     assert "login_failed_count" in cols
@@ -237,7 +237,7 @@ def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) ->
     with pool.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 22
+    assert v == 26
     assert "mcp_servers" in cron_cols
     assert "skill_packages" in {
         r["name"]
@@ -376,7 +376,7 @@ def test_stuck_version_6_without_permissions_column_is_repaired(tmp_path: Path) 
     with pool.connect() as conn:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
-    assert version == 22
+    assert version == 26
     assert "permissions" in cols
 
 
@@ -401,7 +401,7 @@ def test_schema_v10_without_projection_tables_is_repaired(tmp_path: Path) -> Non
         }
         kb_cols = {r["name"] for r in conn.execute("PRAGMA table_info(knowledge_bases)").fetchall()}
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert version == 22
+    assert version == 26
     assert {"thread_messages", "thread_history_projection", "trajectory_events"}.issubset(
         table_names
     )
@@ -436,7 +436,7 @@ def test_ahead_of_max_schema_version_clamps_to_max(tmp_path: Path) -> None:
             r["name"]
             for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert version == 22
+    assert version == 26
     assert "skill_package_id" in pkg_cols
     assert "published_expert_id" in pub_cols
     assert "user_invites" in invite_tables
@@ -475,15 +475,49 @@ def test_ahead_of_max_schema_version_repairs_product_library(tmp_path: Path) -> 
             "SELECT name FROM product_library_products WHERE product_id = 'product-1'"
         ).fetchone()
 
-    assert version == 22
+    assert version == 26
     assert {
         "product_library_products",
         "product_library_assets",
         "product_library_projects",
     }.issubset(tables)
-    assert version_after_repeat == 22
+    assert version_after_repeat == 26
     assert product is not None
     assert product["name"] == "Product"
+    pool.close()
+
+
+def test_upstream_v24_watermark_gets_product_library_reconcile(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "octop.db")
+    with pool.connect() as conn:
+        conn.executescript(
+            (
+                Path(__file__).resolve().parents[3]
+                / "src/octop/infra/db/migrations/001_initial.sql"
+            ).read_text()
+        )
+    run_migrations(pool)
+
+    with pool.connect() as conn:
+        conn.execute("DROP TABLE product_library_assets")
+        conn.execute("DROP TABLE product_library_projects")
+        conn.execute("DROP TABLE product_library_products")
+        conn.execute("UPDATE _schema_version SET version = 24")
+
+    run_migrations(pool)
+
+    with pool.connect() as conn:
+        version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+        tables = {
+            row["name"]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+    assert version == 26
+    assert {
+        "product_library_products",
+        "product_library_assets",
+        "product_library_projects",
+    }.issubset(tables)
     pool.close()
 
 
@@ -564,7 +598,7 @@ def test_pre_squash_schema_version_clamped_and_knowledge_tables_filled(
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-    assert version == 22
+    assert version == 26
     assert "permissions" in user_cols
     assert {
         "published_experts",
@@ -770,7 +804,7 @@ def test_v14_to_v15_adds_sso_provider_kind_without_rebuilding(tmp_path: Path) ->
         bound = conn.execute(
             "SELECT sso_provider_id FROM users WHERE username = 'sso-admin'"
         ).fetchone()[0]
-    assert version == 22
+    assert version == 26
     assert int(row["id"]) == int(provider_id)
     assert row["kind"] == "oidc"
     assert row["extra"] == "{}"

@@ -124,3 +124,6 @@ remotion/example/out/
 
 # Per-host pre-commit overrides
 .githooks/local.env
+
+# GitHub → CNB 镜像同步脚本的运行状态（报告 / 锁 / 异常归档）
+.git-sync/
