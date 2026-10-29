@@ -110,7 +110,18 @@
 
 浏览器实测确认的交互：新建产品后自动选中并直接进入素材区；素材区显示“已选 N 个可用于视频的素材”；默认按扩展名自动分类（图片／视频→画面素材，文档→理解参考）；图片自动加载预览、视频按需“预 览”；取消旧素材后补传新素材，旧素材保持取消，新素材自动勾选；混合批次失败时提示“已上传 1 个文件”“1 个文件失败，已保留在队列中，可重试”，失败项仍留在队列且上传按钮可再次点击；跳转向导时携带 `?product=<id>` 与路由 state，向导重新读取后只保留所选且可用于视频的素材；已有项目“继续制作”仍优先进入原项目并停在第 2 步。控制台无异常。
 
-### 11.3 仍未验收
+### 11.3 定向 CI 工作流未注册（阻断自动门禁）
+
+第 10 节记录“无法判定 CI 成功或失败”，本轮查明原因：`.github/workflows/product-library-mvp.yml` 只存在于本分支，**未落到任何仓库的默认分支**（`zhuimeng2026-hub/Octop` 与 `TencentCloud/Octop` 的默认分支都是 `main`，两者 `main` 上均无该文件）。GitHub 只注册默认分支上存在的工作流，因此该工作流从未出现在 Actions 列表里，push 到目标分支也不会触发——`actions/runs?branch=fix/backend-mvp-v01-integration` 返回 `total_count=0`，两个仓库的 `actions/workflows` 列表均无 `Product Library MVP`。
+
+因此第 7 节的“推送后检查结果”目前无法由 GitHub Actions 自动完成。可选处置：把该工作流文件单独落到 `main` 以完成注册；或继续以本地门禁为准（本轮已按此执行并记录）。在此之前，**不得把“CI 已通过”当作本分支的验收结论**。
+
+### 11.4 仍未验收
 
 真实 LLM 生成、Remotion 实际 MP4 出片、Windows 桌面安装包，仍需部署环境验收；本轮结论不覆盖这三项。
+
+### 11.5 提交与推送
+
+修复提交 `1342030f`（`fix(test): 补齐 jsdom 对象 URL 桩并放宽用例超时`）已推送到 `fork/fix/backend-mvp-v01-integration`。该提交通过仓库自带的 pre-commit 门禁：`make format`、`make lint`、`make typecheck`（mypy 610 个源文件无问题）、`make test-smoke`（73 passed / 1 skipped）、`make format-frontend` 与 dashboard 生产构建全部通过。
+
 
