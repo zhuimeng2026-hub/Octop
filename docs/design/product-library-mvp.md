@@ -110,15 +110,27 @@
 
 浏览器实测确认的交互：新建产品后自动选中并直接进入素材区；素材区显示“已选 N 个可用于视频的素材”；默认按扩展名自动分类（图片／视频→画面素材，文档→理解参考）；图片自动加载预览、视频按需“预 览”；取消旧素材后补传新素材，旧素材保持取消，新素材自动勾选；混合批次失败时提示“已上传 1 个文件”“1 个文件失败，已保留在队列中，可重试”，失败项仍留在队列且上传按钮可再次点击；跳转向导时携带 `?product=<id>` 与路由 state，向导重新读取后只保留所选且可用于视频的素材；已有项目“继续制作”仍优先进入原项目并停在第 2 步。控制台无异常。
 
-### 11.3 定向 CI 工作流未注册（阻断自动门禁）
+### 11.3 定向 CI 工作流不运行（仓库级 Actions 被禁用）
 
-第 10 节记录“无法判定 CI 成功或失败”，本轮查明原因：`.github/workflows/product-library-mvp.yml` 只存在于本分支，**未落到任何仓库的默认分支**（`zhuimeng2026-hub/Octop` 与 `TencentCloud/Octop` 的默认分支都是 `main`，两者 `main` 上均无该文件）。GitHub 只注册默认分支上存在的工作流，因此该工作流从未出现在 Actions 列表里，push 到目标分支也不会触发——`actions/runs?branch=fix/backend-mvp-v01-integration` 返回 `total_count=0`，两个仓库的 `actions/workflows` 列表均无 `Product Library MVP`。
+第 10 节记录“无法判定 CI 成功或失败”。2026-10-30 复查，原结论“文件不在默认分支所以未注册”**不成立**：
 
-因此第 7 节的“推送后检查结果”目前无法由 GitHub Actions 自动完成。可选处置：把该工作流文件单独落到 `main` 以完成注册；或继续以本地门禁为准（本轮已按此执行并记录）。在此之前，**不得把“CI 已通过”当作本分支的验收结论**。
+- 该工作流随 PR #14 合入 `main` 后，GitHub 已将它注册为 `active`（workflow id `400785780`），说明文件本身合法，注册不是问题所在。
+- 手动触发 `gh workflow run "Product Library MVP"` 直接返回 **HTTP 422 `Actions has been disabled for this repository`** —— 仓库级 Actions 被关闭，任何工作流都不会运行。另一佐证：`gh run list` 里最近一次运行停在 2026-10-22，10-27～10-29 对 `main` 的多次推送同样没有产生任何 run。
+- 当前用于操作的账号对 `zhuimeng2026-hub/Octop` 只有 `push` 权限（`admin=false`），`GET /repos/{owner}/{repo}/actions/permissions` 返回 403，无法远程开启。
 
-### 11.4 仍未验收
+因此第 7 节的“推送后检查结果”目前仍无法由 GitHub Actions 自动完成。处置：
 
-真实 LLM 生成、Remotion 实际 MP4 出片、Windows 桌面安装包，仍需部署环境验收；本轮结论不覆盖这三项。
+1. 由仓库 owner 在 Settings → Actions → General 打开 Actions（上游 `TencentCloud/Octop` 需一并确认）。
+2. 即使 Actions 恢复，**fork 默认不为 `push` / `schedule` 事件触发工作流**，只能靠 `pull_request` 或 `workflow_dispatch`；`mirror-to-cnb.yml` 已因此加了 `pull_request` 触发器。本文件已补上 `pull_request` 触发器（路径过滤与 `push` 保持一致）。
+3. 在此之前，**不得把“CI 已通过”当作本分支的验收结论**，以本地门禁为准。
+
+### 11.4 补验与仍未验收（2026-10-30）
+
+原“未验收”三项中前两项已在本地完成：
+
+- **真实 LLM 生成**：MiniMax-M3 返回 6 个镜头／21 秒，耗时 2.3 秒；卖点三条全部带入，表达限制生效（无“防水”类绝对化措辞），素材文件名未超出项目快照范围。
+- **Remotion 实际出片**：制作包内 `npm ci` + `node render.mjs --project <dir> --quality prod`，产出 1080×1920 @30fps / 630 帧 / 21.000s / h264 成片（draft 画质为 540×960）；标题卡、卖点卡、素材卡三类镜头均正确，中文无缺字、素材图无裁切。
+- **Windows 桌面安装包**：仍未验收。
 
 ### 11.5 提交与推送
 
