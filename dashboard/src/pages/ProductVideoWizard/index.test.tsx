@@ -647,6 +647,9 @@ describe("product video wizard", () => {
     );
     // Regenerating the picture keeps the audio settings.
     api.generateStoryboard.mockImplementation(async () => {
+      // A slow machine answers well after the click. The wizard must keep
+      // the picture it just produced instead of reloading the whole page.
+      await new Promise((resolve) => setTimeout(resolve, 400));
       const draft = {
         ...stored,
         narration_enabled: true,
@@ -659,6 +662,12 @@ describe("product video wizard", () => {
       screen.getByRole("button", { name: "videoWizard.generate" }),
     );
     await waitFor(() => expect(api.generateStoryboard).toHaveBeenCalled());
+    // The confirm button stays disabled while the regeneration is in flight.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "videoWizard.confirmMake" }),
+      ).not.toBeDisabled(),
+    );
     await user.click(
       screen.getByRole("button", { name: "videoWizard.confirmMake" }),
     );
