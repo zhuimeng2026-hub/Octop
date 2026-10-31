@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -13,6 +14,7 @@ from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.product_library import ProductLibraryRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.product_library.service import ProductLibraryService
+from octop.infra.product_library.video_planner import VideoPlanRequest
 from octop.infra.utils.paths import PathLayout
 
 
@@ -178,3 +180,57 @@ async def test_package_download_needs_no_workspace_and_cleans_temporary_file(
     assert response.background is not None
     await response.background()
     assert not package.exists()
+
+
+@pytest.mark.asyncio
+async def test_regenerating_a_storyboard_keeps_the_audio_settings(
+    library: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regenerating the picture must not silently drop the narration choice."""
+    from octop.api.routers import product_library
+    from octop.infra.product_library.video_drafts import draft_path, load_draft
+
+    plan_request = VideoPlanRequest()
+    script = {
+        "title": "Camera",
+        "fps": 30,
+        "width": 1080,
+        "height": 1920,
+        "scenes": [{"id": "s1", "type": "title", "duration": 3, "text": "Camera"}],
+    }
+    root = library.server.services.paths.root
+    draft_file = draft_path(root, 1, library.project["id"])
+    draft_file.parent.mkdir(parents=True, exist_ok=True)
+    draft_file.write_text(
+        json.dumps(
+            {
+                "project_id": library.project["id"],
+                "request": plan_request.model_dump(),
+                "script": script,
+                "confirmed": False,
+                "narration_enabled": True,
+                "narration_voice": "female-shaonv",
+                "bgm_id": "634",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    async def _plan(_snapshot, _request):
+        return {"generator": "llm", "script": script}
+
+    monkeypatch.setattr(product_library, "generate_model_plan", _plan)
+    result = await product_library.generate_storyboard(
+        library.project["id"],
+        plan_request,
+        user=SimpleNamespace(id=1),
+        server=library.server,
+    )
+    assert result["draft"]["narration_enabled"] is True
+    assert result["draft"]["narration_voice"] == "female-shaonv"
+    assert result["draft"]["bgm_id"] == "634"
+
+    stored = load_draft(root, 1, library.project["id"])
+    assert stored is not None
+    assert stored["narration_enabled"] is True
+    assert stored["narration_voice"] == "female-shaonv"

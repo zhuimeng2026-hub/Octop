@@ -202,8 +202,10 @@ export default function ProductVideoWizardPage() {
   const environmentReady =
     !environmentSupported || environmentStatus.state === "ready";
   // Narration needs the desktop client: the browser cannot hand an audio file
-  // to the renderer, and the local voice only exists on Windows.
-  const narrationAvailable = isDesktop && narrationOptions !== null;
+  // to the renderer, and the local voice only exists on Windows. When the
+  // account capabilities are still unknown the free tier is assumed, so the
+  // toggle stays usable instead of flickering.
+  const narrationAvailable = isDesktop;
   const environmentInstallerURL =
     desktopVideo.environmentInstallerURL &&
     /^https?:\/\//i.test(desktopVideo.environmentInstallerURL)
@@ -652,6 +654,8 @@ export default function ProductVideoWizardPage() {
       if (version !== requestVersion.current) return;
       setRequest(planRequest);
       setDraft(result.draft);
+      // The narration settings live beside the script, so regenerating the
+      // picture leaves them alone; keep the local copy as the source of truth.
       setSaved(true);
       setStep(3);
       navigate(

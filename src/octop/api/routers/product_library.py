@@ -413,8 +413,20 @@ async def generate_storyboard(
         raise HTTPException(
             status_code=502, detail="Video model unavailable or returned invalid script"
         ) from exc
+    # Regenerating the picture must not silently drop the audio settings the
+    # user already picked: they live beside the script, not inside it.
+    previous = await asyncio.to_thread(load_draft, server.services.paths.root, user.id, project_id)
     draft = await asyncio.to_thread(
-        save_draft, server.services.paths.root, user.id, project_id, snapshot, body, plan["script"]
+        save_draft,
+        server.services.paths.root,
+        user.id,
+        project_id,
+        snapshot,
+        body,
+        plan["script"],
+        narration_enabled=bool(previous.get("narration_enabled")) if previous else False,
+        narration_voice=(previous.get("narration_voice") or None) if previous else None,
+        bgm_id=(previous.get("bgm_id") or None) if previous else None,
     )
     return {"generator": plan["generator"], "draft": draft}
 

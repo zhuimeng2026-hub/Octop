@@ -603,7 +603,14 @@ describe("product video wizard", () => {
   it("saves the narration choice and the picked premium voice", async () => {
     const user = userEvent.setup();
     api.projects.mockResolvedValue({ items: [project] });
-    api.getStoryboard.mockResolvedValue(savedDraft);
+    // The server keeps the audio settings when the picture is regenerated,
+    // so a reload returns whatever was last saved.
+    let stored: typeof savedDraft = { ...savedDraft };
+    api.getStoryboard.mockImplementation(async () => stored);
+    api.saveStoryboard.mockImplementation(async (_id, body) => {
+      stored = { ...stored, ...body };
+      return stored;
+    });
     api.narrationOptions.mockResolvedValue({
       premium: true,
       modes: ["off", "local", "bundled"],
@@ -619,13 +626,35 @@ describe("product video wizard", () => {
       name: "videoWizard.narration",
     });
     // The toggle unlocks once the account's capabilities arrive.
-    await waitFor(() => expect(toggle).not.toBeDisabled());
-    await user.click(toggle);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: "videoWizard.narration" }),
+      ).not.toBeDisabled(),
+    );
+    // Narration starts off; the user turns it on.
+    await user.click(
+      screen.getByRole("checkbox", { name: "videoWizard.narration" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: "videoWizard.narration" }),
+      ).toBeChecked(),
+    );
     // A paid account may pick one of the server-side voices.
     await user.selectOptions(
       await screen.findByRole("combobox", { name: "videoWizard.narrationVoice" }),
       "female-shaonv",
     );
+    // Regenerating the picture keeps the audio settings.
+    api.generateStoryboard.mockImplementation(async () => {
+      const draft = {
+        ...stored,
+        narration_enabled: true,
+        narration_voice: "female-shaonv",
+      };
+      stored = draft;
+      return { generator: "llm", draft };
+    });
     await user.click(
       screen.getByRole("button", { name: "videoWizard.generate" }),
     );
