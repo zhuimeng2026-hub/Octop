@@ -108,10 +108,10 @@ async def test_minimax_known_voice_is_kept(monkeypatch) -> None:
     _ = [
         chunk
         async for chunk in adapters.synthesize_minimax(
-            _row(), "hello", voice_id="male-chengshu", speed=1.0
+            _row(), "hello", voice_id="male-qn-daxuesheng", speed=1.0
         )
     ]
-    assert captured["voice_setting"]["voice_id"] == "male-chengshu"
+    assert captured["voice_setting"]["voice_id"] == "male-qn-daxuesheng"
 
 
 @pytest.mark.asyncio
