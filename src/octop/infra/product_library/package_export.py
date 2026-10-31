@@ -96,6 +96,7 @@ def export_project_package(
     bgm_id: str | None = None,
     voice_clips: dict[str, Path] | None = None,
     voice_durations: dict[str, float] | None = None,
+    narration_degraded: bool = False,
 ) -> Path:
     """Return a temporary ZIP; the HTTP adapter removes it after transmission."""
     snapshot = project_payload(project)["snapshot"]
@@ -136,6 +137,7 @@ def export_project_package(
         bgm_id=bgm_id,
         voice_clips=voice_clips,
         voice_durations=voice_durations,
+        degraded=narration_degraded,
     )
     if audio is not None:
         for name, source in audio.files:
