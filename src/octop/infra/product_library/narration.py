@@ -13,6 +13,7 @@ Entitlement is expressed by the ``voice_tts_premium`` permission, which the
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,8 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.product_library.audio import scene_narration_text
 from octop.infra.users.permissions import user_has_permission
 from octop.infra.voice import adapters
+
+logger = logging.getLogger(__name__)
 
 #: Provider name of the MiniMax row in the ``voice_providers`` table.
 MINIMAX_PROVIDER_NAME = "minimax"
@@ -102,17 +105,21 @@ async def render_narration_clips(
     manager: Any,
     script: dict[str, Any],
     voice_id: str | None,
-) -> tuple[dict[str, Path], dict[str, float]]:
+) -> tuple[dict[str, Path], dict[str, float], bool]:
     """Render every narration line of a script.
 
-    Returns the rendered clips keyed by scene id together with their measured
-    durations in seconds. An empty mapping means the provider is not
-    configured, so a paid user without credentials still gets a package —
-    just without the voice.
+    Returns the rendered clips keyed by scene id, their measured durations in
+    seconds, and whether the provider failed. An empty mapping means the
+    provider is not configured, so a paid user without credentials still gets
+    a package — just without the voice.
+
+    When the provider fails outright (no quota, unreachable, upstream error)
+    the whole batch is dropped and the caller falls back to the client's local
+    voice. Shipping a package without a voice beats failing the download.
     """
     scenes = script.get("scenes") or []
     if not isinstance(scenes, list):
-        return {}, {}
+        return {}, {}, False
     preset = resolve_voice_preset(voice_id)
     outputs: dict[str, Path] = {}
     durations: dict[str, float] = {}
@@ -126,7 +133,17 @@ async def render_narration_clips(
         line = scene_narration_text(scene)
         if not line:
             continue
-        result = await _synthesize_line(manager, line, voice_id=preset)
+        try:
+            result = await _synthesize_line(manager, line, voice_id=preset)
+        except OctopError:
+            # Out of quota or the provider is down: fall back to the client's
+            # local voice rather than failing the whole package. The clips
+            # rendered so far are dropped so the voice stays consistent.
+            logger.warning(
+                "narration synthesis failed, falling back to the local voice",
+                exc_info=True,
+            )
+            return {}, {}, True
         if result is None:
             continue
         audio, measured = result
@@ -135,4 +152,4 @@ async def render_narration_clips(
         outputs[scene_id] = target
         if measured > 0:
             durations[scene_id] = measured
-    return outputs, durations
+    return outputs, durations, False

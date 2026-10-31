@@ -506,9 +506,10 @@ async def download_storyboard_package(
     voice_id = resolve_voice_preset(draft.get("narration_voice"))
     voice_clips: dict[str, Path] | None = None
     voice_durations: dict[str, float] | None = None
+    degraded = False
     if premium and narration_enabled:
         try:
-            voice_clips, voice_durations = await render_narration_clips(
+            voice_clips, voice_durations, degraded = await render_narration_clips(
                 manager=_voice_manager(server), script=script, voice_id=voice_id
             )
         except OctopError as exc:
@@ -519,11 +520,13 @@ async def download_storyboard_package(
         project,
         script_override=script,
         narration_enabled=narration_enabled,
+        # Without usable clips the desktop client synthesises the voice itself.
         premium=premium and bool(voice_clips),
         voice_id=voice_id,
         bgm_id=draft.get("bgm_id"),
         voice_clips=voice_clips,
         voice_durations=voice_durations,
+        narration_degraded=degraded,
     )
     return FileResponse(
         package,

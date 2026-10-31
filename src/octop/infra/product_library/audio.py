@@ -207,6 +207,7 @@ def build_audio_block(
     narration_source: str | None = None,
     voice_id: str | None = None,
     engine: str | None = None,
+    degraded: bool = False,
 ) -> dict[str, Any] | None:
     """Compose the top-level ``audio`` object written into ``script.json``."""
     if track is None and mode == "off":
@@ -236,6 +237,10 @@ def build_audio_block(
         }
         if narration_source:
             block["narration"]["source"] = narration_source
+        if degraded:
+            # The server wanted to render the voice but could not (no quota, an
+            # unreachable provider). The client is doing the work instead.
+            block["narration"]["degraded"] = True
     return block or None
 
 
@@ -272,6 +277,7 @@ def build_package_audio(
     bgm_id: str | None = None,
     voice_clips: dict[str, Path] | None = None,
     voice_durations: dict[str, float] | None = None,
+    degraded: bool = False,
 ) -> AudioPackage | None:
     """Assemble the audio plan for one package.
 
@@ -352,6 +358,7 @@ def build_package_audio(
         has_voice=has_voice,
         voice_id=voice_id,
         engine="minimax" if mode == "bundled" else "sapi",
+        degraded=degraded,
     )
     if block:
         plan.update(block)
