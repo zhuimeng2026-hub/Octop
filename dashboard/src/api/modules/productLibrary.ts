@@ -79,6 +79,22 @@ export interface StoryboardDraft {
   request: VideoPlanRequest;
   script: StoryboardScript;
   confirmed: boolean;
+  narration_enabled?: boolean;
+  narration_voice?: string;
+  bgm_id?: string;
+}
+
+/** Voice presets the current account may pick. */
+export interface NarrationVoice {
+  id: string;
+  label: string;
+}
+
+/** Which narration capabilities the current account has. */
+export interface NarrationOptions {
+  premium: boolean;
+  modes: Array<"off" | "local" | "bundled">;
+  voices: NarrationVoice[];
 }
 
 export const productLibraryApi = {
@@ -160,12 +176,23 @@ export const productLibraryApi = {
     ),
   saveStoryboard: (
     projectId: string,
-    body: Pick<StoryboardDraft, "request" | "script" | "confirmed">,
+    body: Pick<
+      StoryboardDraft,
+      "request" | "script" | "confirmed"
+    > &
+      Partial<
+        Pick<
+          StoryboardDraft,
+          "narration_enabled" | "narration_voice" | "bgm_id"
+        >
+      >,
   ) =>
     request<StoryboardDraft>(
       `/product-library/projects/${projectId}/storyboard`,
       { method: "PUT", body: JSON.stringify(body) },
     ),
+  narrationOptions: () =>
+    request<NarrationOptions>("/product-library/narration-options"),
   downloadStoryboardPackage: (projectId: string) =>
     requestBlob(`/product-library/projects/${projectId}/storyboard-package`),
 };

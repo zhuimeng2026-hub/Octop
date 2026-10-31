@@ -37,6 +37,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   productLibraryApi,
+  type NarrationOptions,
   type Product,
   type ProductAsset,
   type ProductProject,
@@ -192,10 +193,19 @@ export default function ProductVideoWizardPage() {
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [brief, setBrief] = useState<VideoBrief>({ ...EMPTY_VIDEO_BRIEF });
+  const [narrationOptions, setNarrationOptions] =
+    useState<NarrationOptions | null>(null);
+  const [narrationEnabled, setNarrationEnabled] = useState(false);
+  const [narrationVoice, setNarrationVoice] = useState("");
   const environmentSupported = desktopVideo.environmentSupported === true;
   const environmentStatus = desktopVideo.environmentStatus;
   const environmentReady =
     !environmentSupported || environmentStatus.state === "ready";
+  // Narration needs the desktop client: the browser cannot hand an audio file
+  // to the renderer, and the local voice only exists on Windows. When the
+  // account capabilities are still unknown the free tier is assumed, so the
+  // toggle stays usable instead of flickering.
+  const narrationAvailable = isDesktop;
   const environmentInstallerURL =
     desktopVideo.environmentInstallerURL &&
     /^https?:\/\//i.test(desktopVideo.environmentInstallerURL)
@@ -217,6 +227,21 @@ export default function ProductVideoWizardPage() {
     environmentStatus.state,
     environmentSupported,
   ]);
+
+  // Narration capabilities depend on the account tier, so they are fetched
+  // once and cached for the wizard session.
+  useEffect(() => {
+    let active = true;
+    void productLibraryApi
+      .narrationOptions()
+      .then((options) => {
+        if (active) setNarrationOptions(options);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const cleanUrls = () => {
     Object.values(urlsRef.current).forEach(URL.revokeObjectURL);
@@ -270,6 +295,8 @@ export default function ProductVideoWizardPage() {
                 if (!active || version !== requestVersion.current) return;
                 setDraft(loaded);
                 setRequest(loaded.request);
+                setNarrationEnabled(loaded.narration_enabled === true);
+                setNarrationVoice(loaded.narration_voice || "");
                 const restoredBrief = decodeVideoBrief(
                   loaded.request.instructions,
                 );
@@ -627,6 +654,8 @@ export default function ProductVideoWizardPage() {
       if (version !== requestVersion.current) return;
       setRequest(planRequest);
       setDraft(result.draft);
+      // The narration settings live beside the script, so regenerating the
+      // picture leaves them alone; keep the local copy as the source of truth.
       setSaved(true);
       setStep(3);
       navigate(
@@ -680,6 +709,8 @@ export default function ProductVideoWizardPage() {
         request: saveRequest,
         script: draft.script,
         confirmed,
+        narration_enabled: narrationEnabled,
+        narration_voice: narrationVoice,
       });
       if (version !== requestVersion.current) return;
       setDraft(updated);
@@ -1423,6 +1454,47 @@ export default function ProductVideoWizardPage() {
                     >
                       {t("videoWizard.includeSellingPoints")}
                     </Checkbox>
+                    <div className={styles.narrationRow}>
+                      <Checkbox
+                        checked={narrationEnabled}
+                        disabled={busy || !narrationAvailable}
+                        onChange={(e) => {
+                          setNarrationEnabled(e.target.checked);
+                          setSaved(false);
+                          setDraft((current) =>
+                            current ? { ...current, confirmed: false } : current,
+                          );
+                        }}
+                      >
+                        {t("videoWizard.narration")}
+                      </Checkbox>
+                      {narrationEnabled && narrationOptions?.voices.length ? (
+                        <Select
+                          size="small"
+                          aria-label={t("videoWizard.narrationVoice")}
+                          value={narrationVoice || undefined}
+                          onChange={(value) => {
+                            setNarrationVoice(value ?? "");
+                            setSaved(false);
+                            setDraft((current) =>
+                              current
+                                ? { ...current, confirmed: false }
+                                : current,
+                            );
+                          }}
+                          placeholder={t("videoWizard.narrationVoice")}
+                          options={narrationOptions.voices.map((voice) => ({
+                            value: voice.id,
+                            label: voice.label,
+                          }))}
+                        />
+                      ) : null}
+                      {narrationEnabled && !narrationOptions?.premium ? (
+                        <span className={styles.narrationHint}>
+                          {t("videoWizard.narrationLocalHint")}
+                        </span>
+                      ) : null}
+                    </div>
                     <Input.TextArea
                       className={styles.sellingPoints}
                       rows={3}
