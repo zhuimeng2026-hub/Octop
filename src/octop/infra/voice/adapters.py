@@ -7,7 +7,7 @@ import json
 import math
 import struct
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
@@ -273,7 +273,117 @@ async def _guard_mimo_base_url(base_url: str) -> None:
     await validate_https_url_resolved(base_url)
 
 
-# Mimo preset voices (docs: preset voice names; "mimo_default" is not one).
+#: MiniMax TTS voices that read Chinese naturally. The free desktop tier uses
+#: the local Windows voice instead; these are the paid-tier presets.
+MINIMAX_VOICE_PRESETS: dict[str, str] = {
+    "female-shaonv": "少女音（女声）",
+    "female-yuexian": "御姐音（女声）",
+    "male-qingse": "青涩青年（男声）",
+    "male-chengshu": "成熟男声（男声）",
+    "presenter_female": "亲和女声（女声）",
+    "presenter_male": "亲和男声（男声）",
+}
+MINIMAX_DEFAULT_VOICE = "female-shaonv"
+MINIMAX_TTS_MODELS = ("speech-02-hd", "speech-02-turbo")
+
+
+async def _guard_minimax_base_url(base_url: str) -> None:
+    """Reject SSRF: the MiniMax base_url must be a public https host."""
+    await validate_https_url_resolved(base_url)
+
+
+def _normalize_minimax_voice(voice: str | None) -> str:
+    """Keep only known MiniMax voice ids; unknown ids fall back to the default."""
+    if not voice:
+        return MINIMAX_DEFAULT_VOICE
+    name = voice.strip()
+    return name if name in MINIMAX_VOICE_PRESETS else MINIMAX_DEFAULT_VOICE
+
+
+async def synthesize_minimax(
+    row: VoiceProviderRow,
+    text: str,
+    *,
+    voice_id: str | None,
+    speed: float,
+    on_length: Callable[[float], None] | None = None,
+) -> AsyncIterator[bytes]:
+    """Synthesise speech with MiniMax's text-to-audio v2 endpoint.
+
+    The endpoint returns the audio as a **hex** string under ``data.audio`` and
+    reports the rendered duration in ``extra_info.audio_length`` (milliseconds)
+    at the top level of the response — not inside ``data``. ``on_length`` is
+    called with that duration so callers can size the scene to the speech.
+    """
+    api_key = row.api_key or ""
+    if not api_key:
+        raise ValueError("MiniMax API key is required")
+    base_url = (row.base_url or "https://api.minimaxi.com").rstrip("/")
+    await _guard_minimax_base_url(base_url)
+    extra = row.get_extra()
+    voice = _normalize_minimax_voice(voice_id or str(extra.get("voice_id") or "") or None)
+    model = str(extra.get("model") or "") or "speech-02-hd"
+    if model not in MINIMAX_TTS_MODELS:
+        model = "speech-02-hd"
+    payload: dict[str, Any] = {
+        "model": model,
+        "text": text,
+        "stream": False,
+        "voice_setting": {
+            "voice_id": voice,
+            "speed": max(0.5, min(2.0, float(speed or 1.0))),
+            "vol": 1.0,
+            "pitch": 0,
+        },
+        "audio_setting": {
+            "sample_rate": 32000,
+            "bitrate": 128000,
+            "format": "mp3",
+        },
+    }
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            f"{base_url}/v1/t2a_v2",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+    base_resp = body.get("base_resp") or {}
+    status = base_resp.get("status_code")
+    if status not in (0, None):
+        raise OctopError(
+            ErrorCode.VOICE_PROVIDER_ERROR,
+            str(base_resp.get("status_msg") or "MiniMax synthesis failed"),
+            details={"provider": row.name, "status_code": status},
+        )
+    if on_length is not None:
+        # ``extra_info`` sits at the top level of the response, not under ``data``.
+        length_ms = (body.get("extra_info") or {}).get("audio_length")
+        if isinstance(length_ms, (int, float)) and length_ms > 0:
+            on_length(float(length_ms))
+    audio_hex = str((body.get("data") or {}).get("audio") or "")
+    if not audio_hex:
+        raise OctopError(
+            ErrorCode.VOICE_PROVIDER_ERROR,
+            "MiniMax returned no audio",
+            details={"provider": row.name},
+        )
+    try:
+        audio = bytes.fromhex(audio_hex)
+    except ValueError as exc:
+        raise OctopError(
+            ErrorCode.VOICE_PROVIDER_ERROR,
+            "MiniMax returned malformed audio",
+            details={"provider": row.name},
+        ) from exc
+    if audio:
+        yield audio  # Mimo preset voices (docs: preset voice names; "mimo_default" is not one).
+
+
 MIMO_PRESET_VOICES = ("冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean")
 
 # WAV header for raw Mimo streaming output: 24kHz PCM16LE mono.
@@ -481,7 +591,7 @@ def _missing_credentials(row: VoiceProviderRow, kind: str, *, locale: str = "en"
         except ValueError:
             return voice_credentials_error(kind, locale)
         return None
-    if kind in {"openai", "mimo"} and not row.api_key:
+    if kind in {"openai", "mimo", "minimax"} and not row.api_key:
         return voice_credentials_error(kind, locale)
     return None
 
@@ -557,6 +667,8 @@ async def test_tts(
     synth = (
         synthesize_mimo
         if kind == "mimo"
+        else synthesize_minimax
+        if kind == "minimax"
         else synthesize_openai
         if kind == "openai"
         else synthesize_tencent

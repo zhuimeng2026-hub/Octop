@@ -26,6 +26,7 @@ const api = vi.hoisted(() => ({
   generateStoryboard: vi.fn(),
   getStoryboard: vi.fn(),
   saveStoryboard: vi.fn(),
+  narrationOptions: vi.fn(),
   downloadStoryboardPackage: vi.fn(),
   downloadAsset: vi.fn(),
 }));
@@ -209,6 +210,11 @@ describe("product video wizard", () => {
     api.products.mockResolvedValue({ items: [product] });
     api.projects.mockResolvedValue({ items: [] });
     api.assets.mockResolvedValue({ items: [sceneAsset] });
+    api.narrationOptions.mockResolvedValue({
+      premium: false,
+      modes: ["off", "local"],
+      voices: [],
+    });
     api.downloadAsset.mockResolvedValue(new Blob(["image"]));
     api.createProject.mockResolvedValue(project);
     api.updateProduct.mockImplementation(async (_id, body) => ({
@@ -572,5 +578,64 @@ describe("product video wizard", () => {
     );
     expect(installer).toHaveAttribute("target", "_blank");
     expect(desktopJobs.start).not.toHaveBeenCalled();
+  });
+
+  it("keeps narration unavailable outside the desktop client", async () => {
+    const user = userEvent.setup();
+    api.projects.mockResolvedValue({ items: [project] });
+    api.getStoryboard.mockResolvedValue(savedDraft);
+    api.narrationOptions.mockResolvedValue({
+      premium: true,
+      modes: ["off", "local", "bundled"],
+      voices: [{ id: "female-shaonv", label: "少女音" }],
+    });
+    renderWizard("/product-library/video-wizard?project=project1");
+    await screen.findByText("videoWizard.storyboardTitle");
+    await user.click(
+      screen.getByRole("button", { name: "videoWizard.previous" }),
+    );
+    await screen.findByText("videoWizard.requirementsTitle");
+    expect(
+      screen.getByRole("checkbox", { name: "videoWizard.narration" }),
+    ).toBeDisabled();
+  });
+
+  it("saves the narration choice and the picked premium voice", async () => {
+    const user = userEvent.setup();
+    api.projects.mockResolvedValue({ items: [project] });
+    api.getStoryboard.mockResolvedValue(savedDraft);
+    api.narrationOptions.mockResolvedValue({
+      premium: true,
+      modes: ["off", "local", "bundled"],
+      voices: [{ id: "female-shaonv", label: "少女音" }],
+    });
+    desktopJobs.bridgeAvailable = true;
+    renderWizard("/product-library/video-wizard?project=project1");
+    await screen.findByText("videoWizard.storyboardTitle");
+    await user.click(
+      screen.getByRole("button", { name: "videoWizard.previous" }),
+    );
+    const toggle = await screen.findByRole("checkbox", {
+      name: "videoWizard.narration",
+    });
+    // The toggle unlocks once the account's capabilities arrive.
+    await waitFor(() => expect(toggle).not.toBeDisabled());
+    await user.click(toggle);
+    // A paid account may pick one of the server-side voices.
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "videoWizard.narrationVoice" }),
+      "female-shaonv",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "videoWizard.generate" }),
+    );
+    await waitFor(() => expect(api.generateStoryboard).toHaveBeenCalled());
+    await user.click(
+      screen.getByRole("button", { name: "videoWizard.confirmMake" }),
+    );
+    await waitFor(() => expect(api.saveStoryboard).toHaveBeenCalled());
+    const body = api.saveStoryboard.mock.calls.at(-1)?.[1];
+    expect(body.narration_enabled).toBe(true);
+    expect(body.narration_voice).toBe("female-shaonv");
   });
 });
