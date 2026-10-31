@@ -350,7 +350,11 @@ export default function ProductVideoWizardPage() {
       active = false;
       cleanUrls();
     };
-  }, [userId, requestedProjectId, requestedProductId, location.key]);
+    // ``location.key`` is deliberately absent: it changes on every
+    // navigation, including the one that puts the freshly generated project
+    // into the URL. Depending on it would tear the whole wizard down and
+    // rebuild it right after the picture was generated.
+  }, [userId, requestedProjectId, requestedProductId]);
 
   useEffect(() => {
     if (!product || project) return;

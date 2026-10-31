@@ -24,6 +24,7 @@ from octop.infra.db.repos.voice_providers import VoiceProviderRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ssrf_guard import validate_https_url_resolved
 from octop.infra.utils.tencent_sign import tc3_headers
+from octop.infra.voice.mp3 import mp3_duration
 
 _ui_locale: ContextVar[str | None] = ContextVar("voice_ui_locale", default=None)
 
@@ -277,14 +278,58 @@ async def _guard_mimo_base_url(base_url: str) -> None:
 #: the local Windows voice instead; these are the paid-tier presets.
 MINIMAX_VOICE_PRESETS: dict[str, str] = {
     "female-shaonv": "少女音（女声）",
-    "female-yuexian": "御姐音（女声）",
-    "male-qingse": "青涩青年（男声）",
-    "male-chengshu": "成熟男声（男声）",
+    "female-yujie": "御姐音（女声）",
+    "female-chengshu": "成熟女声（女声）",
+    "female-tianmei": "甜美音（女声）",
+    "male-qn-qingse": "青涩男声",
+    "male-qn-daxuesheng": "青年男声",
     "presenter_female": "亲和女声（女声）",
     "presenter_male": "亲和男声（男声）",
 }
 MINIMAX_DEFAULT_VOICE = "female-shaonv"
-MINIMAX_TTS_MODELS = ("speech-02-hd", "speech-02-turbo")
+MINIMAX_TTS_MODELS = (
+    "speech-02-hd",
+    "speech-02-turbo",
+    "speech-2.5-hd-preview",
+    "speech-2.5-turbo-preview",
+)
+
+#: Wire protocols the adapter can speak.
+#:
+#: ``minimax`` is MiniMax's own ``/v1/t2a_v2``: the response is JSON with the
+#: audio hex-encoded under ``data.audio``.
+#: ``openai`` is the OpenAI-compatible ``/v1/audio/speech``: the response is the
+#: encoded audio itself, and the length has to be recovered from the file.
+MINIMAX_PROTOCOL_NATIVE = "minimax"
+MINIMAX_PROTOCOL_OPENAI = "openai"
+MINIMAX_PROTOCOLS = (MINIMAX_PROTOCOL_NATIVE, MINIMAX_PROTOCOL_OPENAI)
+
+
+def _minimax_protocol(row: VoiceProviderRow) -> str:
+    """Which wire protocol the configured provider speaks."""
+    raw = str(row.get_extra().get("protocol") or "").strip().lower()
+    if raw in MINIMAX_PROTOCOLS:
+        return raw
+    return MINIMAX_PROTOCOL_NATIVE
+
+
+def _minimax_model(row: VoiceProviderRow) -> str:
+    """The configured model, falling back to the high-quality default."""
+    model = str(row.get_extra().get("model") or "").strip()
+    return model if model in MINIMAX_TTS_MODELS else "speech-02-hd"
+
+
+def _minimax_endpoint(base_url: str, path: str) -> str:
+    """Join the configured base URL with an endpoint path.
+
+    Gateways usually advertise their base URL with the ``/v1`` prefix already
+    attached, so the prefix is stripped before the path is appended — a base
+    of ``https://host/v1`` must not turn into ``/v1/v1/...``.
+    """
+    root = base_url.rstrip("/")
+    if root.endswith("/v1"):
+        root = root[: -len("/v1")]
+    return f"{root}{path}"
 
 
 async def _guard_minimax_base_url(base_url: str) -> None:
@@ -308,12 +353,19 @@ async def synthesize_minimax(
     speed: float,
     on_length: Callable[[float], None] | None = None,
 ) -> AsyncIterator[bytes]:
-    """Synthesise speech with MiniMax's text-to-audio v2 endpoint.
+    """Synthesise speech with MiniMax, over either supported wire protocol.
 
-    The endpoint returns the audio as a **hex** string under ``data.audio`` and
-    reports the rendered duration in ``extra_info.audio_length`` (milliseconds)
-    at the top level of the response — not inside ``data``. ``on_length`` is
-    called with that duration so callers can size the scene to the speech.
+    ``minimax`` talks to MiniMax's own ``/v1/t2a_v2``: the response is JSON
+    with the audio hex-encoded under ``data.audio`` and the rendered length in
+    ``extra_info.audio_length`` (milliseconds) at the **top level** of the
+    response — not inside ``data``.
+
+    ``openai`` talks to the OpenAI-compatible ``/v1/audio/speech`` that
+    gateways expose: the response body *is* the encoded audio, so the length
+    is recovered from the file itself.
+
+    ``on_length`` is called with the duration in milliseconds so callers can
+    size the scene to the speech.
     """
     api_key = row.api_key or ""
     if not api_key:
@@ -322,16 +374,52 @@ async def synthesize_minimax(
     await _guard_minimax_base_url(base_url)
     extra = row.get_extra()
     voice = _normalize_minimax_voice(voice_id or str(extra.get("voice_id") or "") or None)
-    model = str(extra.get("model") or "") or "speech-02-hd"
-    if model not in MINIMAX_TTS_MODELS:
-        model = "speech-02-hd"
-    payload: dict[str, Any] = {
+    model = _minimax_model(row)
+    rate = max(0.5, min(2.0, float(speed or 1.0)))
+    protocol = _minimax_protocol(row)
+
+    if protocol == MINIMAX_PROTOCOL_OPENAI:
+        payload: dict[str, Any] = {
+            "model": model,
+            "input": text,
+            "voice": voice,
+            # The gateway maps this onto MiniMax's own output format. It only
+            # accepts "hex" and "url", and it returns the encoded audio.
+            "output_format": "hex",
+        }
+        if rate != 1.0:
+            payload["speed"] = rate
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                _minimax_endpoint(base_url, "/v1/audio/speech"),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            resp.raise_for_status()
+            audio = resp.content
+        if not audio:
+            raise OctopError(
+                ErrorCode.VOICE_PROVIDER_ERROR,
+                "MiniMax returned no audio",
+                details={"provider": row.name},
+            )
+        if on_length is not None:
+            seconds = mp3_duration(audio)
+            if seconds > 0:
+                on_length(seconds * 1000.0)
+        yield audio
+        return
+
+    payload = {
         "model": model,
         "text": text,
         "stream": False,
         "voice_setting": {
             "voice_id": voice,
-            "speed": max(0.5, min(2.0, float(speed or 1.0))),
+            "speed": rate,
             "vol": 1.0,
             "pitch": 0,
         },
@@ -343,7 +431,7 @@ async def synthesize_minimax(
     }
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
-            f"{base_url}/v1/t2a_v2",
+            _minimax_endpoint(base_url, "/v1/t2a_v2"),
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",

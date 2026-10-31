@@ -28,10 +28,13 @@ MINIMAX_PROVIDER_NAME = "minimax"
 #: Voice presets offered to paid users.
 PAID_VOICE_PRESETS: tuple[dict[str, str], ...] = (
     {"id": "female-shaonv", "label": "少女音"},
-    {"id": "female-yuexian", "label": "御姐音"},
-    {"id": "male-qingse", "label": "青涩男声"},
-    {"id": "male-chengshu", "label": "成熟男声"},
+    {"id": "female-yujie", "label": "御姐音"},
+    {"id": "female-chengshu", "label": "成熟女声"},
+    {"id": "female-tianmei", "label": "甜美音"},
+    {"id": "male-qn-qingse", "label": "青涩男声"},
+    {"id": "male-qn-daxuesheng", "label": "青年男声"},
     {"id": "presenter_female", "label": "亲和女声"},
+    {"id": "presenter_male", "label": "亲和男声"},
 )
 
 
