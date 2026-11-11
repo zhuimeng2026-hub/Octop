@@ -156,6 +156,10 @@ jobs:
       # a Gitee attachment (100 MB cap), so it stays on the GitHub Release and
       # the Gitee page links to it.
       #
+      # This round ships the Windows client only — the macOS and Linux
+      # portable runtimes cannot be assembled here, so no slim installer is
+      # built for them (see docs/desktop-windows-build.md).
+      #
       # A pull request has no release to point at. There the URL is left empty
       # and the slim build is skipped — a PR build only has to compile.
       - name: Resolve the runtime download URL
@@ -164,6 +168,14 @@ jobs:
           RELEASE_TAG: ${{ github.event.inputs.release_tag }}
         run: |
           set -euo pipefail
+          case "${{ matrix.plat }}" in
+            windows-*) ;;
+            *)
+              echo "This round ships the Windows client only — skipping the slim build."
+              echo "url=" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
           tag="${RELEASE_TAG}"
           if [[ -z "${tag}" && "${GITHUB_REF_NAME}" == v* ]]; then
             tag="${GITHUB_REF_NAME}"

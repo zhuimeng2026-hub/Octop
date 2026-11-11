@@ -308,7 +308,7 @@ makensis project.nsi        →  Octop-desktop-windows-amd64-<ver>.exe
 }
 ```
 
-- `urls` 是**有序数组**，客户端按序尝试（GitHub Release → COS → 其他镜像）。
+- `urls` 是**有序数组**，客户端按序尝试（GitHub Release → 其它镜像）。
 - `sha256` 对**压缩包**校验（不是对解压后的目录），保证下载完整性 + 供应链可信。
 - `format` 是 `zip` 或 `tar.gz`；`stripRoot` 决定要不要丢掉归档里的单层根目录。
 - `required: false` 的分片是"后台补齐"，失败不影响主流程。
@@ -318,14 +318,14 @@ manifest 本身也要有校验：随壳内置 manifest 的 `sha256`（编译期�
 
 ### 4.4 制品托管
 
-复用现有两条通道，客户端按序 fallback：
+**本轮只用 GitHub Release 一条通道**，客户端按序 fallback 的能力留着：
 
 | 通道 | 现状 | 用途 |
 |---|---|---|
-| GitHub Release | `.github/workflows/octop-desktop.yml` 已挂 `Octop-portable-*` / `Octop-desktop-*` | 海外主源 |
-| COS | `.github/workflows/upload-release-cos.yml` → `octop/release/<version>/<file>` | 国内主源（`patterns` 需加上 `Octop-parts-*`） |
+| GitHub Release | `.github/workflows/octop-desktop.yml` 已挂 `Octop-portable-*` / `Octop-desktop-*` | 唯一源（运行时 ~290 MB 放不进 Gitee 附件的 100 MB 上限） |
+| COS | `.github/workflows/upload-release-cos.yml` → `octop/release/<version>/<file>` | 本轮不用（多一条链路就多一份运维成本）；要加镜像时客户端不用改代码 |
 
-CI 需要新增一个 job 产出分片 + manifest，并把它们一起挂到 Release / COS。
+CI 需要新增一个 job 产出分片 + manifest，并把它们一起挂到 Release。
 
 ---
 
@@ -361,7 +361,7 @@ for part in manifest.parts where required:
 
 要点：
 
-- **断点续传**：`Range` 请求 + `.part` 文件。服务端不支持 Range（部分 COS 配置、
+- **断点续传**：`Range` 请求 + 缓存文件。服务端不支持 Range（有些对象存储配置、
   代理会吞掉 Range）时降级为整片重下，功能不破。
 - **镜像 fallback**：一个镜像失败（404 / 连接超时 / 校验不符）→ 自动切下一个。
 - **重试**：单镜像内指数退避重试 3 次（1s/4s/16s），全失败才换镜像。
@@ -613,6 +613,6 @@ type ProgressEvent struct {
 | 便携入口（Windows DLL 路径） | `desktop/portable/templates/launch.py` |
 | 便携启动脚本 | `desktop/portable/templates/start.bat` |
 | 桌面 CI | `.github/workflows/octop-desktop.yml` |
-| 制品上 COS | `.github/workflows/upload-release-cos.yml` |
+| 制品上 COS（本轮不用） | `.github/workflows/upload-release-cos.yml` |
 | 下载链接表 | `scripts/release_download_links.py` |
 | 后端首启向导 | `src/octop/api/routers/setup.py`、`src/octop/api/middleware/setup_lockdown.py` |
