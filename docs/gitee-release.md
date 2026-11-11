@@ -15,7 +15,7 @@
 | 便携 CPython（PBS 3.12.12） | 32 MB | `install_only_stripped` |
 | 生产依赖 site-packages | 162 MB | 装完 674 MB |
 | octop wheel（含 dashboard） | ~20 MB | |
-| **完整 portable zip** | **~215 MB** | release 实测 256 MB |
+| **完整 portable zip** | **~290 MB** | 本机实测 280 MB（linux-amd64） |
 
 依赖里最大的几项（压缩后）：`playwright` 45 MB、`numpy` 15 MB、
 `google-api-python-client` 14 MB、`botocore` 13 MB。这些都是
@@ -42,8 +42,8 @@
                     │ 首次启动
                     ▼
 ┌─ 壳自举 ───────────────────────────────────┐
-│  1. 从 URL 列表下载 portable zip（~215 MB）  │
-│     镜像依次尝试：COS → GitHub Release      │
+│  1. 从 GitHub Release 下载 portable zip      │
+│     （~290 MB，运行时放不进 Gitee 附件）    │
 │  2. 解包到 <portable>.new → 原子换名         │
 │  3. 拉起 Octop 服务 → 健康检查 → 打开面板    │
 └────────────────────────────────────────────┘
@@ -65,7 +65,7 @@ Gitee Release 附件（都 < 100 MB）：
 | `Octop-fnos-docker-<ver>.fpk` | 0.3 MB | fnOS Docker 版 |
 
 **不上传**（超限，Release 说明里给外链）：内嵌运行时的完整桌面安装器、
-portable 运行时、fnOS native 包。外链同时指向 GitHub Release 和 COS。
+portable 运行时、fnOS native 包。外链指向 GitHub Release。
 
 > 附件的取舍规则是**按大小**（< 100 MB），不是按名字：完整安装器如果哪天做到了
 > 100 MB 以内，它也会被带上。
@@ -107,20 +107,20 @@ SSH 密钥），**内容没变就不产生新 commit**；Release 的 tag 指向�
 本机手工发版时，token 可以放在 `~/.gitee_token`（`chmod 600`），脚本的读取顺序是
 `--token` → `$GITEE_TOKEN` → `~/.gitee_token`。
 
-`RELEASE_COS_BUCKET` / `RELEASE_COS_ENDPOINT` 已在 `octop-desktop.yml` 中用于
-拼运行时 URL——没有它们就不会产出 slim 客户端。
+### 3. 运行时必须先发布到 GitHub Release
 
-### 3. 运行时必须先发布到 COS / GitHub Release
-
-slim 安装器里的运行时 URL 指向 `octop/release/<version>/Octop-portable-<plat>-<ver>.zip`。
-这个对象由桌面发版流程上传（`upload-release-cos.yml`）。**先跑桌面发版，
+slim 安装器里的运行时 URL 指向 GitHub Release 上的
+`Octop-portable-<plat>-<ver>.zip`。**先跑桌面发版把 portable zip 传上去，
 再发 Gitee**，否则用户首次启动会 404（客户端会重试，但体验不好）。
+
+> 为什么不放 Gitee：运行时 ~290 MB，超过 Gitee 单附件 100 MB 上限。
+> 也不走 CDN/对象存储：多一条链路就多一份运维成本，先用 GitHub Release 单源跑通。
 
 ## 四、发版步骤
 
 ```bash
 # 1. 先按 .cursor/skills/publish/SKILL.md 发桌面版
-#    （产出 GitHub Release + COS 上的 portable zip + slim 安装器）
+#    （产出 GitHub Release：portable zip + slim 安装器 + 完整安装器）
 
 # 2. 发 Gitee：Actions → Gitee Release → Run workflow
 #    tag          = v1.4.0

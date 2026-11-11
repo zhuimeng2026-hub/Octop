@@ -79,7 +79,8 @@ def push_file(owner: str, repo: str, token: str, branch: str, target: str, sourc
             "branch": branch,
             "sha": existing["sha"],
         }
-        method = "PATCH"
+        # Gitee updates a file with PUT; PATCH is GitHub's verb and answers 405.
+        method = "PUT"
     elif status == 404:
         payload = {
             "content": base64.b64encode(content).decode(),

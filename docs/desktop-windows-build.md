@@ -121,21 +121,21 @@ ARM64：`ARCH=arm64`，其余不变。
 slim 客户端把运行时地址**编译期写死**进 exe。地址必须在用户首次启动前就公开可达，
 否则首启会下载失败（客户端会重试，但用户看到的是报错）。
 
-可选地址源：
-
-| 地址 | 说明 |
-|---|---|
-| GitHub Release 资产 | `https://github.com/<owner>/<repo>/releases/download/<tag>/Octop-portable-windows-<plat>-<ver>.zip` |
-| 腾讯云 COS | `https://<bucket>.<endpoint>/octop/release/<ver>/Octop-portable-windows-<plat>-<ver>.zip` |
-
-两者可以都写，逗号分隔，客户端按顺序尝试（前一个失败自动换下一个）：
+运行时本体 **~290 MB**，放不进 Gitee 附件（100 MB 上限），所以留在 GitHub Release：
 
 ```
-PORTABLE_RUNTIME_URL=https://<bucket>.<endpoint>/octop/release/1.4.0/Octop-portable-windows-amd64-1.4.0.zip,https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/Octop-portable-windows-amd64-1.4.0.zip
+PORTABLE_RUNTIME_URL=https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/Octop-portable-windows-amd64-1.4.0.zip
 ```
 
-**顺序建议**：COS 在前（国内快），GitHub 在后（兜底）。但 COS 上的对象要先上传好，
-否则首个用户会先撞到 COS 的 404 再退回 GitHub。
+**这个 zip 必须先上传到该 Release，客户端才能用**——URL 里的 tag 和文件名要跟实际
+上传的对得上。先传 zip，再打客户端（打客户端不用等 zip，但发布顺序要对）。
+
+> 客户端支持逗号分隔的多个地址、按顺序 fallback（`download.go` 的 `runtimeURLs`），
+> 将来要加对象存储/CDN 镜像时再补第二个地址，不用改客户端。
+
+> **如果只是想让国内用户用起来**：优先发**远程版**（thin）——它不下载运行时，
+> 全部资源都在 Gitee 上，国内访问无障碍。slim 版首启要从 GitHub 拉 290 MB，
+> 国内速度取决于 GitHub 的可达性。
 
 ---
 
@@ -202,7 +202,7 @@ bash scripts/gitee/publish_from_github.sh \
 
 `.github/workflows/octop-desktop.yml` 的 `package` job 就是上面这套的自动化版本
 （`bootstrap-runtime.sh` → `package.sh` → `wails3 task package` → 上传 artifact →
-挂到 GitHub Release → 传 COS）。Windows 相关的两个额外动作：
+挂到 GitHub Release）。Windows 相关的两个额外动作：
 
 1. 装 NSIS（choco 装不上时从 SourceForge 下 setup 静默安装）
 2. 用 `windows-latest` / `windows-11-arm` 原生 runner（不能交叉）
