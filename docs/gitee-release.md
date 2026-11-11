@@ -70,8 +70,9 @@ Gitee Release 附件（都 < 100 MB）：
 **不上传**（超限，Release 说明里给外链）：内嵌运行时的完整桌面安装器、
 portable 运行时、fnOS native 包。外链指向 GitHub Release。
 
-> 附件的取舍规则是**按大小**（< 100 MB），不是按名字：完整安装器如果哪天做到了
-> 100 MB 以内，它也会被带上。
+> 附件的取舍规则是**按大小**（< 100 MB）**加平台**（本轮只发 Windows）：完整安装器
+> 如果哪天做到了 100 MB 以内，它也会被带上；平台过滤用 `--platform` 调，
+> `--platform all` 可发全平台。wheel / sdist / fnOS 包不带平台名，一直都发。
 
 ## 三、前置条件
 
@@ -134,7 +135,7 @@ slim 安装器里的运行时 URL 指向 GitHub Release 上的
 
 工作流做四件事：
 
-1. 从 GitHub Release 拉取**体积小于 100 MB** 的附件；
+1. 从 GitHub Release 拉取**体积小于 100 MB 且属于本轮平台**（默认 Windows）的附件；
 2. 用 GitHub Release 的正文生成 Gitee Release 说明（`scripts/gitee/release_notes.py`），
    追加"Gitee 上的安装包"和"完整安装包（外链）"两节；
 3. 把下载页推到 Gitee 仓库（`scripts/gitee/push_readme.py`），拿到它所在 commit；
@@ -143,6 +144,19 @@ slim 安装器里的运行时 URL 指向 GitHub Release 上的
    超过 100 MB 的自动跳过并列出）。
 
 ### 手工执行
+
+一键走完（拉资产 → 生成说明 → 同步下载页 → 建 Release 上传）：
+
+```bash
+export GITEE_TOKEN=...
+bash scripts/gitee/publish_from_github.sh \
+  --tag v1.4.0-gitee.1 \
+  --source-repo zhuimeng2026-hub/Octop \
+  --owner webheat --repo octop_client \
+  --platform windows     # 默认就是 windows；--platform all 可发全平台
+```
+
+分步执行：
 
 ```bash
 export GITEE_TOKEN=...
@@ -182,11 +196,14 @@ scripts/gitee/publish_release.sh \
 | 主题 | 位置 |
 |---|---|
 | Gitee 发布工作流 | `.github/workflows/gitee-release.yml` |
+| 一键发布（从 GitHub Release 到 Gitee） | `scripts/gitee/publish_from_github.sh` |
 | 发布脚本 | `scripts/gitee/publish_release.sh` |
 | Release 说明生成 | `scripts/gitee/release_notes.py` |
+| 附件筛选规则（大小 + 平台） | `scripts/gitee/assets.py` |
+| 附件清单 | `scripts/gitee/list_release_assets.py` |
 | 下载页推送 | `scripts/gitee/push_readme.py` |
 | 下载页内容源 | `scripts/gitee/REPO_README.md`、`scripts/gitee/REPO_README.en.md` |
-| slim 客户端构建 | `desktop/src/build/{windows,linux,darwin}/Taskfile.yml` 的 `package:slim` |
+| slim 客户端构建（本轮只 Windows） | `desktop/src/build/windows/Taskfile.yml` 的 `package:slim` |
 | slim 产出的 CI 步骤 | `.github/workflows/octop-desktop.yml` |
-| 运行时下载实现 | `desktop/src/download.go`（`downloadPortableRuntime`） |
+| 运行时下载实现 | `desktop/src/bootstrap/`（续传、校验、manifest），入口 `desktop/src/download.go`（`bootstrapRuntime`） |
 | 方案设计稿 | `docs/desktop-bootstrap-installer.md` |
