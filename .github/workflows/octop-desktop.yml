@@ -135,6 +135,10 @@ jobs:
     # on windows-11-arm does not mis-classify the job as windows-amd64 cross-build.
     env:
       GREEN_HOST_PLAT: ${{ matrix.plat }}
+      # Slim installers fetch the portable runtime from COS; without these
+      # secrets there is no runtime URL to bake in, so the slim build is skipped.
+      RELEASE_COS_BUCKET: ${{ secrets.RELEASE_COS_BUCKET }}
+      RELEASE_COS_ENDPOINT: ${{ secrets.RELEASE_COS_ENDPOINT }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select-platforms.outputs.matrix) }}
@@ -150,6 +154,33 @@ jobs:
           VER=$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' pyproject.toml | head -1)
           echo "OCTOP_VERSION=${VER}" >> "$GITHUB_ENV"
           echo "version=${VER}"
+
+      # Slim installers fetch the runtime at first launch, so they need the URL
+      # of the portable zip. Mirrors, in order: COS (domestic) and the GitHub
+      # Release asset (always present once the release job attached it).
+      - name: Resolve the runtime download URL
+        id: runtime
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG}"
+          if [[ -z "${tag}" && "${GITHUB_REF_NAME}" == v* ]]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
+          if [[ -z "${tag}" ]]; then
+            echo "::error::cannot resolve the release tag (ref=${GITHUB_REF_NAME})" >&2
+            exit 1
+          fi
+          name="Octop-portable-${{ matrix.plat }}-${OCTOP_VERSION}.zip"
+          urls=()
+          if [[ -n "${RELEASE_COS_BUCKET:-}" && -n "${RELEASE_COS_ENDPOINT:-}" ]]; then
+            urls+=("https://${RELEASE_COS_BUCKET}.${RELEASE_COS_ENDPOINT}/octop/release/${OCTOP_VERSION}/${name}")
+          fi
+          urls+=("https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${name}")
+          url="$(IFS=,; echo "${urls[*]}")"
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+          echo "runtime url: ${url}"
 
       - uses: actions/download-artifact@v8
         with:
@@ -291,6 +322,17 @@ jobs:
           VERSION=${{ env.OCTOP_VERSION }}
           PORTABLE_ZIP=../portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
 
+      # Slim variant: no embedded runtime (~20 MB instead of ~300 MB). The first
+      # launch downloads the portable zip. Used by the Gitee release, whose
+      # attachments are capped at 100 MB.
+      - name: Package slim desktop app (runtime fetched on first launch)
+        working-directory: desktop/src
+        run: >-
+          wails3 task package
+          ARCH=${{ matrix.arch }}
+          VERSION=${{ env.OCTOP_VERSION }}
+          PORTABLE_RUNTIME_URL=${{ steps.runtime.outputs.url }}
+
       # archive: false — upload the prebuilt zip as-is. Default archive=true would
       # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip.
       # With archive:false, artifact name is the filename (name: is ignored).
@@ -305,6 +347,14 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           path: desktop/src/bin/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.*
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload slim desktop package
+        uses: actions/upload-artifact@v7
+        with:
+          path: desktop/src/bin/Octop-desktop-slim-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.*
           archive: false
           if-no-files-found: error
           retention-days: 14

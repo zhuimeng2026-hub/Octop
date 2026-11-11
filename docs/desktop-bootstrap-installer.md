@@ -3,7 +3,49 @@
 > 目标：把桌面端首包从 **~250MB+ 压到 ~12MB 以内**，安装器只负责"把壳装上"，
 > 完整运行环境在首启后由壳自己分阶段下载、断点续传、后台补齐可选组件。
 >
-> 状态：设计稿，未实现。范围仅限 **Windows（amd64 / arm64）**。
+> 状态：**第一阶段已实现**（2026-11-11）。瘦变体 + 单 URL 运行时下载 + 镜像
+> fallback 已落地，用于 [Gitee 发布通道](gitee-release.md)（Gitee 附件上限 100 MB）。
+> 本文档 §四–§七 的**分片、断点续传、sha256 校验、可选组件后台补齐仍未实现**，
+> 现状与差距见 [§零](#零已实现范围第一阶段)。
+
+---
+
+## 零、已实现范围（第一阶段）
+
+### 0.1 已经做了什么
+
+| 环节 | 实现 | 位置 |
+|---|---|---|
+| 瘦变体构建 | `package:slim` 任务（Windows / Linux / macOS），不内嵌 portable | `desktop/src/build/*/Taskfile.yml` |
+| 跳过 embed | 新增 build tag `downloadruntime` | `desktop/src/embed_portable_embedded.go` / `embed_portable.go` |
+| 运行时地址 | 编译期 ldflag 注入 `main.portableRuntimeURL`（逗号分隔的 URL 列表）+ `main.portableRuntimeVersion` | `desktop/src/main.go` |
+| 首启下载 | 内嵌 zip 与旁边的 zip 都没有时，从 URL 列表依次下载 → 解包 → 原子换名 | `desktop/src/download.go`（`downloadPortableRuntime` / `extractPortable`） |
+| 版本刷新 | URL 里带的版本比本地新时，走"备份 DB → 换运行时"的老路径 | `desktop/src/download.go`（`ensurePortable`） |
+| 镜像 fallback | URL 列表按序尝试，前一个失败自动换下一个 | `desktop/src/download.go`（`runtimeURLs`） |
+| 进度反馈 | 下载百分比走已有的 `desktop:status` 事件 | `desktop/src/desktop_copy.go` |
+| CI 产出 | 桌面发版时同时产出 6 个平台的 slim 安装器 | `.github/workflows/octop-desktop.yml` |
+| 分发 | slim 安装器挂到 Gitee Release（< 100 MB） | `.github/workflows/gitee-release.yml` |
+
+实测：slim 壳 **12 MB**（linux，`-w -s -trimpath`），Windows 交叉编译 **17 MB**，
+NSIS 安装器约 20 MB。
+
+### 0.2 与本文档原设计的差距
+
+| 项 | 原设计 | 现状 | 影响 |
+|---|---|---|---|
+| 分片 | runtime / app / deps-core / 可选片 | **未做**：整包 zip 一次下完 | 首启下载量不变（~215 MB），只是换了个地方下 |
+| 断点续传 | HTTP Range + `.part` | **未做**：中断即从头再来 | 网络不稳时体验差；重试会重新下 |
+| 校验 | 每片 sha256 强校验 | **未做** | 只靠 HTTPS；缺少供应链校验 |
+| manifest | 版本/分片/多镜像清单 | 简化为：编译期写死的 URL 列表 + 版本号 | 换镜像要重新出包 |
+| 可选组件 | 浏览器/飞书/OCR/embedding 后台补齐 | **未做** | 首次下载即全量 |
+| 落点 | `%LOCALAPPDATA%\Octop\portable` | 沿用 `~/.octop/portable` | 沿用现状，未改 |
+| 分发通道 | GitHub Release + COS | COS + GitHub Release 双镜像 | 已支持 |
+
+### 0.3 下一步
+
+按 [§九](#九实施路线) 的顺序推进：PR-1/PR-2（分片 + 续传 + 校验）→ PR-3（进度面板）
+→ PR-5（可选组件）。当前实现可以作为这些工作的地基：**壳与运行时的分离已经打通**，
+后续只是把"下载一个 zip"换成"下载一组分片"。
 
 ---
 

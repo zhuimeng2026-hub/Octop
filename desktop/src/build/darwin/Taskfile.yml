@@ -13,7 +13,7 @@ tasks:
     cmds:
       - go build {{.BUILD_FLAGS}} -o {{.OUTPUT}}
     vars:
-      BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production -trimpath -buildvcs=false -ldflags="-w -s"{{else}}-buildvcs=false -gcflags=all="-l"{{end}}'
+      BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production{{if .PORTABLE_RUNTIME_URL}},downloadruntime{{end}} -trimpath -buildvcs=false -ldflags="-w -s{{if .PORTABLE_RUNTIME_URL}} -X main.portableRuntimeURL={{.PORTABLE_RUNTIME_URL}} -X main.portableRuntimeVersion={{.VERSION}}{{end}}"{{else}}-buildvcs=false -gcflags=all="-l"{{end}}'
       DEFAULT_OUTPUT: "{{.BIN_DIR}}/{{.APP_NAME}}"
       OUTPUT: "{{ .OUTPUT | default .DEFAULT_OUTPUT }}"
     env:
@@ -31,12 +31,15 @@ tasks:
       - task: build
         vars:
           PRODUCTION: "true"
+          VERSION: "{{.VERSION}}"
+          PORTABLE_RUNTIME_URL: "{{.PORTABLE_RUNTIME_URL}}"
     cmds:
       - task: create:app:bundle
         vars:
           PORTABLE_ZIP: "{{.PORTABLE_ZIP}}"
           ARCH: "{{.ARCH}}"
           VERSION: "{{.VERSION}}"
+          INCLUDE_PORTABLE: '{{if .PORTABLE_RUNTIME_URL}}false{{else}}true{{end}}'
       - rm -f {{.ARCHIVE}} {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.zip {{.BIN_DIR}}/{{.APP_NAME}}-Desktop-darwin-{{.ARCH}}.dmg
       - |
         set -euo pipefail
@@ -148,22 +151,30 @@ tasks:
       ARCH: "{{.ARCH | default ARCH}}"
       VERSION: '{{.VERSION | default "dev"}}'
       PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-portable-darwin-%s-%s.zip" .ARCH .VERSION)}}'
-      ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-desktop-darwin-{{.ARCH}}-{{.VERSION}}.dmg'
+      # Slim installers carry no portable zip: the runtime is fetched on first launch.
+      ARCHIVE: '{{if .PORTABLE_RUNTIME_URL}}{{.BIN_DIR}}/{{.APP_NAME}}-desktop-slim-darwin-{{.ARCH}}-{{.VERSION}}.dmg{{else}}{{.BIN_DIR}}/{{.APP_NAME}}-desktop-darwin-{{.ARCH}}-{{.VERSION}}.dmg{{end}}'
 
   create:app:bundle:
     summary: Creates an .app bundle
     cmds:
-      - test -f {{.PORTABLE_ZIP}}
+      - '{{if eq .INCLUDE_PORTABLE "true"}}test -f {{.PORTABLE_ZIP}}{{end}}'
+      # Start from an empty bundle: a previous full build may have left the
+      # portable zip in Resources, which a slim bundle must not carry.
+      - rm -rf {{.BIN_DIR}}/{{.APP_NAME}}.app
       - mkdir -p {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/{MacOS,Resources}
       - cp build/darwin/icons.icns {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources
       # Stable name inside the signed .app; GitHub Release uses the versioned portable zip.
-      - cp {{.PORTABLE_ZIP}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/Octop-darwin-{{.ARCH}}.zip
+      - '{{if eq .INCLUDE_PORTABLE "true"}}cp {{.PORTABLE_ZIP}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/Octop-darwin-{{.ARCH}}.zip{{end}}'
       - cp {{.BIN_DIR}}/{{.APP_NAME}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS
       - cp build/darwin/Info.plist {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents
       - python3 build/stamp_version.py plist {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Info.plist "{{.VERSION}}"
       - codesign --force --deep --sign - {{.BIN_DIR}}/{{.APP_NAME}}.app
     vars:
       VERSION: '{{.VERSION | default "dev"}}'
+      # The caller decides: slim installers ship without the portable zip.
+      # go-task lets a task's own `vars:` override the caller's, so the flag
+      # arrives as INCLUDE_PORTABLE and is compared as a string.
+      INCLUDE_PORTABLE: '{{.INCLUDE_PORTABLE}}'
 
   run:
     cmds:
