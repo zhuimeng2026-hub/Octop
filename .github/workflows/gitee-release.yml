@@ -1,0 +1,133 @@
+name: Gitee Release
+
+# 把某个 v* GitHub Release 上的合规产物发布到 Gitee。
+#
+# Gitee 单个附件上限 100 MB：完整客户端安装器（~300 MB）和 portable 运行时
+# （~215 MB）都超限，因此只挂 slim 客户端（~20 MB，首次启动从 COS 下载运行时）、
+# wheel / sdist 和 fnos-docker 包；超限的产物在 Release 说明里给外链。
+#
+# 需要仓库 Secrets：
+#   GITEE_TOKEN  Gitee Personal Access Token（projects 权限）
+#   GH_PAT       读取别的 GitHub 仓库的 Release 资产时需要。本仓库的 Release
+#                用自带的 GITHUB_TOKEN 就够。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v1.4.0"
+        required: true
+        type: string
+      source_repo:
+        description: "资产来源的 GitHub 仓库（owner/repo），留空用本仓库"
+        required: false
+        default: ""
+        type: string
+      gitee_owner:
+        description: "Gitee 仓库 owner"
+        required: false
+        default: "webheat"
+        type: string
+      gitee_repo:
+        description: "Gitee 仓库名"
+        required: false
+        default: "octop_client"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to Gitee
+    runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      SOURCE_REPO: ${{ inputs.source_repo || github.repository }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check credentials
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${GITEE_TOKEN}" ]] || missing+=("GITEE_TOKEN")
+          if [[ "${SOURCE_REPO}" != "${{ github.repository }}" && -z "${GH_PAT}" ]]; then
+            missing+=("GH_PAT (needed for ${SOURCE_REPO})")
+          fi
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::missing secrets: ${missing[*]}" >&2
+            exit 1
+          fi
+          [[ -n "${{ inputs.gitee_owner }}" ]] || { echo "::error::gitee_owner is empty" >&2; exit 1; }
+          [[ -n "${{ inputs.gitee_repo }}" ]] || { echo "::error::gitee_repo is empty" >&2; exit 1; }
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          # Gitee caps one attachment at 100 MB: only the small assets go there.
+          # The full client and the portable runtime stay on GitHub / COS and are
+          # linked from the release notes.
+          mapfile -t names < <(
+            gh release view "${{ inputs.tag }}" --repo "${SOURCE_REPO}" --json assets \
+              --jq '.assets[] | select(.size < 104857600) | .name'
+          )
+          if [[ ${#names[@]} -eq 0 ]]; then
+            echo "::error::the release has no asset under 100 MB" >&2
+            exit 1
+          fi
+          args=(
+            release download "${{ inputs.tag }}"
+            --repo "${SOURCE_REPO}"
+            --dir release-assets
+            --clobber
+          )
+          for name in "${names[@]}"; do
+            echo "  ${name}"
+            args+=(--pattern "$name")
+          done
+          gh "${args[@]}"
+          ls -lh release-assets/
+
+      - name: Build release notes
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/gitee/release_notes.py \
+            --repo "${SOURCE_REPO}" \
+            --tag "${{ inputs.tag }}" \
+            --out release-notes.md
+          head -40 release-notes.md
+
+      # The download page is the Gitee repository's only content: the release
+      # tag points at the commit that carries it.
+      - name: Sync the download page
+        id: readme
+        run: |
+          set -euo pipefail
+          sha="$(python3 scripts/gitee/push_readme.py \
+            --owner "${{ inputs.gitee_owner }}" \
+            --repo "${{ inputs.gitee_repo }}" \
+            --token "${GITEE_TOKEN}")"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to Gitee
+        run: |
+          set -euo pipefail
+          bash scripts/gitee/publish_release.sh \
+            --tag "${{ inputs.tag }}" \
+            --owner "${{ inputs.gitee_owner }}" \
+            --repo "${{ inputs.gitee_repo }}" \
+            --token "${GITEE_TOKEN}" \
+            --assets-dir release-assets \
+            --body-file release-notes.md \
+            --base-sha "${{ steps.readme.outputs.sha }}"
