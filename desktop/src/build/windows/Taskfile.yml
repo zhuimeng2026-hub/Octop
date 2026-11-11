@@ -68,7 +68,8 @@ tasks:
       - cmd: >-
           powershell -NoProfile -Command
           "Remove-Item -Force '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}.zip' -ErrorAction SilentlyContinue;
-          Remove-Item -Force 'bundled/portable.zip' -ErrorAction SilentlyContinue"
+          Remove-Item -Force 'bundled/portable.zip' -ErrorAction SilentlyContinue;
+          exit 0"
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
       VERSION: '{{.VERSION | default "dev"}}'
@@ -92,7 +93,8 @@ tasks:
       - cmd: >-
           powershell -NoProfile -Command
           "Remove-Item -Force '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}.zip' -ErrorAction SilentlyContinue;
-          Remove-Item -Force 'bundled/portable.zip' -ErrorAction SilentlyContinue"
+          Remove-Item -Force 'bundled/portable.zip' -ErrorAction SilentlyContinue;
+          exit 0"
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       VERSION: '{{.VERSION | default "dev"}}'
@@ -121,7 +123,8 @@ tasks:
           "Remove-Item -Force '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}.zip' -ErrorAction SilentlyContinue;
           Remove-Item -Force '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}.exe' -ErrorAction SilentlyContinue;
           Remove-Item -Recurse -Force '{{.BIN_DIR}}/{{.APP_NAME}}-Desktop-windows-{{.ARCH}}' -ErrorAction SilentlyContinue;
-          Remove-Item -Force 'bundled/portable.zip' -ErrorAction SilentlyContinue"
+          Remove-Item -Force 'bundled/portable.zip' -ErrorAction SilentlyContinue;
+          exit 0"
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       VERSION: '{{.VERSION | default "dev"}}'
