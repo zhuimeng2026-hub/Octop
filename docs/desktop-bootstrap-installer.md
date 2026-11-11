@@ -3,7 +3,110 @@
 > 目标：把桌面端首包从 **~250MB+ 压到 ~12MB 以内**，安装器只负责"把壳装上"，
 > 完整运行环境在首启后由壳自己分阶段下载、断点续传、后台补齐可选组件。
 >
-> 状态：设计稿，未实现。范围仅限 **Windows（amd64 / arm64）**。
+> 状态：**第一阶段已实现**（2026-11-11）。瘦变体 + 首启下载运行时已落地，
+> 用于 [Gitee 发布通道](gitee-release.md)（Gitee 附件上限 100 MB）。运行时本体
+> ~290 MB 放不进 Gitee，留在 GitHub Release，客户端首启从那里拉。
+> 第二阶段（PR-2 引导下载器）也已完成：**断点续传、sha256 校验、manifest、
+> state.json** 已落地；**分片制品、可选组件后台补齐、进度面板仍未实现**，
+> 现状与差距见 [§零](#零已实现范围)。
+
+---
+
+## 零、已实现范围
+
+### 0.1 已经做了什么
+
+| 环节 | 实现 | 位置 |
+|---|---|---|
+| 瘦变体构建 | `package:slim` 任务（Windows / Linux / macOS），不内嵌 portable | `desktop/src/build/*/Taskfile.yml` |
+| 跳过 embed | 新增 build tag `downloadruntime` | `desktop/src/embed_portable_embedded.go` / `embed_portable.go` |
+| 运行时地址 | 编译期 ldflag 注入 `main.portableRuntimeURL`（逗号分隔的 URL 列表）+ `main.portableRuntimeVersion` | `desktop/src/main.go` |
+| manifest 地址 | 编译期 ldflag 注入 `main.portableRuntimeManifestURL` + `main.portableRuntimeManifestSHA256` | `desktop/src/main.go` |
+| 首启下载 | 内嵌 zip 与旁边的 zip 都没有时，从 URL 列表依次下载 → 解包 → 原子换名 | `desktop/src/download.go`（`bootstrapRuntime` / `extractPortable`） |
+| 断点续传 | HTTP Range + 缓存文件，中断后从断点继续；服务端不支持 Range 时自动整包重下 | `desktop/src/bootstrap/fetch.go` |
+| 校验 | manifest 里的每个分片带 sha256，校验不过不落盘、自动换镜像 | `desktop/src/bootstrap/fetch.go` |
+| manifest | 运行时清单：版本、分片、多镜像、大小、校验和；可选随壳校验自身 sha256 | `desktop/src/bootstrap/manifest.go` |
+| 断点状态 | `state.json` 记住已下载/已完成的分片，换版本时自动作废 | `desktop/src/bootstrap/state.go` |
+| 分片解压 | zip 与 tar.gz 两种格式，可丢弃归档的单层根目录 | `desktop/src/bootstrap/unpack.go` |
+| 版本刷新 | URL 里带的版本比本地新时，走"备份 DB → 换运行时"的老路径 | `desktop/src/download.go`（`ensurePortable`） |
+| 镜像 fallback | URL 列表按序尝试，前一个失败自动换下一个 | `desktop/src/bootstrap/fetch.go` |
+| 进度反馈 | 下载百分比走已有的 `desktop:status` 事件 | `desktop/src/desktop_copy.go` |
+| CI 产出 | 桌面发版时同时产出各平台的 slim 安装器（本轮只交付 Windows 两个） | `.github/workflows/octop-desktop.yml` |
+| 分发 | slim 安装器挂到 Gitee Release（< 100 MB） | `.github/workflows/gitee-release.yml` |
+
+实测：slim 壳 **12 MB**（linux，`-w -s -trimpath`），Windows 交叉编译 **17 MB**，
+NSIS 安装器约 20 MB。
+
+### 0.2 与本文档原设计的差距
+
+| 项 | 原设计 | 现状 | 影响 |
+|---|---|---|---|
+| 分片 | runtime / app / deps-core / 可选片 | **未做**：整包 zip 一次下完 | 首启下载量不变（~290 MB），只是换了个地方下 |
+| 断点续传 | HTTP Range + `.part` | **已做**（PR-2） | 中断后从断点继续 |
+| 校验 | 每片 sha256 强校验 | **已做**（PR-2）：manifest 里的分片强校验；只给一个 zip URL 时没有校验和 | 只给 URL 的老路径仍只靠 HTTPS |
+| manifest | 版本/分片/多镜像清单 | **已做**（PR-2），但**制品侧还没产出 manifest**（PR-1） | 现在只有手写/脚本生成的 manifest 可用 |
+| 可选组件 | 浏览器/飞书/OCR/embedding 后台补齐 | **未做** | 首次下载即全量 |
+| 落点 | `%LOCALAPPDATA%\Octop\portable` | 沿用 `~/.octop/portable` | 沿用现状，未改 |
+| 分发通道 | GitHub Release + COS | **GitHub Release 单源** | 运行时 ~290 MB 放不进 Gitee 附件（100 MB 上限），先单源跑通；客户端本身支持多 URL fallback，将来加镜像不用改代码 |
+
+### 0.3 下一步
+
+按 [§九](#九实施路线) 的顺序推进：PR-1（分片制品 + manifest 生成）→ PR-3（进度面板）
+→ PR-5（可选组件）。**壳与运行时的分离、续传、校验、状态记录已经打通**，
+后续只是把"下载一个 zip"换成"下载一组分片"——下载器这一侧不用再改。
+
+### 0.4 怎么用
+
+**方式 A：只给 zip 地址（现在的 CI 用的方式）**
+
+本轮运行时只走 **GitHub Release**（~290 MB 放不进 Gitee 附件的 100 MB 上限）：
+
+```bash
+cd desktop/src
+wails3 task package ARCH=amd64 VERSION=1.4.0 \
+  PORTABLE_RUNTIME_URL="https://github.com/<owner>/<repo>/releases/download/<tag>/Octop-portable-windows-amd64-1.4.0.zip"
+```
+
+下载器会续传，但没有校验和——镜像给了坏包也只能等下次重试。
+将来要加对象存储/CDN 镜像，再写一个地址（逗号分隔）即可，客户端按序 fallback，
+不用改代码。
+
+**方式 B：给 manifest（推荐）**
+
+manifest 是一个 JSON 文件，描述运行时分片：
+
+```jsonc
+{
+  "version": "1.4.0",
+  "parts": [
+    {
+      "id": "runtime",
+      "urls": ["https://github.com/<owner>/<repo>/releases/download/<tag>/runtime.zip"],
+      "size": 304087040,
+      "sha256": "…",
+      "format": "zip",        // zip | tar.gz
+      "stripRoot": true,      // 丢掉归档里的单层根目录
+      "target": "",           // 解压到运行时的哪个目录，空 = 根目录
+      "required": true
+    }
+  ]
+}
+```
+
+```bash
+cd desktop/src
+wails3 task package ARCH=amd64 VERSION=1.4.0 \
+  PORTABLE_RUNTIME_MANIFEST_URL="https://github.com/<owner>/<repo>/releases/download/<tag>/manifest.json" \
+  PORTABLE_RUNTIME_MANIFEST_SHA256="<manifest.json 的 sha256，可选>"
+```
+
+- `urls` 是有序镜像列表，前一个失败自动换下一个；
+- `sha256` 对**压缩包**校验，不过就换镜像，绝不解压；
+- `required: false` 的分片当前会被跳过（等 PR-5 的后台补齐）；
+- manifest 本身可以带 sha256（编译期写死），不写就信任 HTTPS 通道。
+
+两种方式都写 `PORTABLE_RUNTIME_URL` 时 **manifest 优先**。
+
 
 ---
 
@@ -192,10 +295,12 @@ makensis project.nsi        →  Octop-desktop-windows-amd64-<ver>.exe
   "parts": [
     {
       "id": "runtime",
-      "url": ["https://github.com/TencentCloud/Octop/releases/download/v1.1.0/Octop-parts-windows-amd64-1.1.0-runtime.tar.gz",
-              "https://<bucket>.<endpoint>/octop/release/1.1.0/Octop-parts-windows-amd64-1.1.0-runtime.tar.gz"],
+      "urls": ["https://github.com/TencentCloud/Octop/releases/download/v1.1.0/Octop-parts-windows-amd64-1.1.0-runtime.tar.gz",
+               "https://<bucket>.<endpoint>/octop/release/1.1.0/Octop-parts-windows-amd64-1.1.0-runtime.tar.gz"],
       "size": 41943040,
       "sha256": "…",
+      "format": "tar.gz",
+      "stripRoot": false,
       "target": "runtime",
       "required": true
     }
@@ -203,8 +308,9 @@ makensis project.nsi        →  Octop-desktop-windows-amd64-<ver>.exe
 }
 ```
 
-- `url` 是**有序数组**，客户端按序尝试（GitHub Release → COS → 其他镜像）。
+- `urls` 是**有序数组**，客户端按序尝试（GitHub Release → 其它镜像）。
 - `sha256` 对**压缩包**校验（不是对解压后的目录），保证下载完整性 + 供应链可信。
+- `format` 是 `zip` 或 `tar.gz`；`stripRoot` 决定要不要丢掉归档里的单层根目录。
 - `required: false` 的分片是"后台补齐"，失败不影响主流程。
 
 manifest 本身也要有校验：随壳内置 manifest 的 `sha256`（编译期常量），
@@ -212,14 +318,14 @@ manifest 本身也要有校验：随壳内置 manifest 的 `sha256`（编译期�
 
 ### 4.4 制品托管
 
-复用现有两条通道，客户端按序 fallback：
+**本轮只用 GitHub Release 一条通道**，客户端按序 fallback 的能力留着：
 
 | 通道 | 现状 | 用途 |
 |---|---|---|
-| GitHub Release | `.github/workflows/octop-desktop.yml` 已挂 `Octop-portable-*` / `Octop-desktop-*` | 海外主源 |
-| COS | `.github/workflows/upload-release-cos.yml` → `octop/release/<version>/<file>` | 国内主源（`patterns` 需加上 `Octop-parts-*`） |
+| GitHub Release | `.github/workflows/octop-desktop.yml` 已挂 `Octop-portable-*` / `Octop-desktop-*` | 唯一源（运行时 ~290 MB 放不进 Gitee 附件的 100 MB 上限） |
+| COS | `.github/workflows/upload-release-cos.yml` → `octop/release/<version>/<file>` | 本轮不用（多一条链路就多一份运维成本）；要加镜像时客户端不用改代码 |
 
-CI 需要新增一个 job 产出分片 + manifest，并把它们一起挂到 Release / COS。
+CI 需要新增一个 job 产出分片 + manifest，并把它们一起挂到 Release。
 
 ---
 
@@ -231,11 +337,11 @@ CI 需要新增一个 job 产出分片 + manifest，并把它们一起挂到 Rel
 
 | 文件 | 职责 |
 |---|---|
-| `manifest.go` | manifest 结构 + 拉取 + 校验 |
-| `fetch.go` | HTTP 下载：Range 续传、镜像 fallback、指数退避重试 |
-| `unpack.go` | tar.gz 流式解压到临时目录 |
-| `state.go` | `state.json` 读写：已完成分片、版本、失败记录 |
-| `stages.go` | 阶段编排（runtime → app → deps-core → 可选） |
+| `bootstrap.go` | manifest/分片结构、`Options`、`Run` 编排 |
+| `manifest.go` | manifest 拉取 + 校验 |
+| `fetch.go` | HTTP 下载：Range 续传、镜像 fallback、退避重试、sha256 |
+| `unpack.go` | zip / tar.gz 解压（可丢弃单层根目录） |
+| `state.go` | `state.json` 读写：已下载分片、校验和、版本 |
 | `bootstrap_test.go` | 单测（httptest 假服务器 + 断点/损坏/中断场景） |
 
 ### 5.2 下载语义
@@ -255,7 +361,7 @@ for part in manifest.parts where required:
 
 要点：
 
-- **断点续传**：`Range` 请求 + `.part` 文件。服务端不支持 Range（部分 COS 配置、
+- **断点续传**：`Range` 请求 + 缓存文件。服务端不支持 Range（有些对象存储配置、
   代理会吞掉 Range）时降级为整片重下，功能不破。
 - **镜像 fallback**：一个镜像失败（404 / 连接超时 / 校验不符）→ 自动切下一个。
 - **重试**：单镜像内指数退避重试 3 次（1s/4s/16s），全失败才换镜像。
@@ -294,9 +400,10 @@ for part in manifest.parts where required:
 
 ```go
 func ensurePortable(locale, status) error {
-    if launchReady(portableDir()) && 版本匹配 { return nil }   // 已有可用环境
-    if 有内嵌 zip（离线/开发构建） { 沿用旧路径解压 }            // 兼容
-    return bootstrap.Run(manifestURL, status)                   // 在线分阶段下载
+    manifest, err := loadRuntimeManifest()                      // 有 manifest 才拉
+    if launchReady(portableDir()) && 版本匹配 { return nil }      // 已有可用环境
+    if 有内嵌 zip（离线/开发构建） { 沿用旧路径解压 }               // 兼容
+    return bootstrapRuntime(root, locale, status, manifest)      // 在线分阶段下载
 }
 ```
 
@@ -440,7 +547,7 @@ type ProgressEvent struct {
 | **PR-0** | `pyproject.toml` extras 化：playwright → `extras[browser]`、lark-oapi → `extras[feishu]`；对应 import 改惰性 | — | 中（要确认所有 import 点） |
 | **PR-0b** | octop-harness 侧收窄 extra（跨仓库） | PR-0 | 中（另一个包，需发版） |
 | **PR-1** | `package-shards.sh` + manifest 生成；CI 新 job 产出分片（**先不发布、不引用**） | — | 低 |
-| **PR-2** | Go 下载器（`desktop/src/bootstrap/`）：manifest / Range 续传 / sha256 / tar.gz 解压 / 原子切换 / `state.json`；单测用 httptest 假服务器覆盖断点、损坏、中断 | PR-1 | 中（Windows 路径/长路径要真机验） |
+| **PR-2** | ✅ Go 下载器（`desktop/src/bootstrap/`）：manifest / Range 续传 / sha256 / zip+tar.gz 解压 / 原子切换 / `state.json`；单测用 httptest 假服务器覆盖断点、损坏、中断 | PR-1 | 中（Windows 路径/长路径要真机验） |
 | **PR-3** | 壳 UI 进度面板（`desktop/src/assets/index.html` 扩展 + `desktop:progress` 事件） | PR-2 | 低 |
 | **PR-4** | 瘦安装器变体：NSIS slim task + 可空 embed + 首启引导；**默认仍发布全量版** | PR-2, PR-3 | 中（改动打包链） |
 | **PR-5** | 可选组件后台下载（dashboard 可用后继续拉） | PR-4 | 低 |
@@ -506,6 +613,6 @@ type ProgressEvent struct {
 | 便携入口（Windows DLL 路径） | `desktop/portable/templates/launch.py` |
 | 便携启动脚本 | `desktop/portable/templates/start.bat` |
 | 桌面 CI | `.github/workflows/octop-desktop.yml` |
-| 制品上 COS | `.github/workflows/upload-release-cos.yml` |
+| 制品上 COS（本轮不用） | `.github/workflows/upload-release-cos.yml` |
 | 下载链接表 | `scripts/release_download_links.py` |
 | 后端首启向导 | `src/octop/api/routers/setup.py`、`src/octop/api/middleware/setup_lockdown.py` |

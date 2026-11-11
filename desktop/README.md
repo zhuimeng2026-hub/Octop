@@ -64,6 +64,41 @@ current user's `%LOCALAPPDATA%\Octop\video-runtime`. A build-time
 official release URL exists. Locally validated, unsigned installers are not
 published release artifacts.
 
+## Build a slim desktop release
+
+The slim variant ships the Wails shell without the embedded Python runtime
+(~20 MB instead of ~300 MB). The first launch downloads the portable runtime
+from the URLs baked in at build time and unpacks it locally. It exists because
+Gitee caps a release attachment at 100 MB — see `docs/gitee-release.md`.
+
+```bash
+cd desktop/src
+wails3 task package \
+  ARCH=amd64 \
+  VERSION=1.4.0 \
+  PORTABLE_RUNTIME_URL="https://<bucket>.<endpoint>/octop/release/1.4.0/Octop-portable-windows-amd64-1.4.0.zip,https://github.com/<owner>/<repo>/releases/download/v1.4.0/Octop-portable-windows-amd64-1.4.0.zip"
+```
+
+`PORTABLE_RUNTIME_URL` is a comma-separated list; the shell tries the URLs in
+order. The output is named `Octop-desktop-slim-<plat>-<version>.<ext>`.
+Without the variable, `wails3 task package` produces the full client as before.
+
+The download resumes where it stopped, and a mirror that fails hands over to
+the next one. `PORTABLE_RUNTIME_MANIFEST_URL` points at a manifest that
+describes the runtime parts — their URLs, sizes and sha256 checksums — and
+takes precedence over `PORTABLE_RUNTIME_URL`:
+
+```bash
+cd desktop/src
+wails3 task package \
+  ARCH=amd64 \
+  VERSION=1.4.0 \
+  PORTABLE_RUNTIME_MANIFEST_URL="https://github.com/<owner>/<repo>/releases/download/<tag>/manifest.json" \
+  PORTABLE_RUNTIME_MANIFEST_SHA256="<optional checksum of the manifest>"
+```
+
+See `docs/desktop-bootstrap-installer.md` §0.4 for the manifest format.
+
 ## Build the Wails shell
 
 Run these from **`desktop/src`** (that directory contains `Taskfile.yml` and

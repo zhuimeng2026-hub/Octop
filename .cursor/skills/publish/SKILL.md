@@ -309,6 +309,11 @@ EOF
    - `Release` 与 `Docker Publish` 随 `v*` tag 触发并通过；
    - `Sync Main Into Develop` 在 GitHub Release 发布后把 `main` 同步回 `develop`。
 
+4. 若本次也要发 Gitee（附件上限 100 MB，只发 slim 客户端 / wheel / sdist /
+   fnos-docker）：等桌面发版把 portable 运行时传上 COS 后，再手动 dispatch
+   `Gitee Release` 工作流（tag / gitee_owner / gitee_repo）。
+   细节见 `docs/gitee-release.md`。
+
 ### 步骤 7 — 删除 release 分支；develop 由 Action 同步
 
 1. 删除远程与本地 release 分支：

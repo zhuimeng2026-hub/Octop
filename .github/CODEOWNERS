@@ -1,0 +1,22 @@
+# GitHub Code Owners
+#
+# 作用：把「桌面客户端外壳 + 它的发版链路」标成一个独立的责任区，任何改动
+# 都会自动点到对应维护者。这样 desktop/ 与主干重构解耦，不必为此长期养一条
+# 分叉分支。
+#
+# 注意：本文件只声明「谁该被 review」。要变成硬性闸门，还需要在分支保护里
+# 勾选 "Require review from Code Owners"，而分支保护要求仓库 admin 权限。
+# 在当前权限（push only）下，它起提醒作用。
+
+# 桌面客户端：Wails 外壳、便携运行时模板、打包脚本、NSIS 安装器
+/desktop/                              @webheat
+
+# 桌面端 CI：构建 / 发布 Windows 与 macOS 产物
+/.github/workflows/octop-desktop.yml   @webheat
+
+# Gitee 发布通道（客户端下载页与 Release 正文由它生成）
+/scripts/gitee/                        @webheat
+/scripts/release_download_links.py     @webheat
+
+# 桌面端构建与安装器文档
+/docs/desktop-*.md                     @webheat

@@ -32,6 +32,27 @@ var defaultServerURL string
 // The native shell never downloads or executes that installer.
 var defaultVideoComponentsURL string
 
+// portableRuntimeURL is baked in at build time via
+// -ldflags "-X main.portableRuntimeURL=https://host/Octop-portable-<plat>-<version>.zip".
+// Slim installers ship no embedded runtime: the first launch downloads it
+// from this URL instead.
+var portableRuntimeURL string
+
+// portableRuntimeVersion is the runtime version the download URL carries,
+// baked in alongside portableRuntimeURL. A newer value refreshes the local
+// runtime on the next launch.
+var portableRuntimeVersion string
+
+// portableRuntimeManifestURL points at a manifest that describes the runtime
+// parts — their URLs, mirrors, sizes and checksums. A slim installer with a
+// manifest verifies every part it downloads; without one it falls back to
+// portableRuntimeURL and trusts the archive it gets.
+var portableRuntimeManifestURL string
+
+// portableRuntimeManifestSHA256 is the expected checksum of the manifest
+// body. An empty value means the manifest is trusted as it was fetched.
+var portableRuntimeManifestSHA256 string
+
 // resolveRemoteDashboardURL picks the remote dashboard target for boot: the
 // OCTOP_DESKTOP_URL environment variable wins over the build-time default
 // (baked in via -ldflags "-X main.defaultServerURL=..."); an empty result
