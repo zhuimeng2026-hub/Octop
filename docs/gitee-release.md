@@ -58,11 +58,14 @@ Gitee Release 附件（都 < 100 MB）：
 
 | 附件 | 体积 | 说明 |
 |---|---|---|
-| `Octop-desktop-<plat>-<ver>.<ext>` | ~20 MB | 远程版客户端，连接已部署的服务 |
+| `Octop-desktop-<plat>-<ver>.<ext>` | ~18 MB | 远程版客户端，连接已部署的服务 |
 | `Octop-desktop-slim-<plat>-<ver>.<ext>` | ~20 MB | 本地版客户端，首次启动下载运行时 |
 | `octop-<ver>-py3-none-any.whl` | ~22 MB | Python wheel |
 | `octop-<ver>.tar.gz` | ~21 MB | sdist |
 | `Octop-fnos-docker-<ver>.fpk` | 0.3 MB | fnOS Docker 版 |
+
+**本轮只出 Windows 版**（amd64 / arm64）。macOS 与 Linux 的客户端本轮不构建、
+不发布——构建说明见 [desktop-windows-build.md](desktop-windows-build.md)。
 
 **不上传**（超限，Release 说明里给外链）：内嵌运行时的完整桌面安装器、
 portable 运行时、fnOS native 包。外链指向 GitHub Release。

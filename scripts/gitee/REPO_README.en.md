@@ -17,10 +17,11 @@ Every release is listed under [Releases](https://gitee.com/webheat/octop_client/
 
 | Client | Size | What it is |
 |---|---|---|
-| **Remote** | ~20 MB | Connects to a deployed Octop server. No Python runtime on your machine — install and go. |
+| **Remote** | ~18 MB | Connects to a deployed Octop server. No Python runtime on your machine — install and go. |
 | **Slim (local)** | ~20 MB | Runs the full runtime locally. The **first launch** downloads ~290 MB of runtime from the GitHub Release and unpacks it locally; offline afterwards. |
 
-Windows / macOS / Linux installers are listed per release.
+**This round ships the Windows build only** (64-bit / ARM64). macOS and Linux
+builds are not published yet.
 
 ### Other artifacts
 
