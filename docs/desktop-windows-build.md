@@ -112,7 +112,7 @@ ARM64 版同理，把平台换成 `windows-arm64`。
 ```bash
 cd desktop/src
 wails3 task package ARCH=amd64 VERSION=1.4.0
-# 产物：desktop/src/bin/Octop-desktop-windows-amd64-1.4.0.exe   (~18 MB)
+# 产物：desktop/src/bin/Octop-desktop-windows-amd64-1.4.0.exe   (~6 MB)
 ```
 
 **本地版（slim）：**
@@ -123,10 +123,36 @@ wails3 task package \
   ARCH=amd64 \
   VERSION=1.4.0 \
   PORTABLE_RUNTIME_URL="https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/Octop-portable-windows-amd64-1.4.0.zip"
-# 产物：desktop/src/bin/Octop-desktop-slim-windows-amd64-1.4.0.exe   (~20 MB)
+# 产物：desktop/src/bin/Octop-desktop-slim-windows-amd64-1.4.0.exe   (~6 MB)
 ```
 
-ARM64：`ARCH=arm64`，其余不变。
+ARM64：`ARCH=arm64`，其余不变。**arm64 只能出远程版**——`psycopg-binary` 与
+`cryptography` 官方都没有 `win_arm64` wheel，portable 的 `packages/` 装不出来。
+
+### 3.5 打视频组件安装包（两种客户端都要）
+
+客户端**不带**视频渲染环境。不装组件，登录、产品库、方案编辑都正常，只是不能在本机出片。
+组件复用已有的 `desktop/src/video-runtime/`（含 node.exe、node_modules、worker）：
+
+```bash
+cd desktop/src
+wails3 task windows:components:installer VERSION=1.4.0 \
+  MAKENSIS="C:\Users\huawei\AppData\Local\tauri\NSIS\makensis.exe"
+# 产物：desktop/src/bin/Octop-video-components-windows-x64-1.4.0.exe  (~72 MB)
+```
+
+需要从零重建 runtime 时才用 `windows:components:package`（它会跑
+`remotion/build-desktop-runtime.mjs`，要联网拉 Node 与 headless shell，慢很多）。
+
+打客户端时把组件下载地址编译进去，界面才会出现「下载视频组件」按钮：
+
+```bash
+wails3 task package ARCH=amd64 VERSION=1.4.0 \
+  VIDEO_COMPONENTS_URL="https://gitee.com/webheat/octop_client/releases/download/v1.4.0-gitee.1/Octop-video-components-windows-x64-1.4.0.exe"
+```
+
+> 这个地址**只能是单个 URL**（不像运行时可给逗号列表），取不到时界面退化成
+> 「联系管理员获取安装包」。72 MB 压得进 Gitee 附件，所以首选 Gitee 直连。
 
 > 也可以用仓库自带的发布脚本（它会串起前端 → portable → 校验 → 打包）：
 > `bash desktop/package-release.sh windows-amd64`。
@@ -219,8 +245,11 @@ bash scripts/gitee/publish_from_github.sh \
   --owner webheat --repo octop_client
 ```
 
-它会：拉 GitHub Release 里 **< 100 MB** 的资产 → 生成 Release 说明 → 同步下载页 →
-建 Gitee Release 并上传（超限的只列出并给外链）。
+它会：拉 GitHub Release 里 **< 100 MB 且属于 Windows** 的资产 → 生成 Release 说明 →
+同步下载页 → 建 Gitee Release 并上传（超限的只列出并给外链）。
+
+> 平台过滤是默认行为（`--platform windows`），跟"本轮只提供 Windows 版"一致；
+> 要发全平台就传 `--platform all`。wheel / sdist / fnOS 包不带平台名，一直都发。
 
 > 也可以在 GitHub Actions 里 dispatch `Gitee Release` 工作流（需要仓库 Secret
 > `GITEE_TOKEN`），但那个工作流目前因 fork 的 Actions 被禁用而跑不起来。
