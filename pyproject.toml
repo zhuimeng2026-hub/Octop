@@ -228,6 +228,16 @@ disable_error_code = ["attr-defined"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Keep pytest's tmp_path tree out of the system temp directory. The autouse
+# ``_isolated_user_home`` fixture in tests/conftest.py builds a throwaway HOME
+# per test case, and the octop logger writes a multi-MB log into each one, so
+# the default retention under %TEMP% / /tmp grew to several GB.
+# ``basetemp`` is only settable on the command line -- it is not a registered
+# ini option -- so it has to travel via ``addopts``. pytest wipes that directory
+# at the start of every run, so nothing accumulates between sessions.
+# The path is relative (git-ignored ``.pytest-tmp/``) rather than absolute so
+# the same setting works on Windows, Linux and macOS runners alike.
+addopts = "--basetemp=./.pytest-tmp"
 markers = [
     "live: tests that hit real LLM / external services (skipped by default)",
     "slow: expensive tests (integration boot, real harness, browser); skipped by make test-fast",
