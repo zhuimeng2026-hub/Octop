@@ -3,9 +3,9 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"octop.desktop/bootstrap"
 )
 
 func launchReady(root string) bool {
@@ -36,13 +38,19 @@ func pythonExe(root string) string {
 
 func ensurePortable(locale Locale, status func(string)) error {
 	root := portableDir()
+	// A slim installer reads its runtime description from a manifest. The
+	// fetch may fail — an installed runtime is then used as it is.
+	manifest, manifestErr := loadRuntimeManifest()
+	if manifestErr != nil && !launchReady(root) {
+		return fmt.Errorf("%s", desktopText(locale, copyErrorRuntimeDownloadFailed, manifestErr))
+	}
 	if launchReady(root) {
 		currentVersion := portableVersion(root)
 		bundledVersion, err := bundledPortableVersion()
 		if err != nil || bundledVersion == "" {
 			// Slim installers carry no bundled payload; the runtime version
-			// comes from the download URL baked in at build time.
-			bundledVersion = portableRuntimeVersion
+			// comes from the manifest or from the URL baked in at build time.
+			bundledVersion = runtimeVersion(manifest)
 		}
 		if bundledVersion == "" ||
 			(currentVersion != "" && compareVersions(bundledVersion, currentVersion) <= 0) {
@@ -57,7 +65,7 @@ func ensurePortable(locale Locale, status func(string)) error {
 	} else {
 		status(desktopText(locale, copyStatusFirstExtract))
 	}
-	if err := replacePortable(root, locale, status); err != nil {
+	if err := replacePortable(root, locale, status, manifest); err != nil {
 		if launchReady(root) {
 			status(desktopText(locale, copyStatusUpdateFailedKeep))
 			return nil
@@ -73,11 +81,11 @@ func ensurePortable(locale Locale, status func(string)) error {
 	return nil
 }
 
-func replacePortable(root string, locale Locale, status func(string)) error {
+func replacePortable(root string, locale Locale, status func(string), manifest *bootstrap.Manifest) error {
 	next := root + ".new"
 	previous := root + ".previous"
 	_ = os.RemoveAll(next)
-	if err := extractPortable(next, locale, status); err != nil {
+	if err := extractPortable(next, locale, status, manifest); err != nil {
 		_ = os.RemoveAll(next)
 		return err
 	}
@@ -220,7 +228,7 @@ func metadataVersion(text string) string {
 	return ""
 }
 
-func extractPortable(root string, locale Locale, status func(string)) error {
+func extractPortable(root string, locale Locale, status func(string), manifest *bootstrap.Manifest) error {
 	if os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP") != "" {
 		zipPath, err := bundledPortableZip()
 		if err != nil {
@@ -236,57 +244,103 @@ func extractPortable(root string, locale Locale, status func(string)) error {
 		return unzipGreen(zipPath, root)
 	}
 	// No payload is embedded and none sits beside the executable: slim
-	// installers fetch the runtime once, on first launch.
-	downloadPath := filepath.Join(octopHome(), "portable-runtime.zip")
-	err := downloadPortableRuntime(downloadPath, func(percent int) {
-		status(desktopText(locale, copyStatusDownloadingRuntime, percent))
-	})
+	// installers fetch the runtime on the first launch.
+	return bootstrapRuntime(root, locale, status, manifest)
+}
+
+// bootstrapRuntime downloads the runtime of a slim installer. The download
+// resumes where it stopped, a broken mirror hands over to the next one, and
+// the archive is only unpacked after it passed its checksum.
+func bootstrapRuntime(root string, locale Locale, status func(string), manifest *bootstrap.Manifest) error {
+	parts, err := runtimeParts(manifest)
 	if err != nil {
-		return fmt.Errorf("%s: %w", desktopText(locale, copyErrorRuntimeDownloadFailed), err)
+		return fmt.Errorf("%s", desktopText(locale, copyErrorRuntimeDownloadFailed, err))
 	}
-	defer os.Remove(downloadPath)
-	return unzipGreen(downloadPath, root)
+	opts := bootstrap.Options{
+		Root:     root,
+		CacheDir: filepath.Join(octopHome(), "portable-cache"),
+		Manifest: bootstrap.Manifest{Version: runtimeVersion(manifest), Parts: parts},
+		Client:   runtimeHTTPClient,
+		Progress: func(progress bootstrap.Progress) {
+			if progress.Total <= 0 {
+				return
+			}
+			status(desktopText(locale, copyStatusDownloadingRuntime, progress.Percent()))
+		},
+		Log: navLogf,
+	}
+	status(desktopText(locale, copyStatusDownloadingRuntimeGo))
+	if err := bootstrap.Run(opts); err != nil {
+		return fmt.Errorf("%s", desktopText(locale, copyErrorRuntimeDownloadFailed, err))
+	}
+	return nil
 }
 
-// portableRuntimeLimit caps the runtime download. The portable payload is
-// roughly 215 MB compressed; the cap leaves headroom for growth without
-// letting a wrong URL fill the disk.
-const portableRuntimeLimit = 512 << 20
-
-// runtimeHTTPClient has no total timeout — a 215 MB download may take a while
-// on a slow link — but it does not hang on a dead connection.
-var runtimeHTTPClient = &http.Client{
-	Transport: &http.Transport{
-		DialContext:           (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
-		TLSHandshakeTimeout:   30 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
-	},
-}
-
-// downloadPortableRuntime fetches the portable payload to dest. progress is
-// called with a percentage while the bytes arrive. The URL list is tried in
-// order, so a mirror can take over when the first one fails.
-func downloadPortableRuntime(dest string, progress func(int)) error {
+// runtimeParts describes what a slim installer has to fetch. A manifest wins
+// — it carries the checksums and the mirror list. Without one the baked-in
+// archive URLs are used as a single part.
+func runtimeParts(manifest *bootstrap.Manifest) ([]bootstrap.Part, error) {
+	if manifest != nil {
+		return manifest.Parts, nil
+	}
 	urls := runtimeURLs()
 	if len(urls) == 0 {
-		return fmt.Errorf("this build ships no runtime and has no runtime download URL")
+		return nil, errors.New("this build ships no runtime and has no runtime download URL")
 	}
-	var lastErr error
-	for _, url := range urls {
-		if err := downloadPortableRuntimeFrom(url, dest, progress); err != nil {
-			navLogf("runtime download failed for %s: %v", redactURL(url), err)
-			lastErr = err
-			continue
-		}
-		return nil
-	}
-	return lastErr
+	return []bootstrap.Part{{
+		ID:        "runtime",
+		URLs:      urls,
+		Format:    "zip",
+		StripRoot: true,
+		Required:  true,
+	}}, nil
 }
+
+// loadRuntimeManifest reads the runtime manifest of a slim installer. It
+// returns no manifest when the build ships plain archive URLs instead.
+func loadRuntimeManifest() (*bootstrap.Manifest, error) {
+	urls := runtimeManifestURLs()
+	if len(urls) == 0 {
+		return nil, nil
+	}
+	manifest, err := bootstrap.LoadManifest(urls, runtimeManifestClient, portableRuntimeManifestSHA256, navLogf)
+	if err != nil {
+		return nil, err
+	}
+	return &manifest, nil
+}
+
+// runtimeVersion is the version a slim installer would install.
+func runtimeVersion(manifest *bootstrap.Manifest) string {
+	if manifest != nil && manifest.Version != "" {
+		return manifest.Version
+	}
+	return portableRuntimeVersion
+}
+
+// runtimeHTTPClient has no total timeout — a runtime download may take a
+// while on a slow link — but it does not hang on a dead connection.
+var runtimeHTTPClient = bootstrap.DefaultClient()
+
+// runtimeManifestClient reads the manifest. It has a short timeout: the
+// manifest is fetched on every launch, and an offline client must not wait
+// for it — it uses the runtime it already has.
+var runtimeManifestClient = &http.Client{Timeout: 20 * time.Second}
 
 // runtimeURLs splits the baked-in URL list. A comma-separated list lets the
 // build point at a CDN first and a release mirror second.
 func runtimeURLs() []string {
-	parts := strings.Split(portableRuntimeURL, ",")
+	return splitURLList(portableRuntimeURL)
+}
+
+// runtimeManifestURLs splits the baked-in manifest URL list.
+func runtimeManifestURLs() []string {
+	return splitURLList(portableRuntimeManifestURL)
+}
+
+// splitURLList splits a comma-separated URL list.
+func splitURLList(raw string) []string {
+	parts := strings.Split(raw, ",")
 	urls := make([]string, 0, len(parts))
 	for _, part := range parts {
 		if trimmed := strings.TrimSpace(part); trimmed != "" {
@@ -294,64 +348,6 @@ func runtimeURLs() []string {
 		}
 	}
 	return urls
-}
-
-func downloadPortableRuntimeFrom(url, dest string, progress func(int)) error {
-	resp, err := runtimeHTTPClient.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("runtime download failed: HTTP %d", resp.StatusCode)
-	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
-	}
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	total := resp.ContentLength
-	written := int64(0)
-	last := -1
-	buf := make([]byte, 1<<20)
-	for {
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			written += int64(n)
-			if written > portableRuntimeLimit {
-				_ = out.Close()
-				_ = os.Remove(dest)
-				return fmt.Errorf("runtime download exceeded %d bytes", portableRuntimeLimit)
-			}
-			if _, writeErr := out.Write(buf[:n]); writeErr != nil {
-				_ = out.Close()
-				_ = os.Remove(dest)
-				return writeErr
-			}
-			if total > 0 && progress != nil {
-				percent := int(written * 100 / total)
-				if percent != last {
-					last = percent
-					progress(percent)
-				}
-			}
-		}
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			_ = out.Close()
-			_ = os.Remove(dest)
-			return readErr
-		}
-	}
-	if err := out.Close(); err != nil {
-		_ = os.Remove(dest)
-		return err
-	}
-	return nil
 }
 
 func bundledPortableZip() (string, error) {

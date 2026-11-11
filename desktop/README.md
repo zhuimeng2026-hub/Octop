@@ -83,6 +83,22 @@ wails3 task package \
 order. The output is named `Octop-desktop-slim-<plat>-<version>.<ext>`.
 Without the variable, `wails3 task package` produces the full client as before.
 
+The download resumes where it stopped, and a mirror that fails hands over to
+the next one. `PORTABLE_RUNTIME_MANIFEST_URL` points at a manifest that
+describes the runtime parts — their URLs, sizes and sha256 checksums — and
+takes precedence over `PORTABLE_RUNTIME_URL`:
+
+```bash
+cd desktop/src
+wails3 task package \
+  ARCH=amd64 \
+  VERSION=1.4.0 \
+  PORTABLE_RUNTIME_MANIFEST_URL="https://<bucket>.<endpoint>/octop/release/1.4.0/manifest.json" \
+  PORTABLE_RUNTIME_MANIFEST_SHA256="<optional checksum of the manifest>"
+```
+
+See `docs/desktop-bootstrap-installer.md` §0.4 for the manifest format.
+
 ## Build the Wails shell
 
 Run these from **`desktop/src`** (that directory contains `Taskfile.yml` and

@@ -137,6 +137,42 @@ PORTABLE_RUNTIME_URL=https://<bucket>.<endpoint>/octop/release/1.4.0/Octop-porta
 **顺序建议**：COS 在前（国内快），GitHub 在后（兜底）。但 COS 上的对象要先上传好，
 否则首个用户会先撞到 COS 的 404 再退回 GitHub。
 
+下载会**断点续传**：中途断网或杀进程，下次启动从断点继续，不会从头再下。
+
+**更稳的做法：给 manifest**
+
+只给 zip 地址时客户端没有校验和，镜像给了坏包只能等下次重试。改用 manifest
+（描述版本、分片、镜像、sha256）就能强校验：
+
+```bash
+cd desktop/src
+wails3 task package \
+  ARCH=amd64 \
+  VERSION=1.4.0 \
+  PORTABLE_RUNTIME_MANIFEST_URL="https://<bucket>.<endpoint>/octop/release/1.4.0/manifest.json,https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/manifest.json"
+```
+
+manifest 长这样（`format` 是 `zip` 或 `tar.gz`，`urls` 是有序镜像列表）：
+
+```json
+{
+  "version": "1.4.0",
+  "parts": [
+    {
+      "id": "runtime",
+      "urls": ["https://cos/.../Octop-portable-windows-amd64-1.4.0.zip"],
+      "size": 304087040,
+      "sha256": "…",
+      "format": "zip",
+      "stripRoot": true,
+      "required": true
+    }
+  ]
+}
+```
+
+详见 [desktop-bootstrap-installer.md §0.4](desktop-bootstrap-installer.md#04-怎么用)。
+
 ---
 
 ## 五、发布到 GitHub Release 与 Gitee
@@ -177,9 +213,9 @@ bash scripts/gitee/publish_from_github.sh \
 - [ ] `Octop-desktop-slim-windows-amd64-1.4.0.exe` 体积 **< 100 MB**（Gitee 硬限制）
 - [ ] 在一台干净 Windows 上安装 → 启动 → 状态栏出现"正在下载运行环境… N%" → 完成后 dashboard 能打开
 - [ ] **断网再启**：已下载的运行时不再下载，直接可用（离线可用）
-- [ ] 下载中断（杀进程）后重启：重新下载并最终成功
+- [ ] 下载中断（杀进程）后重启：从断点继续，不是从头再下
 - [ ] `Octop-portable-windows-amd64-1.4.0.zip` 已上传到 GitHub Release，**且 URL 可公开下载**（拿无痕窗口试）
-- [ ] 装完后运行时落在 `%LOCALAPPDATA%\Octop\portable`（不是 Program Files）
+- [ ] 装完后运行时落在 `~/.octop/portable`（即 `OCTOP_HOME` 下，不是 Program Files）
 
 ---
 

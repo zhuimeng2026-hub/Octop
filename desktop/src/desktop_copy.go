@@ -13,6 +13,7 @@ const (
 	copyStatusUpdatingRuntime      = "status.updating_runtime"
 	copyStatusFirstExtract         = "status.first_extract"
 	copyStatusDownloadingRuntime   = "status.downloading_runtime"
+	copyStatusDownloadingRuntimeGo = "status.downloading_runtime_start"
 	copyStatusUpdateFailedKeep     = "status.update_failed_keep"
 	copyStatusUsingExisting        = "status.using_existing"
 	copyErrorBackupFailed          = "error.backup_failed"
@@ -41,6 +42,7 @@ var desktopCopy = map[Locale]map[string]string{
 		copyStatusUpdatingRuntime:      "Updating the bundled runtime…",
 		copyStatusFirstExtract:         "First launch: unpacking the bundled runtime…",
 		copyStatusDownloadingRuntime:   "Downloading the runtime… %d%%",
+		copyStatusDownloadingRuntimeGo: "First launch: downloading the runtime…",
 		copyStatusUpdateFailedKeep:     "Runtime update failed; using the existing runtime…",
 		copyStatusUsingExisting:        "Octop is already running. Opening it…",
 		copyErrorBackupFailed:          "Database backup failed before upgrade; the current version was preserved",
@@ -67,6 +69,7 @@ var desktopCopy = map[Locale]map[string]string{
 		copyStatusUpdatingRuntime:      "正在更新内置运行环境…",
 		copyStatusFirstExtract:         "首次启动，正在解压内置运行环境…",
 		copyStatusDownloadingRuntime:   "正在下载运行环境… %d%%",
+		copyStatusDownloadingRuntimeGo: "首次启动，正在下载运行环境…",
 		copyStatusUpdateFailedKeep:     "更新内置运行环境失败，继续使用已有运行环境…",
 		copyStatusUsingExisting:        "Octop 已在运行，正在打开…",
 		copyErrorBackupFailed:          "升级前数据库备份失败，已保留当前版本",

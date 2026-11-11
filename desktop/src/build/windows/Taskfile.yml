@@ -21,7 +21,7 @@ tasks:
       - cmd: rm -f *.syso
         platforms: [linux, darwin]
     vars:
-      BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags {{if .DEFAULT_SERVER_URL}}production,thin{{else}}production{{end}}{{if .PORTABLE_RUNTIME_URL}},downloadruntime{{end}} -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui{{if .DEFAULT_SERVER_URL}} -X main.defaultServerURL={{.DEFAULT_SERVER_URL}}{{end}}{{if .VIDEO_COMPONENTS_URL}} -X main.defaultVideoComponentsURL={{.VIDEO_COMPONENTS_URL}}{{end}}{{if .PORTABLE_RUNTIME_URL}} -X main.portableRuntimeURL={{.PORTABLE_RUNTIME_URL}} -X main.portableRuntimeVersion={{.VERSION}}{{end}}"{{else}}-buildvcs=false -gcflags=all="-l"{{end}}'
+      BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags {{if .DEFAULT_SERVER_URL}}production,thin{{else}}production{{end}}{{if or .PORTABLE_RUNTIME_URL .PORTABLE_RUNTIME_MANIFEST_URL}},downloadruntime{{end}} -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui{{if .DEFAULT_SERVER_URL}} -X main.defaultServerURL={{.DEFAULT_SERVER_URL}}{{end}}{{if .VIDEO_COMPONENTS_URL}} -X main.defaultVideoComponentsURL={{.VIDEO_COMPONENTS_URL}}{{end}}{{if .PORTABLE_RUNTIME_URL}} -X main.portableRuntimeURL={{.PORTABLE_RUNTIME_URL}}{{end}}{{if .PORTABLE_RUNTIME_MANIFEST_URL}} -X main.portableRuntimeManifestURL={{.PORTABLE_RUNTIME_MANIFEST_URL}}{{end}}{{if .PORTABLE_RUNTIME_MANIFEST_SHA256}} -X main.portableRuntimeManifestSHA256={{.PORTABLE_RUNTIME_MANIFEST_SHA256}}{{end}}{{if or .PORTABLE_RUNTIME_URL .PORTABLE_RUNTIME_MANIFEST_URL}} -X main.portableRuntimeVersion={{.VERSION}}{{end}}"{{else}}-buildvcs=false -gcflags=all="-l"{{end}}'
       VERSION: '{{.VERSION | default "dev"}}'
     env:
       GOOS: windows
@@ -43,7 +43,7 @@ tasks:
   package:
     summary: Packages the thin remote client or existing full local client
     cmds:
-      - task: '{{if .PORTABLE_RUNTIME_URL}}package:slim{{else if .DEFAULT_SERVER_URL}}package:thin{{else}}package:full{{end}}'
+      - task: '{{if or .PORTABLE_RUNTIME_URL .PORTABLE_RUNTIME_MANIFEST_URL}}package:slim{{else if .DEFAULT_SERVER_URL}}package:thin{{else}}package:full{{end}}'
 
   package:slim:
     summary: Packages the shell that fetches the portable runtime on first launch
@@ -57,6 +57,8 @@ tasks:
           # dashboard target — that would skip the runtime download entirely.
           DEFAULT_SERVER_URL: ""
           PORTABLE_RUNTIME_URL: "{{.PORTABLE_RUNTIME_URL}}"
+          PORTABLE_RUNTIME_MANIFEST_URL: "{{.PORTABLE_RUNTIME_MANIFEST_URL}}"
+          PORTABLE_RUNTIME_MANIFEST_SHA256: "{{.PORTABLE_RUNTIME_MANIFEST_SHA256}}"
           VIDEO_COMPONENTS_URL: "{{.VIDEO_COMPONENTS_URL}}"
       - task: create:nsis:installer
         vars:
