@@ -14,10 +14,10 @@ Octop 是一个开源自托管的 AI 助手平台：多用户、多智能体，�
 
 | 客户端 | 体积 | 说明 |
 |---|---|---|
-| **远程版** | ~20 MB | 连接已部署好的 Octop 服务，本机不需要装 Python 运行时，装完即用 |
-| **slim 本地版** | ~20 MB | 在本机跑完整运行时。**首次启动**会从 CDN 下载约 215 MB 的运行时并解包到本地，之后离线可用 |
+| **远程版** | ~18 MB | 连接已部署好的 Octop 服务，本机不需要装 Python 运行时，装完即用 |
+| **slim 本地版** | ~20 MB | 在本机跑完整运行时。**首次启动**会从 GitHub Release 下载约 290 MB 的运行时并解包到本地，之后离线可用 |
 
-Windows / macOS / Linux 各自的安装包在 Releases 页面按版本列出。
+**本轮只提供 Windows 版**（64 位 / ARM64）。macOS 与 Linux 版本暂未发布。
 
 ### 其它产物
 
@@ -32,7 +32,9 @@ Windows / macOS / Linux 各自的安装包在 Releases 页面按版本列出。
 - **远程版**面向"已经有 Octop 服务"的用户；
 - **slim 本地版**面向"要自己跑一套"的用户，把运行时下载推迟到首次启动。
 
-完整的离线安装包（内嵌运行时）仍然提供，但只在 GitHub Release 上，不在本仓库。
+运行时本体（~290 MB）和完整离线安装包超过 Gitee 的附件上限，只在
+[GitHub Release](https://github.com/zhuimeng2026-hub/Octop/releases) 上提供，
+本页给出链接。
 
 ## 文档
 

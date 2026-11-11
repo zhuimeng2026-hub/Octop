@@ -47,14 +47,6 @@ def fetch_release(repo: str, tag: str) -> dict:
         raise SystemExit(f"cannot reach api.github.com: {exc.reason}") from exc
 
 
-def cos_base(tag: str) -> str | None:
-    bucket = os.environ.get("RELEASE_COS_BUCKET")
-    endpoint = os.environ.get("RELEASE_COS_ENDPOINT")
-    if not bucket or not endpoint:
-        return None
-    return f"https://{bucket}.{endpoint}/octop/release/{tag.lstrip('v')}"
-
-
 def build(release: dict, repo: str, tag: str) -> str:
     body = (release.get("body") or "").strip()
     assets = release.get("assets") or []
@@ -97,17 +89,15 @@ def build(release: dict, repo: str, tag: str) -> str:
             f"## 完整安装包（超过 {GITEE_ATTACHMENT_LIMIT_MB} MB，未上传到 Gitee）",
             "",
             "Gitee 单个附件上限 "
-            f"{GITEE_ATTACHMENT_LIMIT_MB} MB，以下产物只在 GitHub Release 与 COS 提供：",
+            f"{GITEE_ATTACHMENT_LIMIT_MB} MB，以下产物只在 GitHub Release 提供：",
             "",
         ]
         base = DOWNLOAD_BASE.format(repo=repo, tag=tag)
-        cos = cos_base(tag)
         for asset in sorted(large, key=lambda a: a["name"]):
             name = asset["name"]
-            links = [f"[GitHub]({base}/{name})"]
-            if cos:
-                links.append(f"[COS]({cos}/{name})")
-            lines.append(f"- {name}（{asset['size'] / 1024 / 1024:.0f} MB） — " + " | ".join(links))
+            lines.append(
+                f"- {name}（{asset['size'] / 1024 / 1024:.0f} MB） — [GitHub]({base}/{name})"
+            )
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"

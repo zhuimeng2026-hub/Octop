@@ -4,6 +4,9 @@
 >
 > 背景：Gitee 单个 Release 附件上限 **100 MB**，完整客户端安装器是 200–340 MB
 > （内嵌 Python 运行时），直接传不上去。Windows 侧要出的是 **< 100 MB** 的变体。
+>
+> **本轮范围：只做 Windows**（amd64 / arm64）。macOS 与 Linux 客户端本轮不构建、
+> 不发布。
 
 ---
 
@@ -21,6 +24,21 @@
 
 **选哪个**：绝大多数用户装完即用、要能连你的服务 → **远程版**（最省事，18MB）。
 要给"自己本地跑一套"的用户 → **本地版**（首启要联网）。
+
+---
+
+## 一之二、本轮要交付的产物
+
+| # | 产物 | 大小 | 传到哪 |
+|---|---|---|---|
+| 1 | `Octop-portable-windows-amd64-1.4.0.zip` | ~290 MB | GitHub Release（运行时下载源） |
+| 2 | `Octop-portable-windows-arm64-1.4.0.zip` | ~290 MB | GitHub Release |
+| 3 | `Octop-desktop-slim-windows-amd64-1.4.0.exe` | ~20 MB | Gitee Release |
+| 4 | `Octop-desktop-slim-windows-arm64-1.4.0.exe` | ~20 MB | Gitee Release |
+| 5 | `Octop-desktop-windows-amd64-1.4.0.exe`（远程版，可选） | ~18 MB | Gitee Release |
+| 6 | `octop-1.4.0-py3-none-any.whl` / `octop-1.4.0.tar.gz` | ~22 / ~21 MB | Gitee Release |
+
+**顺序**：先把 1、2 传到 GitHub Release（运行时必须先在），再用它们的 URL 打 3、4。
 
 ---
 
@@ -121,21 +139,21 @@ ARM64：`ARCH=arm64`，其余不变。
 slim 客户端把运行时地址**编译期写死**进 exe。地址必须在用户首次启动前就公开可达，
 否则首启会下载失败（客户端会重试，但用户看到的是报错）。
 
-可选地址源：
-
-| 地址 | 说明 |
-|---|---|
-| GitHub Release 资产 | `https://github.com/<owner>/<repo>/releases/download/<tag>/Octop-portable-windows-<plat>-<ver>.zip` |
-| 腾讯云 COS | `https://<bucket>.<endpoint>/octop/release/<ver>/Octop-portable-windows-<plat>-<ver>.zip` |
-
-两者可以都写，逗号分隔，客户端按顺序尝试（前一个失败自动换下一个）：
+运行时本体 **~290 MB**，放不进 Gitee 附件（100 MB 上限），所以留在 GitHub Release：
 
 ```
-PORTABLE_RUNTIME_URL=https://<bucket>.<endpoint>/octop/release/1.4.0/Octop-portable-windows-amd64-1.4.0.zip,https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/Octop-portable-windows-amd64-1.4.0.zip
+PORTABLE_RUNTIME_URL=https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/Octop-portable-windows-amd64-1.4.0.zip
 ```
 
-**顺序建议**：COS 在前（国内快），GitHub 在后（兜底）。但 COS 上的对象要先上传好，
-否则首个用户会先撞到 COS 的 404 再退回 GitHub。
+**这个 zip 必须先上传到该 Release，客户端才能用**——URL 里的 tag 和文件名要跟实际
+上传的对得上。先传 zip，再打客户端（打客户端不用等 zip，但发布顺序要对）。
+
+> 客户端支持逗号分隔的多个地址、按顺序 fallback（`download.go` 的 `runtimeURLs`），
+> 将来要加对象存储/CDN 镜像时再补第二个地址，不用改客户端。
+
+> **如果只是想让国内用户用起来**：优先发**远程版**（thin）——它不下载运行时，
+> 全部资源都在 Gitee 上，国内访问无障碍。slim 版首启要从 GitHub 拉 290 MB，
+> 国内速度取决于 GitHub 的可达性。
 
 下载会**断点续传**：中途断网或杀进程，下次启动从断点继续，不会从头再下。
 
@@ -149,7 +167,7 @@ cd desktop/src
 wails3 task package \
   ARCH=amd64 \
   VERSION=1.4.0 \
-  PORTABLE_RUNTIME_MANIFEST_URL="https://<bucket>.<endpoint>/octop/release/1.4.0/manifest.json,https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/manifest.json"
+  PORTABLE_RUNTIME_MANIFEST_URL="https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/manifest.json"
 ```
 
 manifest 长这样（`format` 是 `zip` 或 `tar.gz`，`urls` 是有序镜像列表）：
@@ -160,7 +178,7 @@ manifest 长这样（`format` 是 `zip` 或 `tar.gz`，`urls` 是有序镜像列
   "parts": [
     {
       "id": "runtime",
-      "urls": ["https://cos/.../Octop-portable-windows-amd64-1.4.0.zip"],
+      "urls": ["https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/Octop-portable-windows-amd64-1.4.0.zip"],
       "size": 304087040,
       "sha256": "…",
       "format": "zip",
@@ -170,6 +188,9 @@ manifest 长这样（`format` 是 `zip` 或 `tar.gz`，`urls` 是有序镜像列
   ]
 }
 ```
+
+> manifest 和它描述的 zip 都得先传到 Release 上，客户端才能用；
+> `PORTABLE_RUNTIME_MANIFEST_SHA256` 可以把 manifest 自身的校验和也写死进 exe。
 
 详见 [desktop-bootstrap-installer.md §0.4](desktop-bootstrap-installer.md#04-怎么用)。
 
@@ -238,7 +259,8 @@ bash scripts/gitee/publish_from_github.sh \
 
 `.github/workflows/octop-desktop.yml` 的 `package` job 就是上面这套的自动化版本
 （`bootstrap-runtime.sh` → `package.sh` → `wails3 task package` → 上传 artifact →
-挂到 GitHub Release → 传 COS）。Windows 相关的两个额外动作：
+挂到 GitHub Release）。它的矩阵是 6 个平台，**本轮只取其中 windows-amd64 和
+windows-arm64**。Windows 相关的两个额外动作：
 
 1. 装 NSIS（choco 装不上时从 SourceForge 下 setup 静默安装）
 2. 用 `windows-latest` / `windows-11-arm` 原生 runner（不能交叉）

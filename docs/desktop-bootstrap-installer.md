@@ -3,8 +3,9 @@
 > 目标：把桌面端首包从 **~250MB+ 压到 ~12MB 以内**，安装器只负责"把壳装上"，
 > 完整运行环境在首启后由壳自己分阶段下载、断点续传、后台补齐可选组件。
 >
-> 状态：**第一阶段已实现**（2026-11-11）。瘦变体 + 单 URL 运行时下载 + 镜像
-> fallback 已落地，用于 [Gitee 发布通道](gitee-release.md)（Gitee 附件上限 100 MB）。
+> 状态：**第一阶段已实现**（2026-11-11）。瘦变体 + 首启下载运行时已落地，
+> 用于 [Gitee 发布通道](gitee-release.md)（Gitee 附件上限 100 MB）。运行时本体
+> ~290 MB 放不进 Gitee，留在 GitHub Release，客户端首启从那里拉。
 > 第二阶段（PR-2 引导下载器）也已完成：**断点续传、sha256 校验、manifest、
 > state.json** 已落地；**分片制品、可选组件后台补齐、进度面板仍未实现**，
 > 现状与差距见 [§零](#零已实现范围)。
@@ -30,7 +31,7 @@
 | 版本刷新 | URL 里带的版本比本地新时，走"备份 DB → 换运行时"的老路径 | `desktop/src/download.go`（`ensurePortable`） |
 | 镜像 fallback | URL 列表按序尝试，前一个失败自动换下一个 | `desktop/src/bootstrap/fetch.go` |
 | 进度反馈 | 下载百分比走已有的 `desktop:status` 事件 | `desktop/src/desktop_copy.go` |
-| CI 产出 | 桌面发版时同时产出 6 个平台的 slim 安装器 | `.github/workflows/octop-desktop.yml` |
+| CI 产出 | 桌面发版时同时产出各平台的 slim 安装器（本轮只交付 Windows 两个） | `.github/workflows/octop-desktop.yml` |
 | 分发 | slim 安装器挂到 Gitee Release（< 100 MB） | `.github/workflows/gitee-release.yml` |
 
 实测：slim 壳 **12 MB**（linux，`-w -s -trimpath`），Windows 交叉编译 **17 MB**，
@@ -40,13 +41,13 @@ NSIS 安装器约 20 MB。
 
 | 项 | 原设计 | 现状 | 影响 |
 |---|---|---|---|
-| 分片 | runtime / app / deps-core / 可选片 | **未做**：整包 zip 一次下完 | 首启下载量不变（~215 MB），只是换了个地方下 |
+| 分片 | runtime / app / deps-core / 可选片 | **未做**：整包 zip 一次下完 | 首启下载量不变（~290 MB），只是换了个地方下 |
 | 断点续传 | HTTP Range + `.part` | **已做**（PR-2） | 中断后从断点继续 |
 | 校验 | 每片 sha256 强校验 | **已做**（PR-2）：manifest 里的分片强校验；只给一个 zip URL 时没有校验和 | 只给 URL 的老路径仍只靠 HTTPS |
 | manifest | 版本/分片/多镜像清单 | **已做**（PR-2），但**制品侧还没产出 manifest**（PR-1） | 现在只有手写/脚本生成的 manifest 可用 |
 | 可选组件 | 浏览器/飞书/OCR/embedding 后台补齐 | **未做** | 首次下载即全量 |
 | 落点 | `%LOCALAPPDATA%\Octop\portable` | 沿用 `~/.octop/portable` | 沿用现状，未改 |
-| 分发通道 | GitHub Release + COS | COS + GitHub Release 双镜像 | 已支持 |
+| 分发通道 | GitHub Release + COS | **GitHub Release 单源** | 运行时 ~290 MB 放不进 Gitee 附件（100 MB 上限），先单源跑通；客户端本身支持多 URL fallback，将来加镜像不用改代码 |
 
 ### 0.3 下一步
 
@@ -58,13 +59,17 @@ NSIS 安装器约 20 MB。
 
 **方式 A：只给 zip 地址（现在的 CI 用的方式）**
 
+本轮运行时只走 **GitHub Release**（~290 MB 放不进 Gitee 附件的 100 MB 上限）：
+
 ```bash
 cd desktop/src
 wails3 task package ARCH=amd64 VERSION=1.4.0 \
-  PORTABLE_RUNTIME_URL="https://cos/.../Octop-portable-windows-amd64-1.4.0.zip,https://github/.../Octop-portable-windows-amd64-1.4.0.zip"
+  PORTABLE_RUNTIME_URL="https://github.com/<owner>/<repo>/releases/download/<tag>/Octop-portable-windows-amd64-1.4.0.zip"
 ```
 
 下载器会续传，但没有校验和——镜像给了坏包也只能等下次重试。
+将来要加对象存储/CDN 镜像，再写一个地址（逗号分隔）即可，客户端按序 fallback，
+不用改代码。
 
 **方式 B：给 manifest（推荐）**
 
@@ -76,7 +81,7 @@ manifest 是一个 JSON 文件，描述运行时分片：
   "parts": [
     {
       "id": "runtime",
-      "urls": ["https://cos/.../runtime.zip", "https://github/.../runtime.zip"],
+      "urls": ["https://github.com/<owner>/<repo>/releases/download/<tag>/runtime.zip"],
       "size": 304087040,
       "sha256": "…",
       "format": "zip",        // zip | tar.gz
@@ -91,7 +96,7 @@ manifest 是一个 JSON 文件，描述运行时分片：
 ```bash
 cd desktop/src
 wails3 task package ARCH=amd64 VERSION=1.4.0 \
-  PORTABLE_RUNTIME_MANIFEST_URL="https://cos/.../manifest.json,https://github/.../manifest.json" \
+  PORTABLE_RUNTIME_MANIFEST_URL="https://github.com/<owner>/<repo>/releases/download/<tag>/manifest.json" \
   PORTABLE_RUNTIME_MANIFEST_SHA256="<manifest.json 的 sha256，可选>"
 ```
 

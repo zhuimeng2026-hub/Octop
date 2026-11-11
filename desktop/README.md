@@ -93,7 +93,7 @@ cd desktop/src
 wails3 task package \
   ARCH=amd64 \
   VERSION=1.4.0 \
-  PORTABLE_RUNTIME_MANIFEST_URL="https://<bucket>.<endpoint>/octop/release/1.4.0/manifest.json" \
+  PORTABLE_RUNTIME_MANIFEST_URL="https://github.com/<owner>/<repo>/releases/download/<tag>/manifest.json" \
   PORTABLE_RUNTIME_MANIFEST_SHA256="<optional checksum of the manifest>"
 ```
 

@@ -135,10 +135,6 @@ jobs:
     # on windows-11-arm does not mis-classify the job as windows-amd64 cross-build.
     env:
       GREEN_HOST_PLAT: ${{ matrix.plat }}
-      # Slim installers fetch the portable runtime from COS; without these
-      # secrets there is no runtime URL to bake in, so the slim build is skipped.
-      RELEASE_COS_BUCKET: ${{ secrets.RELEASE_COS_BUCKET }}
-      RELEASE_COS_ENDPOINT: ${{ secrets.RELEASE_COS_ENDPOINT }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select-platforms.outputs.matrix) }}
@@ -156,8 +152,9 @@ jobs:
           echo "version=${VER}"
 
       # Slim installers fetch the runtime at first launch, so they need the URL
-      # of the portable zip. Mirrors, in order: COS (domestic) and the GitHub
-      # Release asset (present once the release job attached it).
+      # of the portable zip. The runtime itself is ~290 MB, which does not fit
+      # a Gitee attachment (100 MB cap), so it stays on the GitHub Release and
+      # the Gitee page links to it.
       #
       # A pull request has no release to point at. There the URL is left empty
       # and the slim build is skipped — a PR build only has to compile.
@@ -171,20 +168,13 @@ jobs:
           if [[ -z "${tag}" && "${GITHUB_REF_NAME}" == v* ]]; then
             tag="${GITHUB_REF_NAME}"
           fi
-          name="Octop-portable-${{ matrix.plat }}-${OCTOP_VERSION}.zip"
-          urls=()
-          if [[ -n "${RELEASE_COS_BUCKET:-}" && -n "${RELEASE_COS_ENDPOINT}" ]]; then
-            urls+=("https://${RELEASE_COS_BUCKET}.${RELEASE_COS_ENDPOINT}/octop/release/${OCTOP_VERSION}/${name}")
-          fi
-          if [[ -n "${tag}" ]]; then
-            urls+=("https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${name}")
-          fi
-          if [[ ${#urls[@]} -eq 0 ]]; then
-            echo "No release tag and no COS bucket — skipping the slim build."
+          if [[ -z "${tag}" ]]; then
+            echo "No release tag — skipping the slim build."
             echo "url=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          url="$(IFS=,; echo "${urls[*]}")"
+          name="Octop-portable-${{ matrix.plat }}-${OCTOP_VERSION}.zip"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${name}"
           echo "url=${url}" >> "$GITHUB_OUTPUT"
           echo "runtime url: ${url}"
 
