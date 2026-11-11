@@ -6,38 +6,35 @@ Octop 是一个开源自托管的 AI 助手平台：多用户、多智能体，�
 > 源码不在本仓库。源码见 [GitHub](https://github.com/TencentCloud/Octop) /
 > [CNB](https://cnb.cool/mengxa.com/Octop)，本仓库只放下载页与 Release 产物。
 
-## 我该装哪个
+## 装两步就能用
 
-| 你的情况 | 装这个 |
-|---|---|
-| 使用我们已部署的 Octop 服务 | **远程版**（推荐，装完即用） |
-| 要自己跑一套、要离线可用 | slim 本地版 |
-| 要做产品视频 | 装完客户端后，**再装「视频制作组件」** |
+1. **装客户端**（Windows，约 6 MB）
+2. **装视频制作组件**（约 71 MB）—— 视频在本机渲染，不装无法出片
 
-## 桌面客户端
+客户端连接我们已部署好的 Octop 服务：登录、产品库、AI 分镜和方案确认都在服务器端，
+客户端只负责界面与本机渲染，**本机不需要安装 Python 运行时**。
+
+本构建未做代码签名，Windows SmartScreen 可能提示「未知发布者」，
+选择「更多信息 → 仍要运行」即可。本轮只提供 Windows 版，macOS 与 Linux 暂未发布。
+
+## 1. 客户端
+
+| 系统 | 下载 | 体积 |
+|---|---|---|
+| Windows 10/11 x64 | [Octop-desktop-windows-amd64-1.4.0.exe](https://gitee.com/webheat/octop_client/releases/download/v1.4.0-gitee.1/Octop-desktop-windows-amd64-1.4.0.exe) | ~6 MB |
+| Windows on ARM（骁龙本等） | [Octop-desktop-windows-arm64-1.4.0.exe](https://gitee.com/webheat/octop_client/releases/download/v1.4.0-gitee.1/Octop-desktop-windows-arm64-1.4.0.exe) | ~5.5 MB |
 
 全部发行版本见 [Releases](https://gitee.com/webheat/octop_client/releases)。
+远程版打开后直连 <https://ocbot.aixifs.com/videogen>。
 
-| 客户端 | 体积 | 说明 |
-|---|---|---|
-| **远程版（Windows x64）** | ~6 MB | 连接已部署好的 Octop 服务，本机不装 Python 运行时，装完即用 |
-| **远程版（Windows ARM64）** | ~5.5 MB | 同上，用于骁龙 X 等 ARM 设备 |
-| **slim 本地版（Windows x64）** | ~6 MB | 在本机跑完整运行时。**首次启动**会下载约 213 MB 的运行时并解包到本地，之后离线可用 |
-
-远程版打开后直连 <https://ocbot.aixifs.com/videogen>；登录、产品库、AI 分镜都在服务器，
-客户端只负责界面和本机渲染。
-
-**本轮只提供 Windows 版**。macOS 与 Linux 版本暂未发布；ARM64 只有远程版
-（部分 Python 依赖尚未提供 win_arm64 轮子，slim 无法组装）。
-
-## 视频制作组件（另需安装）
+## 2. 视频制作组件（必装）
 
 桌面客户端**不自带**视频渲染环境（Node + Remotion + 浏览器，解包后约 500 MB），
 需要单独装一次。不装不影响登录、产品库和方案编辑，只是无法在本机出片。
 
 | 组件 | 体积 | 下载 |
 |---|---|---|
-| **视频制作组件（Windows x64）** | ~72 MB | [下载](https://gitee.com/webheat/octop_client/releases/download/v1.4.0-gitee.1/Octop-video-components-windows-x64-1.4.0.exe) ｜ [GitHub 备用](https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/Octop-video-components-windows-x64-1.4.0.exe) |
+| **视频制作组件（Windows x64）** | ~71 MB | [下载](https://gitee.com/webheat/octop_client/releases/download/v1.4.0-gitee.1/Octop-video-components-windows-x64-1.4.0.exe) |
 
 安装步骤：
 
@@ -48,22 +45,11 @@ Octop 是一个开源自托管的 AI 助手平台：多用户、多智能体，�
 
 客户端里也有同样的下载按钮，地址取不到时才提示联系管理员。
 
-## 其它产物
+## 要自己跑一套服务？
 
-- `octop-*.whl` / `octop-*.tar.gz`：Python 包，服务端用 `pip install octop` 安装
-- `Octop-fnos-docker-*.fpk`：fnOS（飞牛）NAS 的 Docker 版安装包
-
-## 为什么这么分
-
-完整的桌面安装包要把整套 Python 运行时嵌进去，体积 213 MB 起，Gitee 单个附件上限
-100 MB 放不下，所以拆成两个更小的形态：
-
-- **远程版**面向"已经有 Octop 服务"的用户，本机什么都不用装；
-- **slim 本地版**面向"要自己跑一套"的用户，把运行时下载推迟到首次启动。
-
-运行时本体（213 MB）和完整离线安装包超过 Gitee 附件上限，只在
-[GitHub Release](https://github.com/zhuimeng2026-hub/Octop/releases) 上提供，
-本页给出链接。视频组件压到 72 MB 后可以放进 Gitee，所以首选 Gitee 直连下载。
+本页只放远程版客户端。自带 Python 运行时的本地版安装包体积 200 MB 起，
+超过 Gitee 单附件 100 MB 的上限，因此不在本仓库分发。
+需要离线或私有部署时，按源码仓库的部署文档自行安装即可。
 
 ## 文档
 

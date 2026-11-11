@@ -9,33 +9,31 @@ This repository distributes the **Octop desktop client** builds.
 > [CNB](https://cnb.cool/mengxa.com/Octop) — this repository holds the
 > download page and the release artifacts only.
 
-## Which build do I need
+## Two steps and you are done
 
-| Your situation | Install this |
-|---|---|
-| You use the Octop server we already deployed | **Remote** (recommended — install and go) |
-| You want your own instance, usable offline | Slim (local) |
-| You need to produce product videos | After the client, install the **video components** once |
+1. **Install the client** (Windows, ~6 MB)
+2. **Install the video components** (~71 MB) — video renders locally, without
+   these you cannot export a video
 
-## Desktop client
+The client connects to the Octop server we already deployed: sign-in, product
+library, AI storyboards and plan approval all live on the server; the client
+only renders the UI and the video, and **no Python runtime is needed locally**.
+
+These builds are not code-signed, so Windows SmartScreen may warn about an
+unknown publisher — choose **More info → Run anyway**. This round ships the
+Windows build only; macOS and Linux are not published yet.
+
+## 1. The client
+
+| System | Download | Size |
+|---|---|---|
+| Windows 10/11 x64 | [Octop-desktop-windows-amd64-1.4.0.exe](https://gitee.com/webheat/octop_client/releases/download/v1.4.0-gitee.1/Octop-desktop-windows-amd64-1.4.0.exe) | ~6 MB |
+| Windows on ARM (Snapdragon X and similar) | [Octop-desktop-windows-arm64-1.4.0.exe](https://gitee.com/webheat/octop_client/releases/download/v1.4.0-gitee.1/Octop-desktop-windows-arm64-1.4.0.exe) | ~5.5 MB |
 
 Every release is listed under [Releases](https://gitee.com/webheat/octop_client/releases).
+The client talks to <https://ocbot.aixifs.com/videogen> directly.
 
-| Client | Size | What it is |
-|---|---|---|
-| **Remote (Windows x64)** | ~6 MB | Connects to a deployed Octop server. No Python runtime on your machine — install and go. |
-| **Remote (Windows ARM64)** | ~5.5 MB | Same, for Snapdragon X class ARM devices. |
-| **Slim, local (Windows x64)** | ~6 MB | Runs the full runtime locally. The **first launch** downloads ~213 MB of runtime and unpacks it locally; offline afterwards. |
-
-The remote build talks to <https://ocbot.aixifs.com/videogen> directly: sign-in,
-product library and AI storyboards live on the server, the client only renders
-the UI and the video locally.
-
-**This round ships the Windows build only.** macOS and Linux builds are not
-published yet; ARM64 gets the remote build only (a few Python dependencies still
-lack win_arm64 wheels, so the slim payload cannot be assembled).
-
-## Video components (separate install)
+## 2. Video components (required)
 
 The desktop client does **not** bundle the video rendering environment (Node +
 Remotion + browser, ~500 MB unpacked). It is installed once, separately. Not
@@ -44,7 +42,7 @@ editing — only local video production.
 
 | Component | Size | Download |
 |---|---|---|
-| **Video components (Windows x64)** | ~72 MB | [Download](https://gitee.com/webheat/octop_client/releases/download/v1.4.0-gitee.1/Octop-video-components-windows-x64-1.4.0.exe) ｜ [GitHub mirror](https://github.com/zhuimeng2026-hub/Octop/releases/download/v1.4.0-gitee.1/Octop-video-components-windows-x64-1.4.0.exe) |
+| **Video components (Windows x64)** | ~71 MB | [Download](https://gitee.com/webheat/octop_client/releases/download/v1.4.0-gitee.1/Octop-video-components-windows-x64-1.4.0.exe) |
 
 Install steps:
 
@@ -57,26 +55,12 @@ Install steps:
 The client shows the same download button; you only see "contact your
 administrator" when the URL is unavailable.
 
-## Other artifacts
+## Need your own server?
 
-- `octop-*.whl` / `octop-*.tar.gz` — the Python package (`pip install octop`)
-- `Octop-fnos-docker-*.fpk` — the Docker edition for fnOS NAS
-
-## Why the split
-
-The full desktop installer embeds the whole Python runtime and starts at
-213 MB. Gitee caps a single attachment at 100 MB, so two smaller shapes are
-published instead:
-
-- **Remote** for users who already have an Octop server — nothing to install locally;
-- **Slim (local)** for users who want their own instance, deferring the runtime
-  download to the first launch.
-
-The runtime itself (213 MB) and the complete offline installer exceed the Gitee
-limit, so they live on the
-[GitHub Release](https://github.com/zhuimeng2026-hub/Octop/releases) and are
-linked from here. The video components compress to 72 MB, which fits on Gitee,
-so the Gitee direct link is the primary download.
+This page carries the remote client only. A self-contained installer that
+bundles the Python runtime starts at 200 MB, above Gitee's 100 MB attachment
+limit, so it is not distributed here. For offline or private deployments,
+follow the deployment guide in the source repository.
 
 ## Documentation
 

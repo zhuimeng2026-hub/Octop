@@ -103,3 +103,37 @@ def test_release_notes_leave_the_other_platforms_out() -> None:
     text = notes.build(release, "owner/repo", "v1.4.0", "windows")
     assert "Octop-desktop-slim-windows-amd64-1.4.0.exe" in text
     assert "darwin" not in text
+
+
+def test_release_notes_reduce_to_two_steps_for_the_remote_client() -> None:
+    """有远程版时只留两步：装客户端、装视频组件，其余一概不提。"""
+    notes = _load("release_notes")
+    release = {
+        "body": "",
+        "assets": [
+            _asset("Octop-desktop-windows-amd64-1.4.0.exe", 6 * MB),
+            _asset("Octop-desktop-windows-arm64-1.4.0.exe", 6 * MB),
+            _asset("Octop-desktop-slim-windows-amd64-1.4.0.exe", 6 * MB),
+            _asset("Octop-video-components-windows-x64-1.4.0.exe", 75 * MB),
+            _asset("octop-1.4.0-py3-none-any.whl", 21 * MB),
+            _asset("Octop-portable-windows-amd64-1.4.0.zip", 213 * MB),
+        ],
+    }
+    text = notes.build(release, "owner/repo", "v1.4.0", "windows")
+
+    assert "### 1. 客户端" in text
+    assert "### 2. 视频制作组件" in text
+    assert "Windows on ARM" in text
+
+    # 远程版用户不需要的产物一律不出现，避免把清单撑长。
+    assert "slim" not in text
+    assert ".whl" not in text
+    assert ".tar.gz" not in text
+    assert "Octop-portable-windows-amd64-1.4.0.zip" not in text
+    assert "github.com" not in text
+
+    # 两个客户端都指向 Gitee 自己。
+    base = "https://gitee.com/webheat/octop_client/releases/download/v1.4.0"
+    assert f"{base}/Octop-desktop-windows-amd64-1.4.0.exe" in text
+    assert f"{base}/Octop-desktop-windows-arm64-1.4.0.exe" in text
+    assert f"{base}/Octop-video-components-windows-x64-1.4.0.exe" in text
