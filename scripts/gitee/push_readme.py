@@ -17,6 +17,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -62,10 +63,55 @@ def head_sha(owner: str, repo: str, token: str, branch: str) -> str:
     return data["commit"]["sha"]
 
 
-def push_file(owner: str, repo: str, token: str, branch: str, target: str, source: str) -> str:
-    """Write source to target. Returns the new commit sha, or "" when unchanged."""
-    with open(source, "rb") as handle:
-        content = handle.read()
+def derive_asset_version(tag: str) -> str:
+    """从 tag 推出产物文件名里的版本号。
+
+    tag 形如 v1.4.0-gitee.1 → 1.4.0；v1.4.0 → 1.4.0。
+    Gitee 试点构建的 tag 带 -gitee.N 后缀，但产物文件名里没有那段。
+    """
+    v = tag.strip().lstrip("v")
+    for suffix in ("-gitee",):
+        if suffix in v:
+            v = v.split(suffix, 1)[0]
+    return v.strip()
+
+
+def render_template(text: str, owner: str, repo: str, tag: str, asset_version: str) -> str:
+    """把内容源里的占位符替换成本次发布的版本信息。
+
+    占位符：
+      {{BASE_URL}}        → https://gitee.com/<owner>/<repo>/releases/download/<tag>
+      {{TAG}}             → tag
+      {{ASSET_VERSION}}   → 产物文件名里的版本号（1.4.0 这种）
+
+    ⚠️ 为什么要占位符（2026-11-13 实测）：
+    直链写死版本号的话，**下一次发版会把上一版的直链推上去**，
+    用户从下载页点到的还是旧客户端。现在版本由发布时的 tag 决定。
+    没给 --tag 时，残留占位符会被换成通用 Releases 链接（宁可少个直链，
+    也不能把 {{...}} 原样推到线上）。
+    """
+    if not tag:
+        # 没给 tag 就别给直链——指向「不存在的版本」的链接比没有链接更糟。
+        # 带占位符的 markdown 链接降级成纯文字，其余占位符换成 Releases 页。
+        out = re.sub(r"\[([^\]]+)\]\(([^)]*\{\{[^)]*)\)", r"\1", text)
+        generic = "https://gitee.com/%s/%s/releases" % (owner, repo)
+        out = (out.replace("{{BASE_URL}}", generic)
+                  .replace("{{TAG}}", "")
+                  .replace("{{ASSET_VERSION}}", ""))
+        out = out.replace("{{", "").replace("}}", "")
+        print("warning: no --tag given; download links degraded to plain text")
+        return out
+    base = "https://gitee.com/%s/%s/releases/download/%s" % (owner, repo, tag)
+    out = (text.replace("{{BASE_URL}}", base)
+               .replace("{{TAG}}", tag)
+               .replace("{{ASSET_VERSION}}", asset_version))
+    if "{{" in out:
+        raise SystemExit("unresolved placeholder left in README source")
+    return out
+
+
+def push_file(owner: str, repo: str, token: str, branch: str, target: str, content: bytes) -> str:
+    """Write content to target. Returns the new commit sha, or "" when unchanged."""
 
     status, existing = request("GET", f"/repos/{owner}/{repo}/contents/{target}", token)
     if status == 200:
@@ -117,6 +163,8 @@ def main() -> int:
         "--token", default="", help="Gitee access token (default: $GITEE_TOKEN or ~/.gitee_token)"
     )
     parser.add_argument("--dir", default=HERE, help="directory holding the README sources")
+    parser.add_argument("--tag", default="", help="release tag being published (fills {{TAG}}/{{BASE_URL}}/{{ASSET_VERSION}})")
+    parser.add_argument("--asset-version", default="", help="version used in asset file names (default: derived from --tag)")
     args = parser.parse_args()
     token = args.token or read_token()
     if not token:
@@ -125,11 +173,15 @@ def main() -> int:
     info = repo_info(args.owner, args.repo, token)
     branch = info.get("default_branch") or "master"
 
+    asset_version = args.asset_version or (derive_asset_version(args.tag) if args.tag else "")
     for source_name, target in zip(DEFAULT_FILES, TARGET_NAMES, strict=True):
         source = os.path.join(args.dir, source_name)
         if not os.path.isfile(source):
             raise SystemExit(f"missing source file: {source}")
-        push_file(args.owner, args.repo, token, branch, target, source)
+        with open(source, encoding="utf-8") as handle:
+            text = handle.read()
+        rendered = render_template(text, args.owner, args.repo, args.tag, asset_version)
+        push_file(args.owner, args.repo, token, branch, target, rendered.encode("utf-8"))
 
     sha = head_sha(args.owner, args.repo, token, branch)
     print(sha)
