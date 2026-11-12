@@ -1,4 +1,4 @@
-//go:build production && !darwin && !thin
+//go:build production && !darwin && !thin && !downloadruntime
 
 package main
 

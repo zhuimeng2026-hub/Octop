@@ -41,6 +41,10 @@ def portable_name(os_name: str, arch: str, version: str) -> str:
     return f"Octop-portable-{os_name}-{arch}-{version}.zip"
 
 
+def slim_name(os_name: str, arch: str, version: str, ext: str) -> str:
+    return f"Octop-desktop-slim-{os_name}-{arch}-{version}.{ext}"
+
+
 def render_download_section(raw_version: str) -> str:
     tag, version = split_tag(raw_version)
     win64 = md_link("64-bit (Recommended)", tag, desktop_name("windows", "amd64", version, "exe"))
@@ -55,6 +59,12 @@ def render_download_section(raw_version: str) -> str:
     linux_arm = md_link("ARM64", tag, desktop_name("linux", "arm64", version, "tar.gz"))
     linux64_zip = md_link("64-bit", tag, portable_name("linux", "amd64", version))
     linux_arm_zip = md_link("ARM64", tag, portable_name("linux", "arm64", version))
+    slim_win64 = md_link("64-bit", tag, slim_name("windows", "amd64", version, "exe"))
+    slim_win_arm = md_link("ARM64", tag, slim_name("windows", "arm64", version, "exe"))
+    slim_mac_arm = md_link("Apple Silicon", tag, slim_name("darwin", "arm64", version, "dmg"))
+    slim_mac_intel = md_link("Intel", tag, slim_name("darwin", "amd64", version, "dmg"))
+    slim_linux64 = md_link("64-bit", tag, slim_name("linux", "amd64", version, "tar.gz"))
+    slim_linux_arm = md_link("ARM64", tag, slim_name("linux", "arm64", version, "tar.gz"))
     fnos_docker = md_link(
         "Docker (recommended; x86 and ARM)", tag, f"Octop-fnos-docker-{version}.fpk"
     )
@@ -93,6 +103,16 @@ def render_download_section(raw_version: str) -> str:
             "",
             "### fnOS NAS",
             f"- {fnos_docker} | {fnos_native} | {fnos_native_arm}",
+            "",
+            "### Slim installers",
+            "",
+            "The installers above bundle the whole runtime (~300 MB). The slim",
+            "installers ship only the shell (~20 MB) and fetch the runtime on",
+            "first launch — one download at that point, offline afterwards.",
+            "",
+            f"- Windows: {slim_win64} | {slim_win_arm}",
+            f"- macOS: {slim_mac_arm} | {slim_mac_intel}",
+            f"- Linux: {slim_linux64} | {slim_linux_arm}",
             "",
         ]
     )

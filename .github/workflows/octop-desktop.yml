@@ -151,6 +151,45 @@ jobs:
           echo "OCTOP_VERSION=${VER}" >> "$GITHUB_ENV"
           echo "version=${VER}"
 
+      # Slim installers fetch the runtime at first launch, so they need the URL
+      # of the portable zip. The runtime itself is ~290 MB, which does not fit
+      # a Gitee attachment (100 MB cap), so it stays on the GitHub Release and
+      # the Gitee page links to it.
+      #
+      # This round ships the Windows client only — the macOS and Linux
+      # portable runtimes cannot be assembled here, so no slim installer is
+      # built for them (see docs/desktop-windows-build.md).
+      #
+      # A pull request has no release to point at. There the URL is left empty
+      # and the slim build is skipped — a PR build only has to compile.
+      - name: Resolve the runtime download URL
+        id: runtime
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          case "${{ matrix.plat }}" in
+            windows-*) ;;
+            *)
+              echo "This round ships the Windows client only — skipping the slim build."
+              echo "url=" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+          tag="${RELEASE_TAG}"
+          if [[ -z "${tag}" && "${GITHUB_REF_NAME}" == v* ]]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
+          if [[ -z "${tag}" ]]; then
+            echo "No release tag — skipping the slim build."
+            echo "url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          name="Octop-portable-${{ matrix.plat }}-${OCTOP_VERSION}.zip"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${name}"
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+          echo "runtime url: ${url}"
+
       - uses: actions/download-artifact@v8
         with:
           name: dashboard-dist
@@ -291,6 +330,18 @@ jobs:
           VERSION=${{ env.OCTOP_VERSION }}
           PORTABLE_ZIP=../portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
 
+      # Slim variant: no embedded runtime (~20 MB instead of ~300 MB). The first
+      # launch downloads the portable zip. Used by the Gitee release, whose
+      # attachments are capped at 100 MB.
+      - name: Package slim desktop app (runtime fetched on first launch)
+        if: steps.runtime.outputs.url != ''
+        working-directory: desktop/src
+        run: >-
+          wails3 task package
+          ARCH=${{ matrix.arch }}
+          VERSION=${{ env.OCTOP_VERSION }}
+          PORTABLE_RUNTIME_URL=${{ steps.runtime.outputs.url }}
+
       # archive: false — upload the prebuilt zip as-is. Default archive=true would
       # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip.
       # With archive:false, artifact name is the filename (name: is ignored).
@@ -305,6 +356,15 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           path: desktop/src/bin/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.*
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload slim desktop package
+        if: steps.runtime.outputs.url != ''
+        uses: actions/upload-artifact@v7
+        with:
+          path: desktop/src/bin/Octop-desktop-slim-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.*
           archive: false
           if-no-files-found: error
           retention-days: 14

@@ -87,6 +87,12 @@
 >
 > Chrome **必须由你手动启动并保持运行**。WorkBuddy 沙箱拉不起持久 GUI 进程，
 > 后台 `&` / `nohup` / `Start-Process` 起的 Chrome 会随命令结束被回收。
+>
+> ⚠️ **如果 Chrome 已经在跑，再执行上面这条命令是不生效的**：同 profile 的第二次启动
+> 会**复用现有进程并直接退出**，新加的 `--remote-debugging-port` 不会生效，9222 依然不开。
+> 表现就是服务器侧 `9223` 能连上但被 reset（见 §5 A1 的三种失败形态）。
+> 正确做法：**先关掉所有 Chrome 窗口**（确认托盘里也退出了），再执行这条命令；
+> 之后不要再点桌面图标开新的 Chrome，用这个带 flag 的窗口就行。
 
 ### 3.2 建端口转发 + 防火墙（管理员 PowerShell）
 
@@ -188,10 +194,33 @@ Octop 的 profile 名由 `infra/utils/browser_media.py` 的 `user_browser_profil
 
 ## 5. 实测步骤
 
-### A 段 · 连通性（服务器端，先做这三条）
+### A 段 · 连通性（服务器端，先做 A0 再做 A1）
+
+#### A0 · 分层探测：先确定是哪一层断了
+
+一次跑完，直接定位到断点：
 
 ```bash
-# A1 桌面 Chrome 的 CDP 入口通不通
+DESKTOP=192.168.20.172
+for p in 3389 9222 9223; do
+  timeout 6 bash -c "cat < /dev/null > /dev/tcp/$DESKTOP/$p" 2>/dev/null \
+    && echo "端口 $p: 开" || echo "端口 $p: 关/超时"
+done
+```
+
+| 观测 | 断在哪一层 | 怎么修 |
+|---|---|---|
+| `3389` 关 | 桌面主机不可达 | 主机没开机 / 不在同一网段 / IP 变了 |
+| `3389` 开、`9223` 关 | portproxy 或防火墙没建 | 桌面跑 `chrome-cdp-lan.bat`（§3.2） |
+| `3389` 开、`9223` 开、`9222` 关 | **portproxy 在，但桌面 Chrome 没跑** | 桌面起 Chrome（§3.1），这是最常见的一种 |
+| 三个都开 | 全通 | 进 A1 |
+
+> **别用 ping 判断主机死活**：Windows 防火墙默认挡 ICMP，实测 `ping` 100% 丢包，
+> 但主机好好的。用 TCP 端口探测（上面这行）才准。
+
+#### A1 · 桌面 Chrome 的 CDP 入口通不通
+
+```bash
 curl -s -m 5 http://192.168.20.172:9223/json/version
 ```
 
@@ -199,7 +228,15 @@ curl -s -m 5 http://192.168.20.172:9223/json/version
 **Chrome 152 会自动把 ws URL 里的 host:port 换成 LAN 地址**（尊重 Host header），
 拿到的地址可直接用，不用手动替换。
 
-空输出 = 端口不通 → 桌面 Chrome 没开 / portproxy 没建 / 防火墙没放行。
+**失败形态要分清，三种含义完全不同**（用 `curl -sv` 看连接阶段）：
+
+| 现象 | 含义 | 根因 |
+|---|---|---|
+| `Connection refused` / 超时 | 9223 没人听 | portproxy 没建 / 防火墙没放行 / 桌面主机不可达 |
+| **`Connected` → `Recv failure: Connection reset by peer`** | **9223 有人听，但转发目标没人听** | **桌面 Chrome 没在 9222 上跑**（portproxy 转到 `127.0.0.1:9222` 时被 reset） |
+| 返回 JSON | 通了 | 进 A2 |
+
+第二种最容易误判成「防火墙问题」而查错方向 —— 它的真实原因在桌面那一端。
 
 ```bash
 # A2 桌面当前开着哪些标签页
@@ -213,7 +250,9 @@ curl -s -m 5 http://192.168.20.172:9223/json/list | head -30
 curl -s -m 5 http://192.168.20.172:9222/json/version
 ```
 
-期望：连不上或 502 —— 说明 Chrome 真的只听 `127.0.0.1`，转发路径才是对的。
+期望：连不上（`http=000`）—— 说明 Chrome 真的只听 `127.0.0.1`，转发路径才是对的。
+
+> A3 必然连不上，**这不是故障**。它是用来确认「没有把 Chrome 直接暴露在局域网」的安全前提。
 
 ### B 段 · 用 CLI 驱动桌面 Chrome（服务器端）
 
@@ -291,13 +330,25 @@ export BROWSER_USE_CDP_PORT_START=9223
 
 | 症状 | 原因 | 修法 |
 |---|---|---|
+| `curl :9223` **连上但 `Connection reset by peer`** | portproxy 在，**桌面 Chrome 没跑** | 桌面起 Chrome（§3.1）；注意先关掉已有的 Chrome 实例 |
+| `curl :9223` `Connection refused` / 超时 | 9223 没人听 | 查 portproxy + 防火墙（§3.2） |
+| `ping` 桌面 100% 丢包 | Windows 挡 ICMP | **不是故障**，用 TCP 端口探测判断（§5 A0） |
 | `Cannot launch Chrome on remote host '192.168.20.172'` | 9223 不通 | 查 portproxy + 防火墙（§3.2），服务器端 `curl :9223/json/version` |
 | Chrome 起不来：`DevTools remote debugging requires a non-default data directory` | 用了默认 profile | 加 `--user-data-dir`（§3.1） |
+| 命令行执行了但 9222 仍不开 | Chrome 已在运行，第二次启动复用了旧进程 | 关掉所有 Chrome 窗口（含托盘）后重新执行（§3.1） |
 | 连上了但页面是扫码页 | 桌面没登录 / 连错 profile | 桌面重新登录；核对 profile 名与端口（§4.3） |
 | `netsh` 命令无输出 | 沙箱静默拦截 | 管理员 PowerShell 手工执行 |
 | 端口分配到了 9224 但桌面只开了 9223 | profile 端口递增 | 桌面多暴露端口，或统一用同一个 profile 名（§4.3） |
 | 任务跑到一半连接断了 | 桌面按了 F12 / Chrome 被关 | 桌面别开 DevTools，别关 Chrome |
 | `Cannot switch tabs when connected via BROWSER_USE_CDP_WS_URL` | 用了 mode B | 换回 mode A（HOST + PORT） |
+
+### 实测记录
+
+留一行实测结果，下次来测的人能对照上一次的进度：
+
+| 日期 | 服务器 | 桌面 | A0 端口探测 | A1 结果 | 结论 |
+|---|---|---|---|---|---|
+| 2026-10-28 | 192.168.20.173 | 192.168.20.172 | 3389 开 / 9222 关 / 9223 开 | Connected → **reset by peer** | portproxy 已建，**桌面 Chrome 未运行**；补起 Chrome 后待复测 |
 
 ---
 
