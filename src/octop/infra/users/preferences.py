@@ -35,6 +35,9 @@ SIDEBAR_NAV_KEYS = frozenset(
         "workbench",
         "remote-desktop",
         "acp",
+        "video-wizard",
+        "video-environment",
+        "video-analysis",
         "admin-users",
         "models",
         "admin-storage",
@@ -43,7 +46,7 @@ SIDEBAR_NAV_KEYS = frozenset(
         "admin-advanced",
     }
 )
-_BUILTIN_SIDEBAR_GROUP_IDS = frozenset({"settings", "control", "admin"})
+_BUILTIN_SIDEBAR_GROUP_IDS = frozenset({"video", "settings", "control", "admin"})
 _CUSTOM_SIDEBAR_GROUP_ID = re.compile(r"^c_[a-z0-9]{8,32}$")
 _MAX_SIDEBAR_GROUPS = 24
 _MAX_SIDEBAR_GROUP_NAME = 40

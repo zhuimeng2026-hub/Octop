@@ -330,6 +330,26 @@ jobs:
           VERSION=${{ env.OCTOP_VERSION }}
           PORTABLE_RUNTIME_URL=${{ steps.runtime.outputs.url }}
 
+      # No-install zip: Windows blocks unsigned NSIS installers (SmartScreen /
+      # AV heuristics on the installer packer). The zip carries the bare exe
+      # plus an unblock helper, so end users unpack and run — no installer.
+      - name: Package no-install zip (Windows)
+        if: runner.os == 'Windows'
+        working-directory: desktop/src
+        run: >-
+          wails3 task package:green
+          ARCH=${{ matrix.arch }}
+          VERSION=${{ env.OCTOP_VERSION }}
+
+      - name: Package no-install zip, slim variant (Windows)
+        if: runner.os == 'Windows' && steps.runtime.outputs.url != ''
+        working-directory: desktop/src
+        run: >-
+          wails3 task package:green:slim
+          ARCH=${{ matrix.arch }}
+          VERSION=${{ env.OCTOP_VERSION }}
+          PORTABLE_RUNTIME_URL=${{ steps.runtime.outputs.url }}
+
       # archive: false — upload the prebuilt zip as-is. Default archive=true would
       # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip.
       # With archive:false, artifact name is the filename (name: is ignored).
