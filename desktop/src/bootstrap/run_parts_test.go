@@ -147,3 +147,69 @@ func TestRunPartsRejectsPartsThatShareATarget(t *testing.T) {
 		t.Fatalf("expected a shared-target error, got %v", err)
 	}
 }
+
+// TestRunPartsAllowsAnOwnerAndAppendingPartsOnOneTarget covers the portable
+// runtime layout: deps-core owns packages/ and app appends into it. The two
+// parts share a target, which is safe because only the owner wipes it.
+func TestRunPartsAllowsAnOwnerAndAppendingPartsOnOneTarget(t *testing.T) {
+	core := testZipBytes(t, map[string]string{"requests/__init__.py": "REQUESTS"})
+	app := testZipBytes(t, map[string]string{"octop/__init__.py": "OCTOP"})
+	server := newPartServer(t, map[string][]byte{"/core.zip": core, "/app.zip": app})
+
+	manifest := Manifest{
+		Version:  "2.0.0",
+		Platform: "win-x64",
+		Parts: []Part{
+			{ID: "deps-core", URLs: []string{server.URL + "/core.zip"}, Size: int64(len(core)), SHA256: checksum(core), Format: "zip", Target: "packages", Required: true},
+			{ID: "app", URLs: []string{server.URL + "/app.zip"}, Size: int64(len(app)), SHA256: checksum(app), Format: "zip", Target: "packages", Append: true, Required: true},
+		},
+	}
+	root := filepath.Join(t.TempDir(), "portable")
+	opts := testOptions(t, root, manifest)
+	opts.Merge = true
+
+	if err := RunParts(opts, []string{"deps-core", "app"}); err != nil {
+		t.Fatalf("an owner and an appending part may share a target: %v", err)
+	}
+	// The owner emptied packages/ and the appending part added to it: both
+	// files are there.
+	for name, want := range map[string]string{
+		"packages/requests/__init__.py": "REQUESTS",
+		"packages/octop/__init__.py":    "OCTOP",
+	} {
+		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatalf("missing %s: %v", name, err)
+		}
+		if string(got) != want {
+			t.Fatalf("%s: got %q, want %q", name, got, want)
+		}
+	}
+}
+
+// TestRunPartsRejectsAnOwnerThatWouldDeleteARequiredPart makes sure a
+// selection cannot wipe the files of a required part it leaves out: the
+// owner empties the target before unpacking into it.
+func TestRunPartsRejectsAnOwnerThatWouldDeleteARequiredPart(t *testing.T) {
+	manifest := Manifest{Parts: []Part{
+		{ID: "deps-core", URLs: []string{"http://127.0.0.1:1/core.zip"}, Target: "packages", Required: true},
+		{ID: "app", URLs: []string{"http://127.0.0.1:1/app.zip"}, Target: "packages", Append: true, Required: true},
+	}}
+	err := RunParts(Options{Manifest: manifest}, []string{"deps-core"})
+	if err == nil || !strings.Contains(err.Error(), "would delete the files of") {
+		t.Fatalf("expected a would-delete error, got %v", err)
+	}
+}
+
+// TestRunPartsRejectsAnOwnerAfterAnAppendingPart covers the order rule: the
+// owner empties the target, so it must not follow a part that wrote there.
+func TestRunPartsRejectsAnOwnerAfterAnAppendingPart(t *testing.T) {
+	manifest := Manifest{Parts: []Part{
+		{ID: "app", URLs: []string{"http://127.0.0.1:1/app.zip"}, Target: "packages", Append: true, Required: true},
+		{ID: "deps-core", URLs: []string{"http://127.0.0.1:1/core.zip"}, Target: "packages", Required: true},
+	}}
+	err := RunParts(Options{Manifest: manifest}, []string{"app", "deps-core"})
+	if err == nil || !strings.Contains(err.Error(), "appending part comes before it") {
+		t.Fatalf("expected an order error, got %v", err)
+	}
+}

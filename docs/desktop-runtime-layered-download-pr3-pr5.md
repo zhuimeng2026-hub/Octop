@@ -177,6 +177,16 @@ type Part struct {
 
 ### 3.3 target 布局（PR-1 必须改）
 
+> **决议（合并时更新）**：PR-1 已落地**方案 B**，字段名由本文建议的 `Additive bool`
+> 改为 `Append bool`（`desktop/src/bootstrap/bootstrap.go`）。下文两案保留作为
+> 决策背景；**实际契约以 PR-1 的实现为准**：多个 part 共享 `packages/`，
+> 第一个 part 拥有该目录（`append:false`），其余 part 带 `append:true` 只追加文件。
+> 理由：任务书 `desktop-runtime-layered-download-task.md` §3 PR-1 明确要求
+> 「各 part 用 `target` 指向同一 `packages/` 子路径」，且 `launch.py` 的
+> `site.addsitedir(packages)` 只认扁平布局 —— 方案 A 的 `_parts/<id>` + `.pth`
+> 方案需要额外改 `launch.py` 与 `sys.path` 处理，超出 PR-1 范围。
+> `RunParts` 的同 target 拒绝已按此契约放宽（见 `run_parts.go:validateSharedTargets`）。
+
 当前 `Extract` 会清空 dest，所以**两种可行布局**：
 
 **方案 A（推荐，零 Go 解压改动）**：每个可选 part 独占子目录 + 静态 `.pth`
@@ -217,8 +227,11 @@ additive part 跳过 `RemoveAll`，允许多个 part 共享 `packages/`。
 - Windows 上若目标 DLL 正被运行中的 Python 加载，`RemoveAll`/覆盖会失败；
 - 改动落在 `bootstrap.go`/`unpack.go`，影响面比 A 大。
 
-> **建议 PR-1 采用 A**。无论 A/B，`RunParts` 原型都会拒绝同 target 的选中集合
-> （`run_parts.go:67`），把问题暴露在开发期而不是用户机器上。
+> **建议 PR-1 采用 A**（历史建议；实际 PR-1 落地了方案 B，见本节开头的决议）。
+> `RunParts` 原型不再无条件拒绝同 target 的选中集合 —— 它按方案 B 的
+> `append` 语义校验：同一 target 只能有一个 owner（`append:false`），
+> owner 不得排在 appending part 之后，且选中 owner 时不得落下同 target 的
+> required part（`run_parts.go:validateSharedTargets`）。
 
 ### 3.4 state 与升级
 
@@ -532,7 +545,7 @@ ok  	octop.desktop/bootstrap	0.029s
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| `Extract` 清空 target（§2.2） | 共享 `packages/` 的 part 互相删除，核心依赖丢失 | PR-1 采用 §3.3 方案 A；`RunParts` 已加同 target 拒绝 |
+| `Extract` 清空 target（§2.2） | 共享 `packages/` 的 part 互相删除，核心依赖丢失 | PR-1 采用 §3.3 方案 B（`append` 语义）；`RunParts` 按 `append` 校验同 target 选中集合 |
 | 运行中新增模块不可 import（§4.5） | 装完要重启才生效 | 后端 `ensure_*` 追加 `sys.path`；构建期预创建目录；必要时提示重启 |
 | Windows 已加载 DLL 无法替换 | 可选 part 升级失败 | 可选 part 只增不换，版本随根 part 整体升级；失败提示重启 |
 | 两处并发安装同一 part | state.json 竞争、重复下载 | 壳侧单飞 mutex；跨进程（壳 vs Python pip）用不同 part，避免同包双装 |
@@ -573,8 +586,10 @@ ok  	octop.desktop/bootstrap	0.029s
 
 ## 10. 需人类决策
 
-1. **PR-1 的 target 方案选 A 还是 B**（§3.3）。推荐 A；若 PR-1 已按「共享
-   `packages/`」开工，必须先回退该约定，否则会静默删依赖。
+1. **PR-1 的 target 方案选 A 还是 B**（§3.3）。~~推荐 A~~ **已定：PR-1 落地方案 B**
+   （`append` 语义），与任务书「各 part 指向同一 `packages/`」一致；
+   `RunParts` 已按该契约放宽同 target 校验。残留待办：方案 B 的两个已知缺点
+   （旧文件不清理、Windows 已加载 DLL 不可替换）需在 PR-5 落地时验证。
 2. **OCR / embedding 是否也走分片**（§4.1）。推荐第一版仍走
    `runtime_packages`，只对 browser/feishu/tencent 启用分片。
 3. **是否新增 `FEATURE_DEPS_MISSING` 错误码**，还是复用现有
