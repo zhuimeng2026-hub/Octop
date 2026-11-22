@@ -92,7 +92,7 @@ ISOLATED_HOME = Path(
         str(Path(OCTOP_HOME).with_name(Path(OCTOP_HOME).name + "-test-home")),
     )
 )
-PYTEST_ARGS = _env("TEST_PYTEST_ARGS", '-m "not live" -q')
+PYTEST_ARGS = _env("TEST_PYTEST_ARGS", '-m "not live" -q --cache-clear')
 PYTHON_BIN = _env("TEST_PYTHON", str(REPO_DIR / ".venv" / "bin" / "python"))
 CRON_NAME = _env("TEST_CRON_NAME", "后端全量测试分析")
 SCHEDULED_AT = _env("TEST_SCHEDULED_AT", "2026-11-22T02:30:00")
