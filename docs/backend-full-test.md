@@ -11,12 +11,16 @@
 
 | 部件 | 位置 | 作用 |
 |---|---|---|
+| git 同步脚本 | `scripts/git_sync_for_test.sh` | 测试前与 origin 对齐（ff-only，尽力而为，见「测试前的 git 同步」） |
 | 编排脚本 | `scripts/run_backend_full_test.py` | 跑测试 → 调子代理分析 → 出报告 |
-| systemd 服务 | `/etc/systemd/system/octop-backend-full-test.service` | 一次性任务，输出追加到 `/opt/octop-data/logs/backend-full-test.log` |
-| systemd 定时器 | `/etc/systemd/system/octop-backend-full-test.timer` | 决定什么时候拉起 |
+| systemd 服务 | `/etc/systemd/system/octop-backend-full-test.service` | 一次性任务，输出追加到 `/opt/octop-test-reports/backend-full-test.log`；drop-in `20-sandbox.conf`（沙箱闸门）+ `30-git-sync.conf`（git 同步） |
+| systemd 定时器 | `/etc/systemd/system/octop-backend-full-test.timer` | 决定什么时候拉起（每天 02:00） |
 
 ## 运行流程
 
+0. **git 同步（ExecStartPre，先于一切）** —— `git fetch origin`，工作树干净就
+   `merge --ff-only` 快进到 upstream；脏树 / 分头 / fetch 失败一律跳过，
+   原树直接进测试。见下节「测试前的 git 同步」。
 1. **预检** —— 服务可达、仓库与 venv 就位、pytest 可导入。
 2. **跑测试（脚本自己跑，不经 LLM）** —— 在仓库根目录执行
    `python -m pytest -m "not live" -q`，后台运行 + 轮询，落完整日志与退出码。
@@ -37,6 +41,39 @@
 
 退出码：`0` = 全过；`1` = 有失败用例（报告里仍有分析）；`2` = 不可跳过的异常
 （重试 3 次后终止）。
+
+## 测试前的 git 同步
+
+02:00 的全量测试测的应该是**外部最新代码**，不是 ocdev 工作区里昨天留下的
+状态。测试服务在跑 pytest 之前先过一道 git 同步
+（`ExecStartPre=/opt/Octop/scripts/git_sync_for_test.sh`，drop-in
+`30-git-sync.conf`，排在沙箱闸门之后）：
+
+1. `git fetch origin --prune`（只读，超时 300s）；
+2. 工作树干净 → `merge --ff-only` 快进到 upstream（只快进：不造合并提交、
+   不 rebase、不 checkout）；
+3. 工作树脏 / 本地与 origin 分头 / 无 upstream / fetch 失败 / 等锁超时 →
+   **跳过同步，原树直接进测试**——测到本地状态也比不测强。
+
+政策是「同步尽力而为，绝不弄丢本地工作」：脚本永远 exit 0（ExecStartPre
+非零会取消整个测试），任何情况下不 discard、不 stash、不 checkout、不 push。
+结论写两处：stdout（进 `backend-full-test.log`）和
+`/opt/octop-test-reports/git-sync-latest.json`（另有按时间戳的存档）。status
+取值：`updated` / `up-to-date` / `local-ahead` / `dirty` / `diverged` /
+`no-upstream` / `fetch-failed` / `detached` / `locked` / `no-repo`。
+
+与 01:15 `octop-git-sync` / 01:40 `cnb-git-sync-all` 的分工：那两个做
+origin → cnb 的**推送镜像**，不动工作树；本脚本做 origin → 工作树的**快进
+更新**，并用 flock 串行化（等锁最多 10 分钟）。
+
+两点边界：
+
+- **只更新工作树，不重启服务。** 线上 `octop.service` 仍运行拉取前加载的
+  代码；驱动 `127.0.0.1:8088` 的 API 集成测试测的是运行中的实例。要让 API
+  测试也覆盖新代码需在同步后重启服务——目前刻意不做（凌晨自动重启生产服务
+  风险大于收益），如要加，单独评审。
+- **分支策略：测当前 check out 的分支**，不自动切分支。分支不是 develop/main
+  时如实记录在状态 JSON 的 `branch` 字段里，人工判断。
 
 ## 测试沙箱（硬要求）
 
