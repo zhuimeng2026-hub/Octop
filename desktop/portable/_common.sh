@@ -52,6 +52,23 @@ desktop_pkg_basename() {
   esac
 }
 
+# No-install zip (Windows only): the bare client exe inside an archive, no
+# NSIS installer. Windows blocks unsigned installers, so the zip is the
+# distribution form end users can unpack without an installer.
+#   desktop_green_zip_basename windows-amd64           → remote client
+#   desktop_green_zip_basename windows-amd64 slim      → runtime fetched on first launch
+desktop_green_zip_basename() {
+  local plat="$1"
+  local variant="${2:-desktop}"
+  case "$plat" in
+    windows-*) echo "Octop-${variant}-${plat}-$(octop_version).zip" ;;
+    *)
+      echo "unknown platform: ${plat}" >&2
+      return 1
+      ;;
+  esac
+}
+
 # Map GitHub Actions RUNNER_ARCH (X64/ARM64/...) → green arch suffix.
 runner_arch_to_green() {
   case "$(printf '%s' "${1:-}" | tr '[:lower:]' '[:upper:]')" in
@@ -257,9 +274,23 @@ write_green_overrides() {
       {
         echo "psycopg-binary ; sys_platform == 'octop-unsupported'"
         echo "sqlite-vec ; sys_platform == 'octop-unsupported'"
+        # rapidocr pulls these. No release has ever published a win_arm64 wheel.
+        # opencv-python's sdist compiles all of OpenCV; pyclipper's sdist is Cython.
+        # Drop both so the zip can install. Local RapidOCR stays unavailable
+        # on Windows ARM64 until those wheels exist.
+        echo "opencv-python ; sys_platform == 'octop-unsupported'"
+        echo "pyclipper ; sys_platform == 'octop-unsupported'"
         # 46.0.0 is the only release shipping a win_arm64 wheel; newer ones would
         # fall back to a Rust + OpenSSL source build that fails on the runner.
         echo "cryptography==46.0.0"
+      } > "$out"
+      echo "$out"
+      ;;
+    darwin-arm64)
+      {
+        # 1.23.2 is the last onnxruntime with cp312 macosx_13_0_arm64 wheels.
+        # fastembed 0.9.1 allows it on Python 3.12 (>=1.17, not 1.20/1.24.0/1.24.1).
+        echo "onnxruntime==1.23.2"
       } > "$out"
       echo "$out"
       ;;

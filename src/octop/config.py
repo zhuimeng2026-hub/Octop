@@ -103,6 +103,7 @@ class BackupConfig:
     include_plugins: bool = True
     include_knowledge: bool = True
     include_chats: bool = False
+    include_product_library: bool = True
 
 
 _VALID_MOBILE_BACKENDS = frozenset({"physical", "redroid", "emulator", "none"})
@@ -139,7 +140,6 @@ class OctopConfig:
     default_timezone: str = "Asia/Shanghai"
     enable_dashboard: bool = True
     enable_api_docs: bool = False
-    history_v2_enabled: bool = False
     # Dump every outbound model request/response to <OCTOP_HOME>/logs/llm/.
     # Off by default: the dump holds the user's prompt, the agent's system
     # prompt and every tool schema.
@@ -244,6 +244,9 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         include_plugins=bool(raw.get("include_plugins", defaults.include_plugins)),
         include_knowledge=bool(raw.get("include_knowledge", defaults.include_knowledge)),
         include_chats=bool(raw.get("include_chats", defaults.include_chats)),
+        include_product_library=bool(
+            raw.get("include_product_library", defaults.include_product_library)
+        ),
     )
 
 
@@ -741,6 +744,13 @@ def load_config(path: Path) -> OctopConfig:
             backup,
             include_chats=_coerce_bool("OCTOP_BACKUP_INCLUDE_CHATS", v, backup.include_chats),
         )
+    if v := os.environ.get("OCTOP_BACKUP_INCLUDE_PRODUCT_LIBRARY"):
+        backup = replace(
+            backup,
+            include_product_library=_coerce_bool(
+                "OCTOP_BACKUP_INCLUDE_PRODUCT_LIBRARY", v, backup.include_product_library
+            ),
+        )
 
     return OctopConfig(
         bind_host=merged["bind_host"],
@@ -755,13 +765,6 @@ def load_config(path: Path) -> OctopConfig:
         enable_dashboard=bool(merged["enable_dashboard"]),
         enable_api_docs=bool(merged["enable_api_docs"]),
         llm_debug=bool(merged.get("llm_debug", False)),
-        history_v2_enabled=_coerce_bool(
-            "OCTOP_HISTORY_V2_ENABLED",
-            os.environ.get(
-                "OCTOP_HISTORY_V2_ENABLED", str(merged.get("history_v2_enabled", False))
-            ),
-            False,
-        ),
         require_setup_password=bool(merged["require_setup_password"]),
         database=parse_database_config(merged_db),
         database_in_file=database_in_file,

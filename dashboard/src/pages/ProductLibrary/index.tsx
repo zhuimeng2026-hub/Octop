@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { request } from "../../api/request";
+import { isLocalLibraryAvailable } from "../../api/localLibrary";
 import {
   productLibraryApi,
   type ImportCommitGroup,
@@ -39,7 +39,6 @@ import {
   type ProductAsset,
   type ProductProject,
 } from "../../api/modules/productLibrary";
-import type { OctopAgent } from "../../context/AgentContext";
 import { useDesktopVideoJobs } from "../../context/DesktopVideoJobsContext";
 import PageShell from "../../layouts/PageShell";
 import { message } from "../../utils/antdMessage";
@@ -110,6 +109,15 @@ export default function ProductLibraryPage() {
   const tRef = useRef(t);
   tRef.current = t;
   const navigate = useNavigate();
+
+  // Desktop shell: the hosted product library is retired in favour of the
+  // on-machine library (PRD §3.7). Redirect stale links/bookmarks so no hosted
+  // material is ever downloaded from the server. Web console is unaffected.
+  useEffect(() => {
+    if (isLocalLibraryAvailable()) {
+      navigate("/local-library", { replace: true });
+    }
+  }, [navigate]);
   const currentUser = useCurrentUser();
   const ownerId = currentUser?.id;
   const { bridgeAvailable: isDesktop } = useDesktopVideoJobs();
@@ -130,14 +138,12 @@ export default function ProductLibraryPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [usage, setUsage] = useState<ProductAsset["usage"] | "auto">("auto");
   const [projectName, setProjectName] = useState("");
-  const [agentId, setAgentId] = useState("");
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [assetSearch, setAssetSearch] = useState("");
   const [assetKind, setAssetKind] = useState("all");
   const [parameterRows, setParameterRows] = useState<[string, string][]>([]);
-  const [agents, setAgents] = useState<OctopAgent[]>([]);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const previewUrls = useRef<Record<string, string>>({});
   const fileIds = useRef(new WeakMap<File, string>());
@@ -157,7 +163,6 @@ export default function ProductLibraryPage() {
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [projectBusy, setProjectBusy] = useState(false);
-  const [preparingId, setPreparingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
     null,
@@ -262,15 +267,6 @@ export default function ProductLibraryPage() {
         message.error(t("productLibrary.failed"));
       }
     });
-    void request<OctopAgent[]>("/agents?scope=all")
-      .then(
-        (rows) =>
-          version === ownerVersion.current &&
-          setAgents(rows.filter((a) => a.is_owner && a.state === "running")),
-      )
-      .catch(() => {
-        if (version === ownerVersion.current) setAgents([]);
-      });
   }, [ownerId, loadRetry]);
   useEffect(() => {
     setAssets([]);
@@ -315,7 +311,6 @@ export default function ProductLibraryPage() {
   useEffect(() => {
     if (active) {
       setProjectName("");
-      setAgentId("");
     }
   }, [active?.id]);
   const activeCount = useMemo(
@@ -726,20 +721,6 @@ export default function ProductLibraryPage() {
         selectionVersion === productSelectionVersion.current
       )
         setProjectBusy(false);
-    }
-  };
-  const prepare = async (project: ProductProject) => {
-    if (!agentId) return message.warning(t("productLibrary.agentRequired"));
-    setPreparingId(project.id);
-    try {
-      const result = await productLibraryApi.prepareRender(project.id, agentId);
-      message.success(
-        `${t("productLibrary.prepared")}: ${result.workspace_path}`,
-      );
-    } catch {
-      message.error(t("productLibrary.prepareFailed"));
-    } finally {
-      setPreparingId(null);
     }
   };
   const removeProject = async (project: ProductProject) => {
@@ -1606,31 +1587,6 @@ export default function ProductLibraryPage() {
                     {t("productLibrary.downloadPackage")}
                   </Button>
                 )}
-                <details>
-                  <summary style={{ cursor: "pointer" }}>
-                    {t("productLibrary.advancedAgentSync")}
-                  </summary>
-                  <Space wrap style={{ marginTop: 8 }}>
-                    <Select
-                      showSearch
-                      placeholder={t("productLibrary.selectAgent")}
-                      value={agentId || undefined}
-                      onChange={setAgentId}
-                      style={{ width: 220 }}
-                      options={agents.map((a) => ({
-                        value: a.agent_id,
-                        label: a.name,
-                      }))}
-                    />
-                    <Button
-                      loading={preparingId === p.id}
-                      disabled={!agents.length}
-                      onClick={() => void prepare(p)}
-                    >
-                      {t("productLibrary.prepareRender")}
-                    </Button>
-                  </Space>
-                </details>
                 <Button
                   danger
                   loading={deletingProjectId === p.id}
@@ -1755,8 +1711,15 @@ export default function ProductLibraryPage() {
                 {t("productLibrary.importBack")}
               </Button>
             )}
-            <Button onClick={() => setImportOpen(false)}>
-              {t("productLibrary.importCancel")}
+            <Button
+              type={importStep === 2 ? "primary" : undefined}
+              onClick={() => setImportOpen(false)}
+            >
+              {t(
+                importStep === 2
+                  ? "productLibrary.importFinish"
+                  : "productLibrary.importCancel",
+              )}
             </Button>
             {importStep === 0 && (
               <Button
