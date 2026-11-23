@@ -32,6 +32,11 @@ from octop.infra.product_library.narration import (
     resolve_voice_preset,
 )
 from octop.infra.product_library.package_export import export_project_package
+from octop.infra.product_library.recognition import (
+    group_local_plan,
+    plan_local_video,
+    recognise_uploads,
+)
 from octop.infra.product_library.service import (
     ProductLibraryService,
     project_payload,
@@ -644,6 +649,113 @@ async def update_asset(
     return _service(server).update_asset(
         user.id, asset_id, usage=body.usage, priority=body.priority, active=body.active
     )
+
+
+@router.post(
+    "/product-library/recognize",
+    summary="Recognise image bytes without storing them (local-first clients)",
+    description=(
+        "Accepts multipart image bytes and returns the vision categorisation "
+        "for each image. No bytes are written to disk and no product/asset/description "
+        "rows are created — the caller keeps the material and classification locally. "
+        "One vision call per distinct SHA-256 within the request."
+    ),
+)
+async def recognize_images(
+    files: list[UploadFile] = File(...),
+    paths: list[str] = Form(default=[]),
+    mode: Literal["categorize", "describe"] = Form(default="categorize"),
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    max_bytes = int(
+        server.services.config.max_upload_bytes or upload_mb_to_bytes(DEFAULT_MAX_UPLOAD_MB)
+    )
+    raw_paths = paths if isinstance(paths, list) else []
+    payload: list[tuple[str, str, bytes]] = []
+    for index, file in enumerate(files):
+        filename = Path(file.filename or "upload.bin").name
+        raw_path = raw_paths[index].strip() if index < len(raw_paths) else ""
+        data = await read_upload_capped(file, max_bytes=max_bytes)
+        payload.append((raw_path or filename, file.content_type or "", data))
+    return await recognise_uploads(payload, server.services.provider_repo, mode=mode)
+
+
+class LocalPlanAsset(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    filename: str = Field(min_length=1, max_length=300)
+    media_type: str = Field(default="image/jpeg", max_length=100)
+    usage: str = Field(default="scene", max_length=32)
+    priority: int = 0
+    category: str = Field(default="", max_length=100)
+    description: str = Field(default="", max_length=2000)
+    tags: list[str] = Field(default_factory=list, max_length=12)
+
+
+class LocalPlanProduct(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    model: str = Field(default="", max_length=200)
+    category: str = Field(default="", max_length=100)
+    selling_points: list[str] = Field(default_factory=list)
+
+
+class LocalPlanBody(BaseModel):
+    product: LocalPlanProduct
+    assets: list[LocalPlanAsset] = Field(default_factory=list, max_length=200)
+    request: VideoPlanRequest
+    generator: Literal["template", "llm"] = "template"
+
+
+@router.post(
+    "/product-library/plan-local",
+    summary="Plan a video from client-side material metadata",
+    description=(
+        "Builds a validated template or optional AI storyboard from product and "
+        "asset metadata. Reads/writes no files and creates "
+        "no database rows — for local-first clients that keep their own material."
+    ),
+)
+async def plan_local(body: LocalPlanBody, user: Any = Depends(current_user)) -> dict[str, Any]:
+    snapshot = {
+        "product": body.product.model_dump(),
+        "assets": [a.model_dump() for a in body.assets],
+    }
+    if body.generator == "llm":
+        try:
+            return await generate_model_plan(snapshot, body.request)
+        except (ValueError, OSError, KeyError, IndexError, TypeError) as exc:
+            raise HTTPException(
+                status_code=502, detail="Video model unavailable or returned invalid script"
+            ) from exc
+    return plan_local_video(snapshot, body.request)
+
+
+class LocalGroupItem(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    filename: str = Field(default="", max_length=300)
+    group: str = Field(default="", max_length=200)
+    category: str = Field(default="", max_length=100)
+    description: str = Field(default="", max_length=4000)
+    tags: list[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    group_source: str = Field(default="vision", max_length=32)
+
+
+@router.post(
+    "/product-library/group-plan",
+    summary="Group client-held recognition metadata (no storage, no model)",
+    description=(
+        "Pure grouping over asset metadata the client already holds. Reuses the "
+        "hosted directory-import grouping key so review plans are identical, but "
+        "spends no model call, reads/writes no files and creates no database rows."
+    ),
+)
+async def group_plan(
+    items: list[LocalGroupItem], user: Any = Depends(current_user)
+) -> dict[str, Any]:
+    if len(items) > 2000:
+        raise HTTPException(status_code=400, detail="too many items")
+    return group_local_plan([item.model_dump() for item in items])
 
 
 @router.post(

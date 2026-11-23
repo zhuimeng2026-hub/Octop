@@ -14,7 +14,11 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-REPO_ROOT     := $(shell pwd)
+# `git rev-parse --show-toplevel` instead of `pwd`: on Windows the Makefile's
+# `$(shell ...)` runs under the host shell (not the POSIX `SHELL` above), so
+# `pwd` can fail to launch and leaves REPO_ROOT empty — which silently turns
+# DASHBOARD_DIR into `/dashboard`. git is available in every build context.
+REPO_ROOT     := $(shell git rev-parse --show-toplevel)
 DASHBOARD_DIR := $(REPO_ROOT)/dashboard
 DASHBOARD_DEST := $(REPO_ROOT)/src/octop/dashboard
 DIST_DIR      := $(REPO_ROOT)/dist

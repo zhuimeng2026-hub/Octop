@@ -12,6 +12,8 @@ const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
 const SkillPackagesPage = lazy(() => import("../pages/SkillPackages"));
 const KnowledgeBasesPage = lazy(() => import("../pages/KnowledgeBases"));
 const ProductLibraryPage = lazy(() => import("../pages/ProductLibrary"));
+const LocalLibraryPage = lazy(() => import("../pages/LocalLibrary"));
+const LocalVideoWizardPage = lazy(() => import("../pages/LocalVideoWizard"));
 const ProductVideoWizardPage = lazy(
   () => import("../pages/ProductVideoWizard"),
 );
@@ -73,6 +75,8 @@ export const pathToKey: Record<string, string> = {
   "/skill-packages": "skill-packages",
   "/knowledge-bases": "knowledge-bases",
   "/product-library": "product-library",
+  "/local-library": "local-library",
+  "/local-video-wizard": "video-wizard",
   "/product-library/video-wizard": "video-wizard",
   "/video-environment": "video-environment",
   "/video-analysis": "video-analysis",
@@ -180,6 +184,8 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/skill-packages", element: <SkillPackagesPage /> },
   { path: "/knowledge-bases", element: <KnowledgeBasesPage /> },
   { path: "/product-library", element: <ProductLibraryPage /> },
+  { path: "/local-library", element: <LocalLibraryPage /> },
+  { path: "/local-video-wizard", element: <LocalVideoWizardPage /> },
   {
     path: "/product-library/video-wizard",
     element: <ProductVideoWizardPage />,

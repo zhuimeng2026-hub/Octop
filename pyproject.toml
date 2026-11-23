@@ -161,6 +161,12 @@ artifacts = [
     "src/octop/dashboard/**/*",
 ]
 
+[tool.uv]
+# 公网源，保证 CI（GitHub Actions 无 UV_INDEX_URL 覆盖，直接用 uv.lock 里
+# 钉住的 registry）能拉到包。内网源 192.168.20.173:4874 只在本机可用，
+# 需开发者自行用用户级 uv.toml（%APPDATA%\uv\uv.toml）覆盖 index-url。
+index-url = "https://mirrors.tencentyun.com/pypi/simple"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
