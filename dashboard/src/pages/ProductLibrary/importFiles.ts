@@ -12,6 +12,10 @@ export type { ImportEntry };
 
 /** Largest number of files one import may queue. */
 export const MAX_IMPORT_FILES = 500;
+/** Largest original image accepted per import item (inclusive). */
+export const MAX_IMPORT_FILE_BYTES = 20 * 1024 * 1024;
+/** Largest raw selection sent in one analyze request. */
+export const MAX_IMPORT_TOTAL_BYTES = 45 * 1024 * 1024;
 
 /**
  * Normalise a client path: backslashes to `/`, drop a leading `/` or `./`,

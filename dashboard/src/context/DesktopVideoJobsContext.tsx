@@ -222,9 +222,12 @@ export function DesktopVideoJobsProvider({
     const detail = environmentStatus.errorCode
       ? ` code=${environmentStatus.errorCode}`
       : "";
-    const install = environmentStatus.requiresInstall === true ? " install" : "";
+    const install =
+      environmentStatus.requiresInstall === true ? " install" : "";
     console.info(
-      `[octop:video-env] state=${environmentStatus.state} stage=${environmentStatus.stage ?? "-"}${detail}${install}`,
+      `[octop:video-env] state=${environmentStatus.state} stage=${
+        environmentStatus.stage ?? "-"
+      }${detail}${install}`,
     );
   }, [environmentStatus]);
 

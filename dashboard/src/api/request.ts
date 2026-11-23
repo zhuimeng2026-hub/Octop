@@ -33,6 +33,19 @@ export class SetupRequiredError extends Error {
   }
 }
 
+/** HTTP failure returned by an XMLHttpRequest upload. */
+export class UploadRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, responseText = "") {
+    super(
+      `Upload failed: ${status}${responseText ? ` - ${responseText}` : ""}`,
+    );
+    this.name = "UploadRequestError";
+    this.status = status;
+  }
+}
+
 /** Session flag: backend reported no admin yet (setup lockdown active). */
 let _setupRequiredKnown = false;
 
@@ -731,13 +744,7 @@ export async function requestUpload<T = unknown>(
 
         if (!response.ok) {
           // Same shape as request() so parseApiError() can read the error envelope.
-          reject(
-            new Error(
-              `Upload failed: ${status}${
-                responseText ? ` - ${responseText}` : ""
-              }`,
-            ),
-          );
+          reject(new UploadRequestError(status, responseText));
           return;
         }
 

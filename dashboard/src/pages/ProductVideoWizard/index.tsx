@@ -102,6 +102,7 @@ export default function ProductVideoWizardPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [assets, setAssets] = useState<ProductAsset[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [assetProductIds, setAssetProductIds] = useState<string[]>([]);
   const [project, setProject] = useState<ProductProject | null>(null);
   const [request, setRequest] = useState<VideoPlanRequest>({
     ...initialRequest,
@@ -147,6 +148,7 @@ export default function ProductVideoWizardPage() {
   const nextUploadFileId = useRef(0);
   const requestVersion = useRef(0);
   const productIdRef = useRef<string | null>(null);
+  const routeSelectionApplied = useRef(false);
   const tRef = useRef(t);
   const generatedProjectRoute = useRef<{
     id: string;
@@ -244,8 +246,10 @@ export default function ProductVideoWizardPage() {
     setProducts([]);
     setProduct(null);
     productIdRef.current = null;
+    routeSelectionApplied.current = false;
     setAssets([]);
     setSelectedAssetIds([]);
+    setAssetProductIds([]);
     setProject(null);
     setDraft(null);
     setSaved(false);
@@ -273,6 +277,7 @@ export default function ProductVideoWizardPage() {
             setProject(found);
             setProduct(found.snapshot.product);
             productIdRef.current = found.product_id;
+            setAssetProductIds([found.product_id]);
             setSelectedAssetIds(
               found.snapshot.assets
                 .filter((a) => a.usage === "scene" && mediaType(a))
@@ -321,6 +326,7 @@ export default function ProductVideoWizardPage() {
           if (routedProduct) {
             setProduct(routedProduct);
             productIdRef.current = routedProduct.id;
+            setAssetProductIds([routedProduct.id]);
             setBrief({
               ...EMPTY_VIDEO_BRIEF,
               sellingPoints: routedProduct.selling_points.join("\n"),
@@ -348,35 +354,54 @@ export default function ProductVideoWizardPage() {
     if (!product || project) return;
     let current = true;
     const id = product.id;
+    const productIds = [...new Set([id, ...assetProductIds])];
     productIdRef.current = id;
     setAssets([]);
-    setSelectedAssetIds([]);
     cleanUrls();
     setImageUrls({});
-    void productLibraryApi
-      .assets(id)
-      .then(({ items }) => {
+    void Promise.all(
+      productIds.map((productId) => productLibraryApi.assets(productId)),
+    )
+      .then((responses) => {
         if (!current) return;
+        const items = [
+          ...new Map(
+            responses.flatMap(({ items: productAssets }) =>
+              productAssets.map((asset) => [asset.id, asset] as const),
+            ),
+          ).values(),
+        ];
         setAssetLoadFailed(false);
         setAssets(items);
         const available = items.filter(
           (asset) =>
-            asset.product_id === id &&
+            asset.product_id &&
+            productIds.includes(asset.product_id) &&
             asset.active &&
             asset.usage === "scene" &&
             mediaType(asset),
         );
         const explicitIds =
-          hasOwnedRouteSelection && routeSelection?.productId === id
+          !routeSelectionApplied.current &&
+          hasOwnedRouteSelection &&
+          routeSelection?.productId === id
             ? routeSelection.assetIds
             : undefined;
-        setSelectedAssetIds(
-          explicitIds
-            ? available
-                .filter((asset) => explicitIds.includes(asset.id))
-                .map((asset) => asset.id)
-            : available.map((asset) => asset.id),
-        );
+        if (explicitIds) routeSelectionApplied.current = true;
+        setSelectedAssetIds((currentIds) => {
+          if (explicitIds) {
+            return available
+              .filter((asset) => explicitIds.includes(asset.id))
+              .map((asset) => asset.id);
+          }
+          const availableIds = new Set(available.map((asset) => asset.id));
+          return [
+            ...new Set([
+              ...currentIds.filter((assetId) => availableIds.has(assetId)),
+              ...available.map((asset) => asset.id),
+            ]),
+          ];
+        });
       })
       .catch(() => {
         if (current) {
@@ -390,6 +415,7 @@ export default function ProductVideoWizardPage() {
   }, [
     product?.id,
     project?.id,
+    assetProductIds,
     assetRetry,
     hasOwnedRouteSelection,
     location.key,
@@ -399,12 +425,7 @@ export default function ProductVideoWizardPage() {
     () =>
       project
         ? project.snapshot.assets.filter((asset) => asset.usage === "scene")
-        : assets.filter(
-            (asset) =>
-              asset.product_id === product?.id &&
-              asset.active &&
-              asset.usage === "scene",
-          ),
+        : assets.filter((asset) => asset.active && asset.usage === "scene"),
     [assets, product?.id, project],
   );
   const orderedSceneAssets = useMemo(
@@ -451,6 +472,7 @@ export default function ProductVideoWizardPage() {
     setUploadBusy(false);
     setUploadProgress("");
     setProduct(next);
+    setAssetProductIds(next ? [next.id] : []);
     productIdRef.current = next?.id ?? null;
     setBrief({
       ...EMPTY_VIDEO_BRIEF,
@@ -559,9 +581,15 @@ export default function ProductVideoWizardPage() {
           const loaded = await productLibraryApi.assets(id);
           if (productIdRef.current !== id || requestVersion.current !== version)
             return;
-          setAssets(loaded.items);
+          setAssets((current) => [
+            ...current.filter((asset) => asset.product_id !== id),
+            ...loaded.items,
+          ]);
           const valid = new Set(
-            loaded.items
+            [
+              ...assets.filter((asset) => asset.product_id !== id),
+              ...loaded.items,
+            ]
               .filter(
                 (asset) =>
                   asset.active && asset.usage === "scene" && mediaType(asset),
@@ -757,7 +785,9 @@ export default function ProductVideoWizardPage() {
     }
   };
 
-  const startBatch = async (targets: import("./OutputStage").RenderTarget[]) => {
+  const startBatch = async (
+    targets: import("./OutputStage").RenderTarget[],
+  ) => {
     if (!project || !environmentReady) return;
     setNativeBusy(true);
     setError("");
@@ -1059,6 +1089,11 @@ export default function ProductVideoWizardPage() {
                   retryAssets={() => setAssetRetry((value) => value + 1)}
                   selectedAssetIds={selectedAssetIds}
                   setSelectedAssetIds={setSelectedAssetIds}
+                  assetProductIds={assetProductIds}
+                  setAssetProductIds={(ids) => {
+                    if (!product) return;
+                    setAssetProductIds([...new Set([product.id, ...ids])]);
+                  }}
                   pickProduct={pickProduct}
                   backToLibrary={() => navigate("/product-library")}
                 />
@@ -1136,7 +1171,9 @@ export default function ProductVideoWizardPage() {
                   retryNativeJob={retryNativeJob}
                   selectedPlatforms={splitPlatforms(brief.platform)}
                   outputLanguage={draft.request.language}
-                  startBatch={isDesktop && environmentReady ? startBatch : undefined}
+                  startBatch={
+                    isDesktop && environmentReady ? startBatch : undefined
+                  }
                   batchTargets={desktopJob?.targets?.map((target) => ({
                     id: target.id,
                     platform: target.filename,

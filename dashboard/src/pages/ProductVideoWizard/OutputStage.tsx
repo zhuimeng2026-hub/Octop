@@ -84,7 +84,8 @@ const targetProfiles = {
 const outputWords = {
   zh: {
     title: "多平台输出",
-    intro: "每个版式都会使用独立的 Remotion 画布尺寸渲染。相同平台可选择多个版式。",
+    intro:
+      "每个版式都会使用独立的 Remotion 画布尺寸渲染。相同平台可选择多个版式。",
     selectAll: "选择平台",
     addVariant: "添加版式",
     vertical: "竖屏 9:16",
@@ -98,7 +99,8 @@ const outputWords = {
     run: "批量渲染所选版本",
     save: "保存已完成成片",
     studio: "下载 Remotion Studio ZIP",
-    unavailable: "当前运行环境无法本地渲染，可下载 Studio ZIP 后在 Remotion Studio 中渲染。",
+    unavailable:
+      "当前运行环境无法本地渲染，可下载 Studio ZIP 后在 Remotion Studio 中渲染。",
     unsupportedAudio: "配音仅支持当前项目语言；多语言配音和配乐授权尚未提供。",
     failed: "失败",
     completed: "已完成",
@@ -107,7 +109,8 @@ const outputWords = {
   },
   en: {
     title: "Multi-platform output",
-    intro: "Each format renders with its own Remotion canvas size. Add more than one format per platform.",
+    intro:
+      "Each format renders with its own Remotion canvas size. Add more than one format per platform.",
     selectAll: "Select platforms",
     addVariant: "Add format",
     vertical: "Vertical 9:16",
@@ -121,8 +124,10 @@ const outputWords = {
     run: "Render selected versions",
     save: "Save completed outputs",
     studio: "Download Remotion Studio ZIP",
-    unavailable: "Local rendering is unavailable. Download the Studio ZIP to render in Remotion Studio.",
-    unsupportedAudio: "Narration uses the project language. Multilingual narration and music licensing are not supported yet.",
+    unavailable:
+      "Local rendering is unavailable. Download the Studio ZIP to render in Remotion Studio.",
+    unsupportedAudio:
+      "Narration uses the project language. Multilingual narration and music licensing are not supported yet.",
     failed: "Failed",
     completed: "Completed",
     running: "Rendering",
@@ -138,41 +143,115 @@ function MultiPlatformOutput({
   downloadStudioPackage,
   saveBatch,
   busy,
-}: Pick<OutputStageProps, "selectedPlatforms" | "outputLanguage" | "startBatch" | "batchTargets" | "downloadStudioPackage" | "saveBatch"> & { busy: boolean }) {
+}: Pick<
+  OutputStageProps,
+  | "selectedPlatforms"
+  | "outputLanguage"
+  | "startBatch"
+  | "batchTargets"
+  | "downloadStudioPackage"
+  | "saveBatch"
+> & { busy: boolean }) {
   const { i18n, t } = useTranslation();
-  const words = outputWords[i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en"];
-  const platformKeys = ["douyin", "xiaohongshu", "channels", "kuaishou", "bilibili", "tiktok", "instagram", "youtube", "custom"];
-  const platformOptions = useMemo(() => platformKeys.map((key) => ({ key, label: key === "custom" ? words.custom : t(`videoWizard.platforms.${key}`) })), [t, words.custom]);
-  const [variants, setVariants] = useState<Array<{ id: string; platform: string; profile: RenderTarget["profile"]; width: number; height: number }>>([]);
+  const words =
+    outputWords[i18n.resolvedLanguage?.startsWith("zh") ? "zh" : "en"];
+  const platformKeys = [
+    "douyin",
+    "xiaohongshu",
+    "channels",
+    "kuaishou",
+    "bilibili",
+    "tiktok",
+    "instagram",
+    "youtube",
+    "custom",
+  ];
+  const platformOptions = useMemo(
+    () =>
+      platformKeys.map((key) => ({
+        key,
+        label:
+          key === "custom" ? words.custom : t(`videoWizard.platforms.${key}`),
+      })),
+    [t, words.custom],
+  );
+  const [variants, setVariants] = useState<
+    Array<{
+      id: string;
+      platform: string;
+      profile: RenderTarget["profile"];
+      width: number;
+      height: number;
+    }>
+  >([]);
   const [selected, setSelected] = useState<string[]>(selectedPlatforms);
   const custom = { width: 1080, height: 1920 };
   useEffect(() => {
     setSelected(selectedPlatforms);
-    const selectedKeys = platformOptions.filter(({ label }) => selectedPlatforms.includes(label)).map(({ key }) => key);
+    const selectedKeys = platformOptions
+      .filter(({ label }) => selectedPlatforms.includes(label))
+      .map(({ key }) => key);
     setVariants((current) => {
-      const kept = current.filter((variant) => selectedKeys.includes(variant.platform));
+      const kept = current.filter((variant) =>
+        selectedKeys.includes(variant.platform),
+      );
       const existing = new Set(kept.map((variant) => variant.platform));
-      const additions = selectedKeys.filter((key) => !existing.has(key)).map((key) => key === "custom"
-        ? { id: "custom-custom", platform: key, profile: "custom" as const, ...custom }
-        : { id: `${key}-short_vertical`, platform: key, profile: "short_vertical" as const, ...targetProfiles.short_vertical });
+      const additions = selectedKeys
+        .filter((key) => !existing.has(key))
+        .map((key) =>
+          key === "custom"
+            ? {
+                id: "custom-custom",
+                platform: key,
+                profile: "custom" as const,
+                ...custom,
+              }
+            : {
+                id: `${key}-short_vertical`,
+                platform: key,
+                profile: "short_vertical" as const,
+                ...targetProfiles.short_vertical,
+              },
+        );
       return [...kept, ...additions];
     });
   }, [selectedPlatforms.join("|")]);
-  const available = platformOptions.filter(({ label }) => selected.includes(label));
-  const addVariant = (platform: string, profile: RenderTarget["profile"] = "short_vertical") => {
-    const size = profile === "custom" ? custom : targetProfiles[profile as keyof typeof targetProfiles];
+  const available = platformOptions.filter(({ label }) =>
+    selected.includes(label),
+  );
+  const addVariant = (
+    platform: string,
+    profile: RenderTarget["profile"] = "short_vertical",
+  ) => {
+    const size =
+      profile === "custom"
+        ? custom
+        : targetProfiles[profile as keyof typeof targetProfiles];
     const dimensions = size ?? custom;
-    setVariants((current) => [...current, { id: `${platform}-${Date.now()}-${current.length}`, platform, profile, width: dimensions.width, height: dimensions.height }]);
+    setVariants((current) => [
+      ...current,
+      {
+        id: `${platform}-${Date.now()}-${current.length}`,
+        platform,
+        profile,
+        width: dimensions.width,
+        height: dimensions.height,
+      },
+    ]);
   };
   const runBatch = async () => {
     if (!startBatch || variants.length === 0) return;
-    await startBatch(variants.map((variant, index) => ({
-      ...variant,
-      fps: 30,
-      language: outputLanguage,
-      safeArea: "standard",
-      filename: `${variant.platform}-${variant.profile}-${index + 1}-${variant.width}x${variant.height}.mp4`,
-    })));
+    await startBatch(
+      variants.map((variant, index) => ({
+        ...variant,
+        fps: 30,
+        language: outputLanguage,
+        safeArea: "standard",
+        filename: `${variant.platform}-${variant.profile}-${index + 1}-${
+          variant.width
+        }x${variant.height}.mp4`,
+      })),
+    );
   };
 
   return (
@@ -184,7 +263,10 @@ function MultiPlatformOutput({
           aria-label={words.selectAll}
           placeholder={words.selectAll}
           value={selected}
-          options={platformOptions.map(({ label }) => ({ label, value: label }))}
+          options={platformOptions.map(({ label }) => ({
+            label,
+            value: label,
+          }))}
           onChange={(value: string[]) => setSelected(value)}
         />
         <Space wrap>
@@ -201,13 +283,18 @@ function MultiPlatformOutput({
                 { value: "square", label: words.square },
                 { value: "custom", label: words.custom },
               ]}
-              onChange={(profile: RenderTarget["profile"]) => addVariant(key, profile)}
+              onChange={(profile: RenderTarget["profile"]) =>
+                addVariant(key, profile)
+              }
             />
           ))}
         </Space>
         {variants.map((variant, index) => (
           <Space key={variant.id} wrap>
-            <Tag>{platformOptions.find(({ key }) => key === variant.platform)?.label ?? variant.platform}</Tag>
+            <Tag>
+              {platformOptions.find(({ key }) => key === variant.platform)
+                ?.label ?? variant.platform}
+            </Tag>
             <Select
               aria-label={`${variant.platform} output format`}
               value={variant.profile}
@@ -218,38 +305,147 @@ function MultiPlatformOutput({
                 { value: "custom", label: words.custom },
               ]}
               onChange={(profile: RenderTarget["profile"]) => {
-                const dimensions = profile === "custom" ? custom : targetProfiles[profile as keyof typeof targetProfiles];
-                setVariants((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, profile, width: dimensions.width, height: dimensions.height } : item));
+                const dimensions =
+                  profile === "custom"
+                    ? custom
+                    : targetProfiles[profile as keyof typeof targetProfiles];
+                setVariants((current) =>
+                  current.map((item, itemIndex) =>
+                    itemIndex === index
+                      ? {
+                          ...item,
+                          profile,
+                          width: dimensions.width,
+                          height: dimensions.height,
+                        }
+                      : item,
+                  ),
+                );
               }}
             />
             {variant.profile === "custom" ? (
               <>
-                <InputNumber aria-label={words.width} min={2} max={4096} step={2} value={variant.width} onChange={(value) => setVariants((current) => current.map((item) => item.id === variant.id ? { ...item, width: value ?? item.width } : item))} />
-                <InputNumber aria-label={words.height} min={2} max={4096} step={2} value={variant.height} onChange={(value) => setVariants((current) => current.map((item) => item.id === variant.id ? { ...item, height: value ?? item.height } : item))} />
+                <InputNumber
+                  aria-label={words.width}
+                  min={2}
+                  max={4096}
+                  step={2}
+                  value={variant.width}
+                  onChange={(value) =>
+                    setVariants((current) =>
+                      current.map((item) =>
+                        item.id === variant.id
+                          ? { ...item, width: value ?? item.width }
+                          : item,
+                      ),
+                    )
+                  }
+                />
+                <InputNumber
+                  aria-label={words.height}
+                  min={2}
+                  max={4096}
+                  step={2}
+                  value={variant.height}
+                  onChange={(value) =>
+                    setVariants((current) =>
+                      current.map((item) =>
+                        item.id === variant.id
+                          ? { ...item, height: value ?? item.height }
+                          : item,
+                      ),
+                    )
+                  }
+                />
               </>
-            ) : <Tag>{variant.width} × {variant.height} · 30 fps</Tag>}
-            <Button type="text" danger onClick={() => setVariants((current) => current.filter((item) => item.id !== variant.id))}><X size={15} /></Button>
+            ) : (
+              <Tag>
+                {variant.width} × {variant.height} · 30 fps
+              </Tag>
+            )}
+            <Button
+              type="text"
+              danger
+              onClick={() =>
+                setVariants((current) =>
+                  current.filter((item) => item.id !== variant.id),
+                )
+              }
+            >
+              <X size={15} />
+            </Button>
           </Space>
         ))}
         <Typography.Text type="secondary">{words.safe}</Typography.Text>
-        <Typography.Text type="secondary">{words.unsupportedAudio} ({words.language}: {outputLanguage})</Typography.Text>
+        <Typography.Text type="secondary">
+          {words.unsupportedAudio} ({words.language}: {outputLanguage})
+        </Typography.Text>
         {batchTargets.map((target) => (
           <div key={target.id}>
             <Space>
-              <span>{platformOptions.find(({ key }) => key === target.platform)?.label ?? target.platform} · {target.width} × {target.height}</span>
-              <Tag color={target.status === "completed" ? "success" : target.status === "failed" ? "error" : "processing"}>
-                {target.status === "completed" ? words.completed : target.status === "failed" ? words.failed : target.status === "queued" ? words.queued : words.running}
+              <span>
+                {platformOptions.find(({ key }) => key === target.platform)
+                  ?.label ?? target.platform}{" "}
+                · {target.width} × {target.height}
+              </span>
+              <Tag
+                color={
+                  target.status === "completed"
+                    ? "success"
+                    : target.status === "failed"
+                    ? "error"
+                    : "processing"
+                }
+              >
+                {target.status === "completed"
+                  ? words.completed
+                  : target.status === "failed"
+                  ? words.failed
+                  : target.status === "queued"
+                  ? words.queued
+                  : words.running}
               </Tag>
-              {target.error && <Typography.Text type="danger">{target.error}</Typography.Text>}
+              {target.error && (
+                <Typography.Text type="danger">{target.error}</Typography.Text>
+              )}
             </Space>
-            {target.status === "rendering" && target.progress != null && <Progress percent={Math.round(target.progress * 100)} size="small" />}
+            {target.status === "rendering" && target.progress != null && (
+              <Progress
+                percent={Math.round(target.progress * 100)}
+                size="small"
+              />
+            )}
           </div>
         ))}
-        <Alert type={startBatch ? "info" : "warning"} showIcon message={startBatch ? words.unsupportedAudio : words.unavailable} />
+        <Alert
+          type={startBatch ? "info" : "warning"}
+          showIcon
+          message={startBatch ? words.unsupportedAudio : words.unavailable}
+        />
         <Space wrap>
-          {startBatch && <Button type="primary" icon={<Play size={15} />} loading={busy} disabled={busy || variants.length === 0} onClick={() => void runBatch()}>{words.run}</Button>}
-          {downloadStudioPackage && <Button icon={<Download size={15} />} onClick={() => void downloadStudioPackage()}>{words.studio}</Button>}
-          {saveBatch && batchTargets.some((target) => target.status === "completed") && <Button onClick={() => void saveBatch()}>{words.save}</Button>}
+          {startBatch && (
+            <Button
+              type="primary"
+              icon={<Play size={15} />}
+              loading={busy}
+              disabled={busy || variants.length === 0}
+              onClick={() => void runBatch()}
+            >
+              {words.run}
+            </Button>
+          )}
+          {downloadStudioPackage && (
+            <Button
+              icon={<Download size={15} />}
+              onClick={() => void downloadStudioPackage()}
+            >
+              {words.studio}
+            </Button>
+          )}
+          {saveBatch &&
+            batchTargets.some((target) => target.status === "completed") && (
+              <Button onClick={() => void saveBatch()}>{words.save}</Button>
+            )}
         </Space>
       </Space>
     </Card>
@@ -277,21 +473,23 @@ export function OutputStage({
   saveBatch,
 }: OutputStageProps) {
   const { t } = useTranslation();
-  const nativeTargets: RenderTargetStatus[] = batchTargets ?? (desktopJob?.targets ?? []).map((target) => {
-    return {
-      id: target.id,
-      platform: target.filename,
-      profile: "custom",
-      width: target.width,
-      height: target.height,
-      fps: target.fps,
-      language: outputLanguage ?? "zh",
-      safeArea: "standard",
-      filename: target.filename,
-      status: target.status,
-      error: target.errorCode,
-    };
-  });
+  const nativeTargets: RenderTargetStatus[] =
+    batchTargets ??
+    (desktopJob?.targets ?? []).map((target) => {
+      return {
+        id: target.id,
+        platform: target.filename,
+        profile: "custom",
+        width: target.width,
+        height: target.height,
+        fps: target.fps,
+        language: outputLanguage ?? "zh",
+        safeArea: "standard",
+        filename: target.filename,
+        status: target.status,
+        error: target.errorCode,
+      };
+    });
   const nativeStages = ["preparing", "rendering", "saving"] as const;
   const currentNativeStage = desktopJob
     ? nativeStages.indexOf(
@@ -305,7 +503,15 @@ export function OutputStage({
 
   return (
     <>
-      <MultiPlatformOutput selectedPlatforms={selectedPlatforms} outputLanguage={outputLanguage} startBatch={startBatch} batchTargets={nativeTargets} downloadStudioPackage={downloadStudioPackage} saveBatch={saveBatch} busy={nativeBusy || nativeSaving} />
+      <MultiPlatformOutput
+        selectedPlatforms={selectedPlatforms}
+        outputLanguage={outputLanguage}
+        startBatch={startBatch}
+        batchTargets={nativeTargets}
+        downloadStudioPackage={downloadStudioPackage}
+        saveBatch={saveBatch}
+        busy={nativeBusy || nativeSaving}
+      />
       {isDesktop ? (
         <section className={styles.exportPanel}>
           <Card

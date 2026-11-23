@@ -4,6 +4,8 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import ProductLibraryPage from "./index";
+import { UploadRequestError } from "../../api/request";
+import { MAX_IMPORT_FILE_BYTES, MAX_IMPORT_TOTAL_BYTES } from "./importFiles";
 
 type UploadFileItem = { uid: string; name: string };
 type UploadProps = {
@@ -20,9 +22,16 @@ const api = vi.hoisted(() => ({
   assets: vi.fn(),
   upload: vi.fn(),
   createProduct: vi.fn(),
+  analyzeImport: vi.fn(),
   deleteProject: vi.fn(),
   downloadAsset: vi.fn().mockResolvedValue(new Blob()),
+  message: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }));
+const compression = vi.hoisted(() => ({
+  compressImportImage: vi.fn(),
+  compressedEntryPath: vi.fn(),
+}));
+vi.mock("./importCompression", () => compression);
 vi.mock("../../api/modules/productLibrary", async () => {
   const actual = await vi.importActual<
     typeof import("../../api/modules/productLibrary")
@@ -32,9 +41,12 @@ vi.mock("../../api/modules/productLibrary", async () => {
     productLibraryApi: { ...actual.productLibraryApi, ...api },
   };
 });
-vi.mock("../../api/request", () => ({
-  request: vi.fn().mockResolvedValue([]),
-}));
+vi.mock("../../api/request", async () => {
+  const actual = await vi.importActual<typeof import("../../api/request")>(
+    "../../api/request",
+  );
+  return { ...actual, request: vi.fn().mockResolvedValue([]) };
+});
 vi.mock("../../context/DesktopVideoJobsContext", () => ({
   useDesktopVideoJobs: () => ({ bridgeAvailable: false }),
 }));
@@ -45,7 +57,7 @@ vi.mock("../../layouts/PageShell", () => ({
   default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../../utils/antdMessage", () => ({
-  message: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+  message: api.message,
 }));
 vi.mock("antd", async (importOriginal) => {
   const actual = await importOriginal<typeof import("antd")>();
@@ -128,9 +140,15 @@ function renderPage() {
   );
 }
 
+function sizedFile(name: string, size: number): File {
+  return new File([new Uint8Array(size)], name, { type: "image/jpeg" });
+}
+
 describe("product library MVP", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    compression.compressImportImage.mockReset();
+    compression.compressedEntryPath.mockReset();
     api.products.mockResolvedValue({ items: [] });
     api.projects.mockResolvedValue({ items: [] });
     api.assets.mockResolvedValue({ items: [] });
@@ -234,5 +252,141 @@ describe("product library MVP", () => {
         screen.queryByRole("button", { name: "productLibrary.continueVideo" }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("shows an actionable message for an oversized import and keeps the queue", async () => {
+    const user = userEvent.setup();
+    api.analyzeImport.mockRejectedValue(
+      new UploadRequestError(413, "<html>nginx error</html>"),
+    );
+    renderPage();
+
+    await user.click(
+      screen.getByRole("button", { name: "productLibrary.importDirectory" }),
+    );
+    const picker = document.querySelector(
+      'input[type="file"][accept]',
+    ) as HTMLInputElement;
+    await user.upload(
+      picker,
+      new File(["image"], "queued.png", { type: "image/png" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "productLibrary.importAnalyze" }),
+    );
+
+    await waitFor(() => expect(api.analyzeImport).toHaveBeenCalled());
+    expect(api.message.error).toHaveBeenCalledWith(
+      "productLibrary.importTooLarge",
+    );
+    expect(api.analyzeImport.mock.calls[0][0][0].file.name).toBe("queued.png");
+
+    await user.click(
+      screen.getByRole("button", { name: "productLibrary.importAnalyze" }),
+    );
+    await waitFor(() => expect(api.analyzeImport).toHaveBeenCalledTimes(2));
+    expect(api.analyzeImport.mock.calls[1][0][0].file.name).toBe("queued.png");
+  });
+
+  it("preflights file and batch limits before analyzing", async () => {
+    const user = userEvent.setup();
+    api.analyzeImport.mockResolvedValue({
+      job_id: "job-1",
+      groups: [],
+      skipped: [],
+      failed: [],
+    });
+    renderPage();
+    await user.click(
+      screen.getByRole("button", { name: "productLibrary.importDirectory" }),
+    );
+    const picker = document.querySelector(
+      'input[type="file"][accept]',
+    ) as HTMLInputElement;
+    await user.upload(picker, sizedFile("exact.jpg", MAX_IMPORT_FILE_BYTES));
+    await user.click(
+      screen.getByRole("button", { name: "productLibrary.importAnalyze" }),
+    );
+    await waitFor(() => expect(api.analyzeImport).toHaveBeenCalledTimes(1));
+
+    api.analyzeImport.mockClear();
+    await user.click(
+      screen.getByRole("button", { name: "productLibrary.importBack" }),
+    );
+    const retryPicker = document.querySelector(
+      'input[type="file"][accept]',
+    ) as HTMLInputElement;
+    await user.upload(
+      retryPicker,
+      sizedFile("too-large.jpg", MAX_IMPORT_FILE_BYTES + 1),
+    );
+    expect(api.message.warning).toHaveBeenCalledWith(
+      expect.stringContaining("productLibrary.importFileTooLarge"),
+    );
+    await user.upload(
+      retryPicker,
+      sizedFile("second.jpg", MAX_IMPORT_FILE_BYTES),
+    );
+    await user.upload(
+      retryPicker,
+      sizedFile(
+        "batch-overflow.jpg",
+        MAX_IMPORT_TOTAL_BYTES - MAX_IMPORT_FILE_BYTES * 2 + 1,
+      ),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "productLibrary.importAnalyze" }),
+    );
+    expect(api.analyzeImport).not.toHaveBeenCalled();
+    expect(api.message.warning).toHaveBeenCalledWith(
+      expect.stringContaining("productLibrary.importTotalTooLarge"),
+    );
+  });
+
+  it("compresses an oversized file locally before adding it", async () => {
+    const user = userEvent.setup();
+    const compressed = new File(["small"], "large.jpg", {
+      type: "image/jpeg",
+    });
+    compression.compressImportImage.mockResolvedValue(compressed);
+    compression.compressedEntryPath.mockReturnValue("large.jpg");
+    api.analyzeImport.mockResolvedValue({
+      job_id: "job-2",
+      groups: [],
+      skipped: [],
+      failed: [],
+    });
+    renderPage();
+    await user.click(
+      screen.getByRole("button", { name: "productLibrary.importDirectory" }),
+    );
+    const picker = document.querySelector(
+      'input[type="file"][accept]',
+    ) as HTMLInputElement;
+    await user.upload(
+      picker,
+      sizedFile("large.jpg", MAX_IMPORT_FILE_BYTES + 1),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "productLibrary.importCompressAndAdd",
+      }),
+    );
+    await waitFor(() =>
+      expect(compression.compressImportImage).toHaveBeenCalled(),
+    );
+    expect(api.message.success).toHaveBeenCalledWith(
+      "productLibrary.importCompressed",
+    );
+    expect(
+      screen.queryByRole("button", {
+        name: "productLibrary.importCompressAndAdd",
+      }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "productLibrary.importAnalyze" }),
+    );
+    await waitFor(() => expect(api.analyzeImport).toHaveBeenCalledTimes(1));
+    expect(api.analyzeImport.mock.calls[0][0][0].file.name).toBe("large.jpg");
   });
 });

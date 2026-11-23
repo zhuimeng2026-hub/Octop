@@ -30,8 +30,8 @@ from octop.infra.product_library.service import (
 from octop.infra.product_library.vision import (
     MAX_ERROR_CHARS,
     MAX_GROUP_CHARS,
-    MAX_IMAGE_BYTES,
     categorise_image,
+    prepare_recognition_image,
     resolve_vision_model,
 )
 from octop.infra.utils.paths import PathLayout
@@ -40,6 +40,7 @@ from octop.infra.utils.ulid import new_ulid
 # Only raster images can be categorised; other files are reported as skipped.
 _IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".avif"})
 _DEFAULT_CONCURRENCY = 3
+MAX_ORIGINAL_BYTES = 20 * 1024 * 1024
 # Relative-path metadata is display/grouping only: bound it so a hostile or
 # merely absurd client path cannot bloat the manifest.
 MAX_PATH_PARTS = 8
@@ -140,7 +141,7 @@ async def analyse_upload(
     provider_repo: Any,
     *,
     owner_id: int,
-    files: list[tuple[str, str, bytes]],
+    files: list[tuple[str, str, bytes] | tuple[str, str, bytes, str]],
     concurrency: int = _DEFAULT_CONCURRENCY,
 ) -> dict[str, Any]:
     """Categorise an uploaded batch and return a dry-run grouping plan.
@@ -161,7 +162,12 @@ async def analyse_upload(
     skipped: list[dict[str, str]] = []
     pending: list[dict[str, Any]] = []  # manifest rows that need a vision call
 
-    for filename, media_type, data in files:
+    for entry in files:
+        if len(entry) == 4:
+            filename, media_type, data, input_error = entry
+        else:
+            filename, media_type, data = entry
+            input_error = ""
         rel_path = sanitize_relative_path(filename)
         safe_name = Path(rel_path).name or "upload.bin"
         extension = Path(safe_name).suffix.lower()
@@ -174,7 +180,6 @@ async def analyse_upload(
         # Disk layout stays flat: the index prefix already prevents collisions,
         # and relative_path is metadata only.
         storage_name = f"{len(items)}-{safe_name}"
-        (job_dir / storage_name).write_bytes(data)
         row: dict[str, Any] = {
             "index": len(items),
             "filename": safe_name,
@@ -186,9 +191,14 @@ async def analyse_upload(
             "byte_size": len(data),
         }
         items.append(row)
-        if len(data) > MAX_IMAGE_BYTES or not data:
-            row["setup_error"] = "image exceeds the vision size limit or is empty"
+        if input_error:
+            row["setup_error"] = input_error
+        elif len(data) > MAX_ORIGINAL_BYTES:
+            row["setup_error"] = "file exceeds the 20 MB import limit"
+        elif not data:
+            row["setup_error"] = "image is empty"
         else:
+            (job_dir / storage_name).write_bytes(data)
             pending.append(row)
 
     # Resolve the vision model once for the whole batch. A missing model is a
@@ -242,11 +252,14 @@ async def analyse_upload(
             return
         async with semaphore:
             try:
-                data = (job_dir / row["storage_name"]).read_bytes()
+                data = await asyncio.to_thread((job_dir / row["storage_name"]).read_bytes)
+                recognition_data, recognition_type = await asyncio.to_thread(
+                    prepare_recognition_image, data, row["media_type"]
+                )
                 result = await asyncio.to_thread(
                     categorise_image,
-                    data,
-                    row["media_type"],
+                    recognition_data,
+                    recognition_type,
                     model_pair[0],
                     row.get("folder", ""),
                 )

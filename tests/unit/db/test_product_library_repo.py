@@ -102,6 +102,44 @@ def test_asset_paths_and_snapshot_remain_stable_after_product_edit_or_delete(
     assert "brief.pdf" not in json.dumps(script)
 
 
+def test_snapshot_accepts_scene_assets_from_multiple_products(
+    repo: ProductLibraryRepo, tmp_path: Path
+) -> None:
+    service = ProductLibraryService(PathLayout(tmp_path / "octop"), repo)
+    first_product = _product(repo, 5, "First")
+    second_product = _product(repo, 5, "Second")
+    first = service.store_asset(
+        owner_id=5,
+        product_id=first_product["id"],
+        filename="first.png",
+        media_type="image/png",
+        data=b"first",
+        usage="scene",
+    )
+    second = service.store_asset(
+        owner_id=5,
+        product_id=second_product["id"],
+        filename="second.png",
+        media_type="image/png",
+        data=b"second",
+        usage="scene",
+    )
+
+    project = service.create_snapshot(
+        owner_id=5,
+        product_id=first_product["id"],
+        name="Combined",
+        asset_ids=[first["id"], second["id"]],
+    )
+
+    snapshot = json.loads(project["snapshot_json"])
+    assert {asset["id"] for asset in snapshot["assets"]} == {first["id"], second["id"]}
+    assert {asset["product_id"] for asset in snapshot["assets"]} == {
+        first_product["id"],
+        second_product["id"],
+    }
+
+
 def test_identical_upload_reuses_asset_only_within_product_owner(
     repo: ProductLibraryRepo, tmp_path: Path
 ) -> None:

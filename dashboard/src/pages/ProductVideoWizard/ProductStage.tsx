@@ -40,6 +40,8 @@ interface ProductStageProps {
   retryAssets: () => void;
   selectedAssetIds: string[];
   setSelectedAssetIds: Dispatch<SetStateAction<string[]>>;
+  assetProductIds: string[];
+  setAssetProductIds: (ids: string[]) => void;
   pickProduct: (id: string) => void;
   backToLibrary: () => void;
 }
@@ -63,6 +65,8 @@ export function ProductStage({
   retryAssets,
   selectedAssetIds,
   setSelectedAssetIds,
+  assetProductIds,
+  setAssetProductIds,
   pickProduct,
   backToLibrary,
 }: ProductStageProps) {
@@ -92,6 +96,20 @@ export function ProductStage({
               label: `${item.name}${item.model ? ` · ${item.model}` : ""}`,
             }))}
             className={styles.productSelect}
+          />
+          <Select
+            mode="multiple"
+            aria-label={t("videoWizard.assetCategories")}
+            placeholder={t("videoWizard.chooseAssetCategories")}
+            value={assetProductIds}
+            onChange={(ids: string[]) => setAssetProductIds(ids)}
+            disabled={Boolean(project) || busy || uploadBusy}
+            options={products.map((item) => ({
+              value: item.id,
+              label: [item.name, item.category].filter(Boolean).join(" · "),
+            }))}
+            className={styles.assetCategorySelect}
+            maxTagCount="responsive"
           />
           {product && (
             <Tag>
@@ -221,7 +239,16 @@ export function ProductStage({
                         <ImageIcon size={25} />
                       )}
                     </div>
-                    <span>{asset.filename}</span>
+                    <span>
+                      {asset.filename}
+                      {asset.product_id && asset.product_id !== product.id
+                        ? ` · ${
+                            products.find(
+                              (item) => item.id === asset.product_id,
+                            )?.name ?? ""
+                          }`
+                        : ""}
+                    </span>
                     <Checkbox checked={checked} disabled={Boolean(project)} />
                   </button>
                 );

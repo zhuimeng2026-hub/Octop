@@ -19,7 +19,11 @@ from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.product_library.audio import load_catalog, pick_track, track_path
 from octop.infra.product_library.base_library import BaseLibraryService, export_base_manifest
-from octop.infra.product_library.batch_import import analyse_upload, commit_import
+from octop.infra.product_library.batch_import import (
+    MAX_ORIGINAL_BYTES,
+    analyse_upload,
+    commit_import,
+)
 from octop.infra.product_library.llm_video_planner import generate_model_plan
 from octop.infra.product_library.narration import (
     PAID_VOICE_PRESETS,
@@ -465,10 +469,11 @@ async def analyse_import(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     service = _service(server)
-    max_bytes = int(
+    configured_max = int(
         server.services.config.max_upload_bytes or upload_mb_to_bytes(DEFAULT_MAX_UPLOAD_MB)
     )
-    payload: list[tuple[str, str, bytes]] = []
+    max_bytes = min(configured_max, MAX_ORIGINAL_BYTES)
+    payload: list[tuple[str, str, bytes] | tuple[str, str, bytes, str]] = []
     # ``paths`` arrives as a plain list through HTTP, but a direct call (tests,
     # in-process callers) can hand us the untouched ``Form`` marker, so guard
     # the shape instead of trusting the annotation.
@@ -478,8 +483,21 @@ async def analyse_import(
         # Parallel field, not the multipart filename: parsers basename the
         # Content-Disposition name, which would silently drop the structure.
         raw_path = raw_paths[index].strip() if index < len(raw_paths) else ""
-        data = await read_upload_capped(file, max_bytes=max_bytes)
-        payload.append((raw_path or filename, file.content_type or "", data))
+        try:
+            data = await read_upload_capped(file, max_bytes=max_bytes)
+        except OctopError as exc:
+            if exc.code is not ErrorCode.ATTACHMENT_TOO_LARGE:
+                raise
+            payload.append(
+                (
+                    raw_path or filename,
+                    file.content_type or "",
+                    b"",
+                    exc.message,
+                )
+            )
+        else:
+            payload.append((raw_path or filename, file.content_type or "", data))
     return await analyse_upload(
         service,
         server.services.provider_repo,

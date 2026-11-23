@@ -177,6 +177,9 @@ export function resolveDesktopShellContext(): Promise<boolean> {
     const poll = window.setInterval(() => {
       if (isDesktopShellContext()) settle(true);
     }, POLL_INTERVAL_MS);
-    const stop = window.setTimeout(() => settle(false), DESKTOP_DETECT_TIMEOUT_MS);
+    const stop = window.setTimeout(
+      () => settle(false),
+      DESKTOP_DETECT_TIMEOUT_MS,
+    );
   });
 }

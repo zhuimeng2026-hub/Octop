@@ -11,9 +11,11 @@ import asyncio
 import base64
 import hashlib
 import json
+from io import BytesIO
 from typing import Any
 
 from langchain_core.messages import HumanMessage
+from PIL import Image, ImageOps
 
 from octop.infra.agents.providers.probe import build_probe_chat_model
 from octop.infra.agents.providers.store import ProviderStore
@@ -21,7 +23,11 @@ from octop.infra.product_library.service import ProductLibraryService
 from octop.infra.utils.llm_text import llm_text_content
 
 SUPPORTED_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif"})
+SUPPORTED_IMPORT_FORMATS = frozenset({"PNG", "JPEG", "WEBP", "GIF", "BMP", "AVIF"})
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+# Import originals may be larger than the recognition payload.  The importer
+# keeps those originals unchanged and only derives a bounded vision payload.
+MAX_DECODED_PIXELS = 50_000_000
 MAX_TAGS = 12
 MAX_DESCRIPTION_CHARS = 2000
 MAX_ERROR_CHARS = 500
@@ -55,6 +61,59 @@ CATEGORISE_PROMPT = (
     '"confidence" (a float from 0 to 1 for how sure you are of the grouping). '
     "Use Chinese unless the visible text is in another language."
 )
+
+
+def prepare_recognition_image(data: bytes, media_type: str) -> tuple[bytes, str]:
+    """Return an image payload suitable for vision without changing the source.
+
+    Small supported images are returned byte-for-byte. Larger originals are
+    EXIF-corrected and proportionally reduced, then encoded as JPEG until the
+    recognition payload fits ``MAX_IMAGE_BYTES``. Pillow's global pixel limit is
+    not changed; dimensions are checked before decoding pixels instead.
+    """
+    if len(data) <= MAX_IMAGE_BYTES and media_type in SUPPORTED_IMAGE_TYPES:
+        return data, media_type
+
+    with Image.open(BytesIO(data)) as source:
+        source_format = (source.format or "").upper()
+        if source_format not in SUPPORTED_IMPORT_FORMATS:
+            raise ValueError(f"unsupported image format: {source_format or media_type}")
+        source_type = {
+            "PNG": "image/png",
+            "JPEG": "image/jpeg",
+            "WEBP": "image/webp",
+            "GIF": "image/gif",
+            "BMP": "image/bmp",
+            "AVIF": "image/avif",
+        }[source_format]
+        if len(data) <= MAX_IMAGE_BYTES and source_type in SUPPORTED_IMAGE_TYPES:
+            return data, source_type
+        width, height = source.size
+        if width <= 0 or height <= 0 or width * height > MAX_DECODED_PIXELS:
+            raise ValueError("image dimensions exceed the safe decode limit")
+        source.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+        image = ImageOps.exif_transpose(source)
+        has_alpha = "A" in image.getbands() or "transparency" in source.info
+        if has_alpha:
+            image = image.convert("RGBA")
+            background = Image.new("RGB", image.size, "white")
+            background.paste(image, mask=image.getchannel("A"))
+            image = background
+        elif image.mode != "RGB":
+            image = image.convert("RGB")
+        quality = 85
+        while True:
+            output = BytesIO()
+            image.save(output, format="JPEG", quality=quality, optimize=True)
+            encoded = output.getvalue()
+            if len(encoded) <= MAX_IMAGE_BYTES:
+                return encoded, "image/jpeg"
+            if image.width <= 256 or image.height <= 256:
+                raise ValueError("image cannot be reduced below the vision size limit")
+            image = image.resize(
+                (max(1, int(image.width * 0.8)), max(1, int(image.height * 0.8))),
+                Image.Resampling.LANCZOS,
+            )
 
 
 class VisionModelUnavailable(RuntimeError):

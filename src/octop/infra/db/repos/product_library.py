@@ -155,6 +155,17 @@ class ProductLibraryRepo:
             ).fetchall()
         return [_asset_row(row) or {} for row in rows]
 
+    def list_assets_by_ids(self, owner_id: int, asset_ids: list[str]) -> list[dict[str, Any]]:
+        if not asset_ids:
+            return []
+        placeholders = ", ".join("?" for _ in asset_ids)
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                _ASSET_SELECT + f" WHERE a.owner_user_id = ? AND a.asset_id IN ({placeholders})",
+                (owner_id, *asset_ids),
+            ).fetchall()
+        return [_asset_row(row) or {} for row in rows]
+
     def get_asset(self, owner_id: int, asset_id: str) -> dict[str, Any] | None:
         with self._db.connect() as conn:
             return _asset_row(

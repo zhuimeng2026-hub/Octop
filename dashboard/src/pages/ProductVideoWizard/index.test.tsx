@@ -8,9 +8,10 @@ import type { ReactNode } from "react";
 
 type MockSelectProps = {
   options?: { value: string | number; label: ReactNode; disabled?: boolean }[];
-  value?: string | number;
+  value?: string | number | (string | number)[];
+  mode?: string;
   placeholder?: string;
-  onChange?: (value: string) => void;
+  onChange?: (value: string | string[]) => void;
   disabled?: boolean;
   className?: string;
   "aria-label"?: string;
@@ -77,8 +78,18 @@ vi.mock("antd", async (importOriginal) => {
         aria-label={props["aria-label"]}
         className={props.className}
         disabled={props.disabled}
+        multiple={props.mode === "multiple"}
         value={props.value ?? ""}
-        onChange={(event) => props.onChange?.(event.currentTarget.value)}
+        onChange={(event) =>
+          props.onChange?.(
+            props.mode === "multiple"
+              ? Array.from(
+                  event.currentTarget.selectedOptions,
+                  (option) => option.value,
+                )
+              : event.currentTarget.value,
+          )
+        }
       >
         <option value="">{props.placeholder ?? ""}</option>
         {props.options?.map((option) => (
@@ -515,6 +526,50 @@ describe("product video wizard", () => {
     });
     await screen.findByText("front.jpg");
     expect(screen.getAllByRole("checkbox")[0]).not.toBeChecked();
+  });
+
+  it("loads and submits scene assets from multiple product categories", async () => {
+    const user = userEvent.setup();
+    const secondProduct = { ...product, id: "p2", name: "Second product" };
+    const secondAsset = {
+      ...sceneAsset,
+      id: "asset2",
+      product_id: "p2",
+      filename: "second.jpg",
+    };
+    api.products.mockResolvedValue({ items: [product, secondProduct] });
+    api.assets.mockImplementation(async (id: string) => ({
+      items: id === "p1" ? [sceneAsset] : [secondAsset],
+    }));
+
+    renderWizard();
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "videoWizard.product" }),
+      "p1",
+    );
+    await screen.findByText("front.jpg");
+    await user.selectOptions(
+      screen.getByRole("listbox", { name: "videoWizard.assetCategories" }),
+      "p2",
+    );
+    await screen.findByText("second.jpg · Second product");
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+    expect(
+      screen.getAllByRole("checkbox").every((checkbox) => checkbox.checked),
+    ).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "videoWizard.next" }));
+    await user.click(
+      screen.getByRole("button", { name: "videoWizard.generate" }),
+    );
+
+    await waitFor(() =>
+      expect(api.createProject).toHaveBeenCalledWith({
+        product_id: "p1",
+        name: expect.stringContaining(product.name),
+        asset_ids: [sceneAsset.id, secondAsset.id],
+      }),
+    );
   });
 
   it("does not inherit another owner's route selection and gives an existing project precedence", async () => {

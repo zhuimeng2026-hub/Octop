@@ -107,7 +107,7 @@ def snapshot_project(
     if product is None:
         return None
     asset_ids = list(dict.fromkeys(asset_ids))
-    selected = {asset["id"]: asset for asset in repo.list_assets(owner_id, product_id)}
+    selected = {asset["id"]: asset for asset in repo.list_assets_by_ids(owner_id, asset_ids)}
     if any(asset_id not in selected for asset_id in asset_ids):
         return None
     assets = []
@@ -120,6 +120,7 @@ def snapshot_project(
                 key: asset[key]
                 for key in (
                     "id",
+                    "product_id",
                     "filename",
                     "media_type",
                     "byte_size",

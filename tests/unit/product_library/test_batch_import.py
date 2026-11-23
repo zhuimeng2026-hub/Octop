@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import UploadFile
+from PIL import Image
 from starlette.datastructures import Headers
 
 from octop.infra.db.migrate import run_migrations
@@ -18,6 +19,7 @@ from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.product_library import ProductLibraryRepo
 from octop.infra.product_library.batch_import import (
     FOLDER_PRIOR_MIN_CONFIDENCE,
+    MAX_ORIGINAL_BYTES,
     analyse_upload,
     commit_import,
     folder_of,
@@ -26,6 +28,7 @@ from octop.infra.product_library.batch_import import (
 )
 from octop.infra.product_library.service import ProductLibraryService
 from octop.infra.product_library.vision import (
+    MAX_IMAGE_BYTES,
     parse_categorisation_payload,
 )
 from octop.infra.utils.paths import PathLayout
@@ -43,7 +46,7 @@ def library(tmp_path: Path) -> SimpleNamespace:
             paths=paths,
             product_library_repo=repo,
             provider_repo=MagicMock(),
-            config=SimpleNamespace(max_upload_bytes=8 * 1024 * 1024),
+            config=SimpleNamespace(max_upload_bytes=20 * 1024 * 1024),
         )
     )
     return SimpleNamespace(service=service, repo=repo, paths=paths, server=server)
@@ -305,6 +308,81 @@ async def test_vision_failure_does_not_block_batch(library: SimpleNamespace) -> 
     assert analysis["failed"][0]["filename"] == "bad.jpg"
 
 
+async def test_import_boundary_keeps_20_mib_and_isolates_larger_file(
+    library: SimpleNamespace,
+) -> None:
+    source = BytesIO()
+    Image.new("RGB", (2500, 2500), "#336699").save(source, format="BMP")
+    original = source.getvalue()
+    assert MAX_IMAGE_BYTES < len(original) < MAX_ORIGINAL_BYTES
+    exact = original + b"\0" * (MAX_ORIGINAL_BYTES - len(original))
+    too_large = exact + b"y"
+    captured: dict[str, Any] = {}
+
+    def fake_categorise(
+        data: bytes, media_type: str, model: Any, folder_hint: str = ""
+    ) -> dict[str, Any]:
+        captured.update(data=data, media_type=media_type)
+        return {
+            "group": "产品",
+            "category": "其它",
+            "description": "ok",
+            "tags": [],
+            "confidence": 0.9,
+        }
+
+    with (
+        patch(
+            "octop.infra.product_library.batch_import.resolve_vision_model",
+            return_value=(MagicMock(), "test/vision"),
+        ),
+        patch(
+            "octop.infra.product_library.batch_import.categorise_image",
+            side_effect=fake_categorise,
+        ),
+    ):
+        analysis = await analyse_upload(
+            library.service,
+            MagicMock(),
+            owner_id=1,
+            files=[
+                ("exact.bmp", "", exact),
+                ("too-large.bmp", "", too_large),
+            ],
+        )
+
+    assert analysis["total"] == 2
+    assert [item["filename"] for item in analysis["failed"]] == ["too-large.bmp"]
+    assert len(analysis["groups"]) == 1
+    assert captured["media_type"] == "image/jpeg"
+    assert len(captured["data"]) <= MAX_IMAGE_BYTES
+    with Image.open(BytesIO(captured["data"])) as derivative:
+        assert derivative.format == "JPEG"
+        assert max(derivative.size) <= 2048
+    stored = (
+        library.paths.product_library_dir / "1" / "imports" / analysis["job_id"] / "0-exact.bmp"
+    )
+    assert stored.read_bytes() == exact
+    result = commit_import(
+        library.service,
+        owner_id=1,
+        job_id=analysis["job_id"],
+        groups=[
+            {
+                "product_id": None,
+                "name": "产品",
+                "category": "其它",
+                "item_indices": [0],
+            }
+        ],
+        exclude_indices=[],
+    )
+    assert result["imported_assets"] == 1
+    asset = library.service.list_assets(1, library.service.list_products(1)[0]["id"])[0]
+    assert asset["byte_size"] == len(exact)
+    assert (library.paths.product_library_dir / asset["storage_path"]).read_bytes() == exact
+
+
 async def test_router_analyze_and_commit_are_owner_scoped(
     library: SimpleNamespace,
 ) -> None:
@@ -365,6 +443,48 @@ async def test_router_analyze_and_commit_are_owner_scoped(
     )
     assert result["created_products"] == 1
     assert result["imported_assets"] == 1
+
+
+async def test_router_analyze_reports_one_oversized_file_without_aborting_batch(
+    library: SimpleNamespace,
+) -> None:
+    from octop.api.routers import product_library as router
+
+    oversized = UploadFile(
+        file=BytesIO(b"not-read"),
+        filename="too-large.jpg",
+        headers=Headers({"content-type": "image/jpeg"}),
+    )
+    oversized.size = MAX_ORIGINAL_BYTES + 1
+    valid = UploadFile(
+        file=BytesIO(b"small"),
+        filename="valid.jpg",
+        headers=Headers({"content-type": "image/jpeg"}),
+    )
+    with (
+        patch(
+            "octop.infra.product_library.batch_import.resolve_vision_model",
+            return_value=(MagicMock(), "test/vision"),
+        ),
+        patch(
+            "octop.infra.product_library.batch_import.categorise_image",
+            return_value={
+                "group": "产品",
+                "category": "其它",
+                "description": "ok",
+                "tags": [],
+                "confidence": 0.9,
+            },
+        ),
+    ):
+        analysis = await router.analyse_import(
+            files=[oversized, valid],
+            user=SimpleNamespace(id=1),
+            server=library.server,
+        )
+
+    assert [item["filename"] for item in analysis["failed"]] == ["too-large.jpg"]
+    assert analysis["groups"][0]["items"][0]["filename"] == "valid.jpg"
 
 
 def test_sanitize_relative_path_strips_traversal_and_drive() -> None:

@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { request } from "../../api/request";
+import { request, UploadRequestError } from "../../api/request";
 import {
   productLibraryApi,
   type ImportCommitGroup,
@@ -48,11 +48,14 @@ import { useDesktopMinimalMode } from "../../hooks/useDesktopMinimalMode";
 import { isPaidTierUser } from "../../utils/permissions";
 import {
   MAX_IMPORT_FILES,
+  MAX_IMPORT_FILE_BYTES,
+  MAX_IMPORT_TOTAL_BYTES,
   entriesFromDataTransfer,
   entriesFromFileList,
   mergeEntries,
 } from "./importFiles";
 import type { ImportEntry } from "./importFiles";
+import { compressImportImage, compressedEntryPath } from "./importCompression";
 
 /** Raster formats the import wizard can categorise; matches the backend list. */
 const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif,.bmp,.avif";
@@ -103,6 +106,15 @@ function importPreview(entries: ImportEntry[]): string {
   return folders.size > names.length
     ? `${names.join("、")} …`
     : names.join("、");
+}
+
+function importBytes(entries: ImportEntry[]): number {
+  return entries.reduce((total, entry) => total + entry.file.size, 0);
+}
+
+function formatImportSize(bytes: number): string {
+  const mib = bytes / (1024 * 1024);
+  return `${mib >= 10 ? mib.toFixed(1) : mib.toFixed(2)} MiB`;
 }
 
 export default function ProductLibraryPage() {
@@ -168,6 +180,10 @@ export default function ProductLibraryPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importStep, setImportStep] = useState<0 | 1 | 2>(0);
   const [importEntries, setImportEntries] = useState<ImportEntry[]>([]);
+  const [importOversized, setImportOversized] = useState<ImportEntry[]>([]);
+  const [importCompressing, setImportCompressing] = useState<string | null>(
+    null,
+  );
   const [importDragActive, setImportDragActive] = useState(false);
   const importImageInputRef = useRef<HTMLInputElement | null>(null);
   const importFolderInputRef = useRef<HTMLInputElement | null>(null);
@@ -182,6 +198,10 @@ export default function ProductLibraryPage() {
   >([]);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importBusy, setImportBusy] = useState(false);
+  const importSession = useRef(0);
+  const importEntriesRef = useRef<ImportEntry[]>([]);
+  const importCompressionBusy = useRef(false);
+  importEntriesRef.current = importEntries;
 
   const selectProduct = (product: Product | null) => {
     if (activeProductId.current !== product?.id) {
@@ -236,6 +256,8 @@ export default function ProductLibraryPage() {
     if (previousOwnerId.current === ownerId) return;
     previousOwnerId.current = ownerId;
     ownerVersion.current += 1;
+    importSession.current += 1;
+    importEntriesRef.current = [];
     reloadVersion.current += 1;
     productSelectionVersion.current += 1;
     selectProduct(null);
@@ -244,6 +266,9 @@ export default function ProductLibraryPage() {
     setAssets([]);
     setSelectedAssets([]);
     setFiles([]);
+    setImportEntries([]);
+    setImportOversized([]);
+    setImportCompressing(null);
     setLoadFailed(false);
     setAssetLoadFailed(false);
     setBusy(false);
@@ -583,8 +608,12 @@ export default function ProductLibraryPage() {
 
   // ---- Directory import wizard ----
   const openImport = () => {
+    importSession.current += 1;
+    importEntriesRef.current = [];
     setImportStep(0);
     setImportEntries([]);
+    setImportOversized([]);
+    setImportCompressing(null);
     setImportDragActive(false);
     setImportJobId("");
     setImportGroups([]);
@@ -593,22 +622,117 @@ export default function ProductLibraryPage() {
     setImportFailed([]);
     setImportOpen(true);
   };
-  const appendImportFiles = (files: FileList | File[] | null) => {
-    if (!files) return;
-    const incoming = entriesFromFileList(files);
+  const closeImport = () => {
+    importSession.current += 1;
+    importEntriesRef.current = [];
+    setImportOpen(false);
+  };
+  const appendImportEntries = (incoming: ImportEntry[]) => {
     if (!incoming.length) return;
+    const oversized = incoming.filter(
+      (entry) => entry.file.size > MAX_IMPORT_FILE_BYTES,
+    );
+    if (oversized.length) {
+      setImportOversized((current) => mergeEntries(current, oversized));
+      message.warning(
+        t("productLibrary.importFileTooLarge", {
+          filenames: oversized.map((entry) => entry.file.name).join(", "),
+          fileLimit: MAX_IMPORT_FILE_BYTES / (1024 * 1024),
+        }),
+      );
+    }
+    const acceptable = incoming.filter(
+      (entry) => entry.file.size <= MAX_IMPORT_FILE_BYTES,
+    );
+    if (!acceptable.length) return;
     setImportEntries((all) => {
-      const merged = mergeEntries(all, incoming);
+      const merged = mergeEntries(all, acceptable);
+      if (importBytes(merged) > MAX_IMPORT_TOTAL_BYTES) {
+        message.warning(
+          t("productLibrary.importTotalTooLarge", {
+            batchLimit: MAX_IMPORT_TOTAL_BYTES / (1024 * 1024),
+          }),
+        );
+      }
       if (merged.length === all.length) return all;
       if (
         merged.length >= MAX_IMPORT_FILES &&
-        merged.length < all.length + incoming.length
+        merged.length < all.length + acceptable.length
       )
         message.warning(
           t("productLibrary.importTruncated", { max: MAX_IMPORT_FILES }),
         );
       return merged;
     });
+    importEntriesRef.current = mergeEntries(
+      importEntriesRef.current,
+      acceptable,
+    );
+  };
+  const compressOversized = async (entry: ImportEntry) => {
+    if (importCompressionBusy.current || importBusy) return;
+    importCompressionBusy.current = true;
+    const session = importSession.current;
+    setImportCompressing(entry.key);
+    try {
+      const compressed = await compressImportImage(entry.file);
+      if (session !== importSession.current) return;
+      const compressedEntry: ImportEntry = {
+        file: compressed,
+        path: compressedEntryPath(entry, compressed),
+        key: `${compressedEntryPath(entry, compressed)}::${compressed.size}::${
+          compressed.lastModified
+        }`,
+      };
+      const current = importEntriesRef.current;
+      const merged = mergeEntries(current, [compressedEntry]);
+      if (importBytes(merged) > MAX_IMPORT_TOTAL_BYTES) {
+        message.warning(
+          t("productLibrary.importCompressTotalTooLarge", {
+            batchLimit: MAX_IMPORT_TOTAL_BYTES / (1024 * 1024),
+          }),
+        );
+        return;
+      }
+      if (merged.length === current.length) {
+        message.warning(
+          t("productLibrary.importTruncated", { max: MAX_IMPORT_FILES }),
+        );
+        return;
+      }
+      setImportEntries(merged);
+      importEntriesRef.current = merged;
+      setImportOversized((current) =>
+        current.filter((item) => item.key !== entry.key),
+      );
+      message.success(
+        t("productLibrary.importCompressed", {
+          filename: entry.file.name,
+          before: formatImportSize(entry.file.size),
+          after: formatImportSize(compressed.size),
+        }),
+      );
+    } catch (error) {
+      if (session !== importSession.current) return;
+      message.error(
+        t("productLibrary.importCompressFailed", {
+          filename: entry.file.name,
+          reason:
+            error instanceof Error && error.message === "animated image"
+              ? t("productLibrary.importAnimatedUnsupported")
+              : error instanceof Error &&
+                error.message === "unsupported image format"
+              ? t("productLibrary.importUnsupportedFormat")
+              : t("productLibrary.importCompressUnavailable"),
+        }),
+      );
+    } finally {
+      importCompressionBusy.current = false;
+      if (session === importSession.current) setImportCompressing(null);
+    }
+  };
+  const appendImportFiles = (files: FileList | File[] | null) => {
+    if (files) appendImportEntries(entriesFromFileList(files));
   };
   const handleImportDrop = async (
     event: React.DragEvent<HTMLDivElement>,
@@ -618,8 +742,10 @@ export default function ProductLibraryPage() {
     // Snapshot the DataTransfer synchronously: items are invalidated once the
     // event handler returns.
     const dataTransfer = event.dataTransfer;
+    const session = importSession.current;
     const { entries, truncated } = await entriesFromDataTransfer(dataTransfer);
-    if (entries.length) setImportEntries((all) => mergeEntries(all, entries));
+    if (session !== importSession.current) return;
+    appendImportEntries(entries);
     if (truncated)
       message.warning(
         t("productLibrary.importTruncated", { max: MAX_IMPORT_FILES }),
@@ -627,17 +753,31 @@ export default function ProductLibraryPage() {
   };
   const analyseImport = async () => {
     if (!importEntries.length) return;
+    const session = importSession.current;
+    if (importBytes(importEntries) > MAX_IMPORT_TOTAL_BYTES) {
+      message.warning(
+        t("productLibrary.importTotalTooLarge", {
+          batchLimit: MAX_IMPORT_TOTAL_BYTES / (1024 * 1024),
+        }),
+      );
+      return;
+    }
     setImportBusy(true);
     try {
       const result = await productLibraryApi.analyzeImport(importEntries);
+      if (session !== importSession.current) return;
       setImportJobId(result.job_id);
       setImportGroups(result.groups);
       setImportSkipped(result.skipped);
       setImportFailed(result.failed);
       setImportExcluded([]);
       setImportStep(1);
-    } catch {
-      message.error(t("productLibrary.importFailed"));
+    } catch (error) {
+      message.error(
+        error instanceof UploadRequestError && error.status === 413
+          ? t("productLibrary.importTooLarge")
+          : t("productLibrary.importFailed"),
+      );
     } finally {
       setImportBusy(false);
     }
@@ -1747,7 +1887,7 @@ export default function ProductLibraryPage() {
         open={importOpen}
         title={t("productLibrary.importDirectory")}
         width={720}
-        onCancel={() => setImportOpen(false)}
+        onCancel={closeImport}
         footer={
           <Space>
             {importStep === 1 && (
@@ -1755,14 +1895,16 @@ export default function ProductLibraryPage() {
                 {t("productLibrary.importBack")}
               </Button>
             )}
-            <Button onClick={() => setImportOpen(false)}>
-              {t("productLibrary.importCancel")}
+            <Button onClick={closeImport}>
+              {importStep === 2
+                ? t("productLibrary.importFinish", "完成")
+                : t("productLibrary.importCancel")}
             </Button>
             {importStep === 0 && (
               <Button
                 type="primary"
                 loading={importBusy}
-                disabled={!importEntries.length}
+                disabled={!importEntries.length || Boolean(importCompressing)}
                 onClick={() => void analyseImport()}
               >
                 {t("productLibrary.importAnalyze", {
@@ -1859,6 +2001,33 @@ export default function ProductLibraryPage() {
                   })}
                 </Typography.Text>
               </Space>
+            )}
+            {importOversized.length > 0 && (
+              <Card
+                size="small"
+                title={t("productLibrary.importOversizedTitle")}
+              >
+                <Space direction="vertical" style={{ width: "100%" }} size={6}>
+                  {importOversized.map((entry) => (
+                    <Space
+                      key={entry.key}
+                      style={{ width: "100%", justifyContent: "space-between" }}
+                    >
+                      <Typography.Text ellipsis>
+                        {entry.path} ({formatImportSize(entry.file.size)})
+                      </Typography.Text>
+                      <Button
+                        size="small"
+                        disabled={importBusy || Boolean(importCompressing)}
+                        loading={importCompressing === entry.key}
+                        onClick={() => void compressOversized(entry)}
+                      >
+                        {t("productLibrary.importCompressAndAdd")}
+                      </Button>
+                    </Space>
+                  ))}
+                </Space>
+              </Card>
             )}
             <Typography.Text type="warning">
               {t("productLibrary.importCostHint")}
