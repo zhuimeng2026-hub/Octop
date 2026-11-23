@@ -148,6 +148,66 @@ the shell sets `OCTOP_GREEN_PACKAGES`, so `octop update` upgrades the extracted
 
 Linux also needs GTK4 + WebKitGTK 6 to link. macOS 12+.
 
+## 开发者模式（直连远程后台）
+
+开发模式让 PC 端外壳直接对接一个**已在运行的 Octop 后台**，不解包本地 portable
+运行时、不启动本地 Python 进程。三件事同时生效：
+
+1. **直连远程后台**：WebView 导航到远程地址。没有配置远程地址时直接报错，不退回本地
+   运行时——「悄悄跑起一个本地 Octop」正是调试时最常见的困惑来源。
+2. **开发者工具**：窗口启用 WebView 开发者工具，`Ctrl+Shift+D` 唤起，右键菜单里的
+   「检查」也保留。
+3. **详细日志**：导航日志（URL、请求、失败）同时打到 stderr，控制台实时可见。
+
+开启方式：`OCTOP_DESKTOP_DEV=1`（环境变量）或 `-X main.defaultDevMode=1`（编译期）。
+`OCTOP_DESKTOP_DEV=0` 关掉编译期打开的默认值；`OCTOP_DESKTOP_DEVTOOLS=0` 只关掉
+「随窗口自动打开开发者工具」。
+
+> 开发者工具由 Wails 的构建标签决定：带 `production` 标签的发行包不带调试器
+> （见 Wails 的 `application_debug.go` / `application_production.go`）。因此开发模式
+> 只在非 production 构建——`wails3 dev`、`wails3 task build` 的默认产物——里有意义。
+
+### 一条命令启动
+
+| 入口 | 界面来源 | API 来源 |
+|---|---|---|
+| `desktop/package-dev-remote.sh`（macOS / Linux / Git Bash） | 本地 dashboard（Vite 热更新） | 远程后台（Vite 代理） |
+| `desktop/package-dev-remote.ps1`（Windows） | 同上 | 同上 |
+| `… --direct` / `-Direct` | 远程后台 | 远程后台 |
+| `desktop/start-desktop.bat` | 远程后台 | 远程后台（读系统 `OCTOP_DESKTOP_URL`） |
+
+```powershell
+# Windows：本地前端热更新 + 远程后台 API
+powershell -File desktop/package-dev-remote.ps1
+
+# Windows：连本机自建的后端
+powershell -File desktop/package-dev-remote.ps1 -Remote http://127.0.0.1:8088
+```
+
+```bash
+# macOS / Linux
+desktop/package-dev-remote.sh
+desktop/package-dev-remote.sh --direct
+```
+
+脚本做的事：按远程地址拆出 origin 与子路径 → 起 `dashboard` 的 Vite dev server
+（`BASE_URL=<子路径>`、`VITE_API_TARGET=<origin>`）→ 等 `/videogen/api/health` 打通 →
+以 `OCTOP_DESKTOP_URL=<本地 dev server>` + `OCTOP_DESKTOP_DEV=1` 跑 `wails3 dev`。
+
+代理按原样透传子路径：`/videogen/api/…` → `https://ocbot.aixifs.com/videogen/api/…`，
+并带上远程 origin 的 `X-Forwarded-Proto` / `X-Forwarded-Host`——SSO 回调域必须与
+注册值一致，冒充本地 origin 会直接报 `redirect_uri 参数错误`。
+
+| 环境变量 | 含义 |
+|---|---|
+| `OCTOP_DESKTOP_URL` | 外壳要加载的地址（开发模式下必填） |
+| `OCTOP_DESKTOP_DEV` | `1` 打开开发模式 |
+| `OCTOP_DESKTOP_DEVTOOLS` | `0` 不随窗口自动打开开发者工具 |
+| `OCTOP_DEV_REMOTE_URL` | 脚本用：远程后台地址 |
+| `OCTOP_DEV_VITE_PORT` | 脚本用：本地 dashboard dev server 端口 |
+
+产品侧需求与验收见 [PRD §4.2](../docs/PRD.md)。
+
 ## Icons
 
 | File | Used for | Rule |

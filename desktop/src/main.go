@@ -232,6 +232,7 @@ func (a *App) boot() {
 	}
 	if url := resolveRemoteDashboardURL(); url != "" {
 		navLogf("boot: remote target %s", redactURL(url))
+		devModeLogf("developer mode: local runtime skipped, dashboard served by %s", redactURL(url))
 		a.setStatus(desktopText(locale, copyStatusConnecting))
 		started := time.Now()
 		if err := waitHealth(locale, url, 60*time.Second); err != nil {
@@ -241,6 +242,13 @@ func (a *App) boot() {
 		}
 		navLogf("boot: health probe ok in %s, showing %s", time.Since(started).Round(time.Millisecond), redactURL(url))
 		a.showDashboard(url)
+		return
+	}
+	if devModeNeedsRemoteTarget() {
+		// 开发模式只对接远程后台。没有目标地址时宁可报错，也不启动本地
+		// 运行时——那样会让人以为在调远程，其实调的是本机。
+		navLogf("boot: developer mode without a remote target")
+		a.setStatus(desktopText(locale, copyErrorDevModeNoTarget))
 		return
 	}
 	navLogf("boot: no remote target, starting bundled runtime")
@@ -573,6 +581,12 @@ func main() {
 		AllowSimpleEventEmit: true,
 		EnableFileDrop:       true,
 		BackgroundColour:     application.NewRGB(247, 248, 250),
+		// 开发模式：打开 WebView 开发者工具。Windows/macOS 由 Wails 的
+		// 构建标签决定（带 production 标签的发行包不带调试器），Linux 由
+		// DevToolsEnabled 选项决定。
+		DevToolsEnabled:        devModeEnabled(),
+		OpenInspectorOnStartup: devInspectorOnStartup(),
+		KeyBindings:            devKeyBindings(),
 	})
 	api.window = win
 	// Navigation log: records what the webview really loads (and what the page

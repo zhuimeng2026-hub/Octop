@@ -66,6 +66,11 @@ func (n *navLogger) logf(format string, args ...any) {
 		return
 	}
 	logger.Printf("%s", msg)
+	// 开发模式：同一行也打到 stderr。wails3 dev 的控制台因此能实时看到
+	// 页面加载了哪个地址、哪些请求失败，不必再去翻 ~/.octop/logs/。
+	if devModeEnabled() {
+		log.Printf("nav: %s", msg)
+	}
 }
 
 // path returns the log file location.

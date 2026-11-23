@@ -21,6 +21,7 @@ const (
 	copyErrorRuntimeDownloadFailed = "error.runtime_download_failed"
 	copyErrorNoFreePort            = "error.no_free_port"
 	copyErrorCannotBind            = "error.cannot_bind"
+	copyErrorDevModeNoTarget       = "error.dev_mode_no_target"
 	copyWait1Minute                = "wait.1_minute"
 	copyWaitNMinutes               = "wait.n_minutes"
 	copyWait1Second                = "wait.1_second"
@@ -50,6 +51,7 @@ var desktopCopy = map[Locale]map[string]string{
 		copyErrorRuntimeDownloadFailed: "Could not download the runtime: %s",
 		copyErrorNoFreePort:            "No free port from %d to %d. Close the program using these ports and try again.",
 		copyErrorCannotBind:            "Cannot listen on %s:%d (%s). Check bind_host in config.json.",
+		copyErrorDevModeNoTarget:       "Developer mode needs a remote Octop address. Set OCTOP_DESKTOP_URL (for example https://host/prefix) and start the client again.",
 		copyWait1Minute:                "1 minute",
 		copyWaitNMinutes:               "%d minutes",
 		copyWait1Second:                "1 second",
@@ -77,6 +79,7 @@ var desktopCopy = map[Locale]map[string]string{
 		copyErrorRuntimeDownloadFailed: "运行环境下载失败：%s",
 		copyErrorNoFreePort:            "从 %d 到 %d 没有空闲端口，请关闭占用这些端口的程序后再试。",
 		copyErrorCannotBind:            "无法在 %s:%d 上监听（%s）。请检查 config.json 里的 bind_host。",
+		copyErrorDevModeNoTarget:       "开发模式需要一个远程 Octop 地址：请设置 OCTOP_DESKTOP_URL（例如 https://host/prefix）后重新启动客户端。",
 		copyWait1Minute:                "1 分钟",
 		copyWaitNMinutes:               "%d 分钟",
 		copyWait1Second:                "1 秒",
