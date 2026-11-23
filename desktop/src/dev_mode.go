@@ -71,6 +71,28 @@ func devModeLogf(format string, args ...any) {
 	navLogf("dev: "+format, args...)
 }
 
+// devBrowserArgs returns the extra Chromium flags developer mode needs.
+//
+// 微信开放平台的网站应用登录页同时提供「扫一扫」和「快捷登录」两条路：快捷登录
+// 靠页面探测本机微信客户端监听的 https://localhost.weixin.qq.com:<port>，端口从
+// 14013/14014/14015/13013/13014/13015 里试，证书是公信的 CN=localhost.weixin.qq.com。
+//
+// 页面只要解析不到 127.0.0.1（fake-IP 代理把该名字答成 198.18.x.x 假 IP 段），
+// 探测就会全部失败，登录页只剩二维码。这里把解析钉回本地，桌面壳不依赖系统
+// hosts 里那条记录是否还在。
+//
+// 只在开发模式生效：WebView2 的浏览器参数是全局的（所有窗口共用一个浏览器
+// 环境），发行包不该因此改变本机解析行为。
+func devBrowserArgs() []string {
+	if !devModeEnabled() {
+		return nil
+	}
+	// 引号是必需的：规则值里有空格，Chromium 的命令行解析要求整体带引号。
+	return []string{
+		`--host-resolver-rules="MAP localhost.weixin.qq.com 127.0.0.1"`,
+	}
+}
+
 // devKeyBindings 返回开发模式下的窗口快捷键。
 //
 // 用 Ctrl+Shift+D 而不是 Ctrl+Shift+I：后者由 WebView2 自己消费（打开

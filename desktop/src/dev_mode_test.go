@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func withDefaultDevMode(t *testing.T, value string) {
 	t.Helper()
@@ -67,6 +70,27 @@ func TestDevKeyBindingsOnlyInDevMode(t *testing.T) {
 	bindings := devKeyBindings()
 	if len(bindings) == 0 {
 		t.Fatal("developer mode should register the inspector shortcut")
+	}
+}
+
+func TestDevBrowserArgsOnlyInDevMode(t *testing.T) {
+	t.Setenv("OCTOP_DESKTOP_DEV", "")
+	withDefaultDevMode(t, "")
+
+	if args := devBrowserArgs(); len(args) != 0 {
+		t.Fatalf("no browser args outside developer mode, got %v", args)
+	}
+
+	t.Setenv("OCTOP_DESKTOP_DEV", "1")
+	args := devBrowserArgs()
+	if len(args) == 0 {
+		t.Fatal("developer mode should relax the local network restrictions")
+	}
+	joined := strings.Join(args, " ")
+	// A fake-IP proxy resolves localhost.weixin.qq.com to a 198.18.x address,
+	// so the WeChat quick-login probe never reaches the local bridge.
+	if !strings.Contains(joined, "MAP localhost.weixin.qq.com 127.0.0.1") {
+		t.Fatalf("browser args should pin the WeChat bridge host to loopback, got %v", args)
 	}
 }
 

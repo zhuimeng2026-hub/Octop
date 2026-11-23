@@ -78,7 +78,9 @@ if (-not $Direct) {
     if (-not $ready) {
         throw "dashboard dev server did not become ready at $health within 30s. Check that the remote backend is reachable: $Remote/api/health"
     }
-    $target = "http://127.0.0.1:$VitePort$basePath"
+    # 尾部斜杠是必须的：Vite 的 public base 是 "<子路径>/"，访问 "<子路径>"
+    # （无斜杠）会落到 404 —— "did you mean to visit <子路径>/<子路径>?"。
+    $target = "http://127.0.0.1:$VitePort" + $(if ($basePath) { "$basePath/" } else { "/" })
 }
 
 Write-Host "desktop shell target: $target"

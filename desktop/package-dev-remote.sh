@@ -90,7 +90,9 @@ if [[ "$USE_VITE" -eq 1 ]]; then
     echo "Check that the remote backend is reachable: ${REMOTE}/api/health" >&2
     exit 1
   fi
-  TARGET="http://127.0.0.1:${VITE_PORT}${BASE_PATH}"
+  # 尾部斜杠是必须的：Vite 的 public base 是 "<子路径>/"，访问 "<子路径>"
+  # （无斜杠）会落到 404 —— "did you mean to visit <子路径>/<子路径>?"。
+  TARGET="http://127.0.0.1:${VITE_PORT}${BASE_PATH:+$BASE_PATH/}"
 fi
 
 echo "desktop shell target: ${TARGET}"
