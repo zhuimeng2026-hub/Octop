@@ -37,6 +37,14 @@ export function openSsoPopup(): Window | null {
   );
 }
 
+interface DesktopSsoBridge {
+  request(kind: string): Promise<string>;
+}
+
+export function desktopSsoBridge(): DesktopSsoBridge | undefined {
+  return (window as Window & { octopDevSso?: DesktopSsoBridge }).octopDevSso;
+}
+
 export function isSsoPopupMessage(
   event: MessageEvent,
   expectedOrigin: string,

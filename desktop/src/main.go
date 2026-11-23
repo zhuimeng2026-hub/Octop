@@ -91,6 +91,7 @@ type App struct {
 	// talks to that origin.
 	dashboardBase string
 	runtimeNonce  string
+	devSso        *devSsoBridge
 
 	// minimalLandingPath is the product-library path the shell keeps the
 	// browser on while minimal mode is enabled ("" when disabled).
@@ -435,6 +436,7 @@ func (a *App) installDragOverlay() {
 	a.window.ExecJS(fileDropJS())
 	a.installVideoBridge()
 	a.installRuntimeBridge()
+	a.installDevSsoBridge()
 	a.installMinimalMode()
 	a.installDesktopFrontendMarker()
 }
@@ -568,6 +570,7 @@ func main() {
 	attachFileDropEventListener(app, api)
 	attachVideoEventListener(app, api, api.videoNonce)
 	attachRuntimeEventListener(app, api, api.runtimeNonce)
+	attachDevSsoListener(app, api)
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
 		applyAppIcon(app)
 		lock.listen(func() { application.InvokeAsync(api.showWindow) })

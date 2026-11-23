@@ -99,4 +99,8 @@ echo "desktop shell target: ${TARGET}"
 echo "  (developer mode: no local Python runtime, remote backend drives the API)"
 
 cd "$REPO/desktop/src"
-OCTOP_DESKTOP_URL="$TARGET" OCTOP_DESKTOP_DEV=1 wails3 dev
+if [[ "$USE_VITE" -eq 1 ]]; then
+  OCTOP_DESKTOP_URL="$TARGET" OCTOP_DESKTOP_AUTH_URL="$REMOTE" OCTOP_DESKTOP_DEV=1 wails3 dev
+else
+  OCTOP_DESKTOP_URL="$TARGET" OCTOP_DESKTOP_AUTH_URL="" OCTOP_DESKTOP_DEV=1 wails3 dev
+fi

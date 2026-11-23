@@ -24,6 +24,7 @@ import {
   isSsoPopupMessage,
   notifySsoOpener,
   openSsoPopup,
+  desktopSsoBridge,
 } from "../../utils/ssoPopup";
 import feishuIcon from "../../assets/channels/feishu.svg";
 import dingtalkIcon from "../../assets/channels/dingtalk.svg";
@@ -170,6 +171,27 @@ export default function LoginPage() {
   const onSso = async (kind: string) => {
     setSsoLoadingKind(kind);
     setRememberLoginPreference(remember);
+    const desktop = desktopSsoBridge();
+    if (desktop) {
+      try {
+        const code = await desktop.request(kind);
+        const exchanged = await authApi.exchangeOidcCode(code);
+        setAuthToken(exchanged.access_token, remember);
+        window.location.replace(withBase("/chat"));
+        return;
+      } catch (err) {
+        if (!(err instanceof Error && err.message === "cancelled")) {
+          const code = err instanceof Error ? err.message : "generic";
+          message.error(
+            t(`login.oidcError.${code}`, {
+              defaultValue: apiErrorMessage(err, t("login.oidcStartFailed"), t),
+            }),
+          );
+        }
+        setSsoLoadingKind(null);
+        return;
+      }
+    }
     let popup: Window | null = null;
     if (kind !== "oidc") {
       popup = openSsoPopup();

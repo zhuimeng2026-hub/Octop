@@ -87,6 +87,11 @@ Write-Host "desktop shell target: $target"
 Write-Host "  (developer mode: no local Python runtime, remote backend drives the API)"
 
 $env:OCTOP_DESKTOP_URL = $target
+if ($Direct) {
+    Remove-Item Env:OCTOP_DESKTOP_AUTH_URL -ErrorAction SilentlyContinue
+} else {
+    $env:OCTOP_DESKTOP_AUTH_URL = $Remote
+}
 $env:OCTOP_DESKTOP_DEV = "1"
 
 try {
