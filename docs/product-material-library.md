@@ -12,6 +12,8 @@ Generation uses the existing backend LLM planner. If that service is unavailable
 
 See the [UI and interaction specification](design/product-video-wizard/README.md) for the selected design, interface contracts and verification boundaries. The original template-package and expert-workspace actions remain available in the library.
 
+End-user guide (Chinese, no technical terms): [一条视频里混用多个产品分类的画面](product-video-multi-category-materials.md).
+
 ## Assets and snapshots
 
 Upload raster images (`png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`, `avif`), video (`mp4`, `webm`, `mov`, `m4v`), and common documents (`pdf`, text/markdown, Office documents, CSV, and RTF). SVG and HTML are not accepted. Each file can be marked as scene media, understanding reference, or style reference; assets can be prioritized or disabled. Search and type filters narrow the current product's asset list.

@@ -87,6 +87,7 @@
 | 文档 | 说明 |
 |---|---|
 | [product-material-library.md](./product-material-library.md) | 产品素材库整体规划（活文档） |
+| [product-video-multi-category-materials.md](./product-video-multi-category-materials.md) | 使用者说明：一条视频里混用多个产品分类的画面（面向创作者，非技术文档） |
 | [product-library-import-architecture.md](./product-library-import-architecture.md) | 目录导入 AI 识别架构（**唯一权威结论**：服务端调远程模型，客户端不跑模型） |
 | [product-image-batch-import.md](./product-image-batch-import.md) | 目录图片批量识别与归档（M1 已实现，M2/M3 规划） |
 | [backend-ai-storyboard-mvp.md](./backend-ai-storyboard-mvp.md) | 服务端 LLM 分镜规划（当前实现） |
