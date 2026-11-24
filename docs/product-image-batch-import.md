@@ -5,6 +5,7 @@
 > 目标读者：后端 / 前端 / 测试
 > 关联功能：产品素材库 `/product-library`（见 [product-material-library.md](product-material-library.md)）
 > 关联需求：跨产品分类选材见 [product-video-multi-category-materials.md](product-video-multi-category-materials.md)
+> 评测任务：[eval/examples/product-image-batch-import.yaml](./eval/examples/product-image-batch-import.yaml)（PLB-001…PLB-014；判定规则见 [eval/README.md](./eval/README.md)）
 >
 > M1 落地清单（与下文设计对应）：
 > - `src/octop/infra/product_library/vision.py` — `CATEGORISE_PROMPT` / `categorise_image()` / `parse_categorisation_payload()`

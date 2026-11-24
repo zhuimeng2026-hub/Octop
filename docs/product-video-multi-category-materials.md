@@ -264,7 +264,7 @@ A：会。两份内容一致，但互相独立，改一份不影响另一份。
 | --- | --- |
 | A7.1 | 1–14 全部通过（第 10 条的修复见下）。 |
 | A7.2 | 15–20 的需求口径保留；现有用例只能证明产品查询的 owner 过滤与跨产品快照写入，不能证明混入他人素材时整单原子失败，相关证据待补。 |
-| A7.3 | 21–24 已实现；**第 25 条口径已定（2026-11-24，整单失败并提示），实现待做**（`snapshot_project` 目前仍静默跳过 `active = 0` 的素材）；第 26 条已满足。 |
+| A7.3 | 21–24 已实现；**第 25 条已实现并验证**（2026-11-24，整单失败并提示，commit `5a3ccce5`）；第 26 条已满足。 |
 | A7.4 | 27–32 待验证（走查只确认了部分控件名称与键盘焦点）。 |
 | A7.5 | 33–36 待验证。 |
 
@@ -312,9 +312,9 @@ return [
 | 接口文档 | `POST /product-library/projects` 的 OpenAPI `description` 必须写明 409 的触发条件 |
 | 前端表现 | 向导在创建项目被拒时显示 `apiErrors.PRODUCT_LIBRARY_ASSET_INACTIVE`（含被停用文件名），**不得**只显示通用失败文案 |
 | 回归命令 | `uv run pytest tests/unit/db/test_product_library_repo.py tests/unit/api/test_product_library.py -q`；`npx vitest run src/pages/ProductVideoWizard/index.test.tsx`；`uv run pytest tests/unit/i18n -q` |
-| 评测任务 | `PVQ-008`（`status: planned`）——实现完成后转为 `active` 并接入 CI |
+| 评测任务 | `PVQ-008`（`status: active`，2026-11-24 实现后转为 active） |
 
-**当前状态：未实施。** `snapshot_project()` 目前对 `active = 0` 的素材静默跳过，与本节口径不一致；**实现完成前，A7.3 第 25 条不通过**。实施细节见 A7.3 与本节，实施前不得据此宣称该条已满足。
+**当前状态：已实施（2026-11-24，commit `5a3ccce5`）。** `snapshot_project()` 在归属校验通过后遇到 `active = 0` 的素材会抛 `PRODUCT_LIBRARY_ASSET_INACTIVE`（HTTP 409，`details.assets` 点名文件）且**不写入项目**；归属校验失败仍返回 `NOT_FOUND`（404）。回归见 `PVQ-008` 评测任务。
 
 ### A9 验证记录
 
@@ -337,7 +337,7 @@ return [
 2026-11-24 规格收口（A7.3 第 25 条）：
 
 - **口径决策**：整单失败并提示；决策理由与实现契约见 A8.1。条目已按 `AGENTS.md` §12.1 改写为 MUST / MUST NOT，删除「二选一」这一不可实施表述。
-- **状态：实现待做**。`snapshot_project()` 仍对 `active = 0` 的素材静默跳过，故第 25 条**当前不通过**；A8 表格中已如实标注。
+- **状态：已实现并验证**（2026-11-24，commit `5a3ccce5`）。`snapshot_project()` 对 `active = 0` 的素材整单失败并点名文件，第 25 条通过；A8 表格中已如实标注。
 - 本轮只改规范文档，未改代码；A8.1 的契约可作为独立实施任务的输入。
 
 ### A10 非目标

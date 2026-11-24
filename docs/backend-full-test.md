@@ -12,7 +12,8 @@
 | 部件 | 位置 | 作用 |
 |---|---|---|
 | git 同步脚本 | `scripts/git_sync_for_test.sh` | 测试前与 origin 对齐（ff-only，尽力而为，见「测试前的 git 同步」） |
-| 编排脚本 | `scripts/run_backend_full_test.py` | 跑测试 → 调子代理分析 → 出报告 |
+| 编排脚本 | `scripts/run_backend_full_test.py` | 跑测试 → 跑 L4 评测 → 调子代理分析 → 出报告 |
+| 评测执行器 | `scripts/run_eval_nightly.py` | 跑 L4 评测任务集（需求条目级判定，见「L4 评测（夜间集合）」） |
 | systemd 服务 | `/etc/systemd/system/octop-backend-full-test.service` | 一次性任务，输出追加到 `/opt/octop-test-reports/backend-full-test.log`；drop-in `20-sandbox.conf`（沙箱闸门）+ `30-git-sync.conf`（git 同步） |
 | systemd 定时器 | `/etc/systemd/system/octop-backend-full-test.timer` | 决定什么时候拉起（每天 02:00） |
 
@@ -29,18 +30,69 @@
    - 跑完了但有失败用例 → 这是**结论**，不重试，直接进分析；
    - 跑不起来（解释器缺失、依赖缺失、收集阶段崩溃、进程被杀、**日志被删**）→
      **不可跳过的异常**，重试，累计 3 次仍失败就终止。
-3. **子代理分析** —— 一个 Octop 子代理（`task_type=agent`，模型
+3. **L4 评测（夜间集合）** —— 按 [eval/README.md](./eval/README.md) §5 跑需求
+   条目级的任务集，逐条判定 pass / fail / 跳过 / 受阻，结论并进同一份报告。
+   失败让本轮结论为 fail；评测自身异常不推翻 pytest 的结论。见下节。
+4. **子代理分析** —— 一个 Octop 子代理（`task_type=agent`，模型
    `newapi/qiniu/conatus-free`）用 shell 读日志，产出 Markdown 分析报告：
    失败用例清单、按根因归类、真回归 vs 偶发、严重度排序与下一步建议。
    分析失败按 3 次重试（退避 60s / 120s）。
-4. **模型容灾（429）** —— 主模型连续 3 次仍撞 429 限流时，自动切到备用模型
+5. **模型容灾（429）** —— 主模型连续 3 次仍撞 429 限流时，自动切到备用模型
    （默认 `newapi/MiniMax-M3.1-Flash-Preview`）重跑分析；见下节。
-5. **出报告** —— 落到 `/opt/octop-data/test-reports/`：
+6. **出报告** —— 落到 `/opt/octop-data/test-reports/`：
    - `pytest-<时间戳>.log` —— 完整测试输出
-   - `report-<时间戳>.json` / `report-<时间戳>.md` —— 测试结论 + 子代理分析 + 容灾记录
+   - `eval-<时间戳>.json` / `eval-<时间戳>.md` —— L4 评测逐条结论与证据
+   - `report-<时间戳>.json` / `report-<时间戳>.md` —— 测试结论 + L4 评测 + 子代理分析 + 容灾记录
 
-退出码：`0` = 全过；`1` = 有失败用例（报告里仍有分析）；`2` = 不可跳过的异常
-（重试 3 次后终止）。
+退出码：`0` = 全过；`1` = 有失败用例或 L4 评测失败（报告里仍有分析）；
+`2` = 不可跳过的异常（重试 3 次后终止）。
+
+## L4 评测（夜间集合）
+
+[eval/README.md](./eval/README.md) §5 规定：夜间集合 = 全量任务（含 `live` 与
+L4 任务），「没有配置就不能宣称已跑夜间」。本机（后端生产机）的夜间配置是：
+
+| 项 | 值 |
+|---|---|
+| 执行器 | `scripts/run_eval_nightly.py`（也可单独当 CLI 用：`--dry-run` / `--domain` / `--task`） |
+| 任务集来源 | `docs/eval/tasks/*.yaml`（可执行位置）+ `docs/eval/examples/*.yaml`（样板与首批任务集） |
+| 沙箱 | 与 pytest 同一套 `TEST_ISOLATED_HOME`，绝不含生产 `OCTOP_HOME` |
+| 逐条证据 | `eval-logs-<时间戳>/<任务 id>.log` |
+| 明细报告 | `eval-<时间戳>.json` / `.md`；并进 `report-<时间戳>.md` 的「L4 评测（夜间集合）」小节 |
+
+### 判定规则（照抄规范 §4，不另立口径）
+
+- 退出码非 0 → **fail**；
+- **零匹配不算通过**：命令退出码 0 但没收集到目标用例（pytest 的 `no tests ran`、
+  vitest 的 `No test found`、go 的 `no tests to run` 等）→ **fail**；
+- `status: planned`（口径已定·实现待做）、`deprecated` → 跳过，记原因；
+- `judge.kind` 不是 `test`（人工 / 视觉 / rubric / 阈值）→ 跳过，记「需人工走查并留证据」；
+- `live: true` → 默认不跑（配额口径见 backlog B-004，未获授权不跑）。
+
+跳过与受阻都**记原因**，不算通过；未运行不写 pass。
+
+### 后端机不跑什么（边界闸门）
+
+评测任务若落在下列范围，在本机**不执行**，记 `blocked` + 原因：
+
+| 任务范围 | 依据 |
+|---|---|
+| 前端命令（`dashboard/`、npm/npx/vite） | [deployment-boundary.md](./deployment-boundary.md) §1 NEVER 行、§2 决策表；`CLAUDE.md` §Commands |
+| 桌面命令（`desktop/`、go 工具链） | 桌面客户端是独立交付单元，在 Windows 出包机上构建验证（[desktop-windows-build.md](./desktop-windows-build.md)）；`CLAUDE.md`「desktop/」条、`AGENTS.md` §1 本地验证表 |
+
+即：**夜间集合里能真正产出结论的是后端任务**（PLB、PVQ-005、PVQ-008 等）；
+前端与桌面任务在本机永远记受阻，需要在前端 / 桌面环境执行。
+
+### 相关环境变量
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `EVAL_TASKSETS` | `docs/eval/tasks,docs/eval/examples` | 任务集目录（相对仓库根） |
+| `EVAL_TIMEOUT` | `900` | 单条任务超时（秒） |
+| `EVAL_PYTHON` | 执行器自己的解释器 | 命令里 `python` / `uv run pytest` 解析成的解释器 |
+| `EVAL_RUN_LIVE` | `0` | 设 `1` 才跑 `live: true` 任务（需先有配额口径） |
+| `EVAL_ALLOW_NPM` | `0` | 设 `1` 才允许在本机跑前端命令（仅前端环境用） |
+| `EVAL_ALLOW_DESKTOP` | `0` | 设 `1` 才允许在本机跑桌面命令（仅桌面环境用） |
 
 ## 测试前的 git 同步
 

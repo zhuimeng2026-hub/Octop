@@ -61,11 +61,16 @@
 
 ### B-001 · 停用素材的整单失败口径落地（第 25 条实现）
 
-**状态**：待实施（登记日期：2026-11-24；代码与现有用例复核于 2026-11-24）
+**状态**：进行中（登记日期：2026-11-24；后端已实现 2026-11-24，commit `5a3ccce5`）
 **优先级**：P1 重要不紧急（适合夜间无人值守）
 **跟踪**：CNB issue [#24](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/24)
 **语义来源**：[product-video-multi-category-materials.md A8.1](./product-video-multi-category-materials.md) —— **行为契约只以 A8.1 为准，本条目不得另立口径**
 **可无人值守执行**：是
+
+**剩余工作**：后端部分（错误码、409、`details.assets`、不写库、文案、OpenAPI 描述、
+后端用例）已随 `5a3ccce5` 落地；**前端「显示具体提示而非通用失败」的回归用例尚未补**
+（`dashboard/src/pages/ProductVideoWizard/index.test.tsx` 目前只断言通用的
+`videoWizard.generateFailed`），步骤 7 的前端半条仍未完成。
 
 **背景**：验收条目 A7.3 第 25 条已定口径「整单失败并提示」，但 `snapshot_project()` 仍静默跳过 `active = 0` 的素材，该条目前不通过。不做的后果是：用户以为素材已入选，快照里却没有，规格与实现长期背离。
 
@@ -118,11 +123,18 @@ cd dashboard && npx tsc -b --pretty false
 
 ### B-002 · 评测首批任务集补齐（E2：PLB 与 LLW 两个领域）
 
-**状态**：待实施（登记日期：2026-11-24）
+**状态**：已完成（登记日期：2026-11-24；完成日期：2026-11-24）
 **优先级**：P1 重要不紧急
 **跟踪**：CNB issue [#29](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/29)
 **语义来源**：[eval/README.md §8.2 迁移计划](./eval/README.md) —— 步骤 E2；格式与判定规则见同文档 §2–§6
 **可无人值守执行**：是
+
+**实际产出**：`docs/eval/examples/product-image-batch-import.yaml`（PLB 14 条）与
+`docs/eval/examples/local-library-wizard.yaml`（LLW 8 条）；两条任务集已接入夜间
+执行器 `scripts/run_eval_nightly.py`（见 [backend-full-test.md](./backend-full-test.md)
+「L4 评测（夜间集合）」）。PLB 是后端任务，夜间可直接产出结论；LLW 是桌面/前端
+命令，在后端生产机上按边界闸门记为 blocked + 原因（规范 §5 的诚实要求），
+需在桌面 / 前端环境执行。回链已写入两份需求文档。
 
 **背景**：评测体系目前只有 `PVQ` 一个领域的样板（[examples/product-video-multi-category.yaml](./eval/examples/product-video-multi-category.yaml)）。规范已立但覆盖面不足，`PLB`（批量导入）与 `LLW`（桌面本机素材库）两个领域的 `must` 需求条目还没有对应的可执行任务，不做的后果是这两块需求永远只能靠人读文档验收。
 
