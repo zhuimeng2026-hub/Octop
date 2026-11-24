@@ -127,6 +127,7 @@
 | [gitee-release.md](./gitee-release.md) | Gitee 发布通道 |
 | [memory-slim.md](./memory-slim.md) | 手动在线整理 `memory.sqlite` |
 | [superagent-remote.md](./superagent-remote.md) | superagent（dsh-superagent）远程 systemd 部署 |
+| [backend-nightly-repair.md](./backend-nightly-repair.md) | 后端 02:10 全量测试的隔离、失败归因、候选修复与报告交接（规范性；唯一运行手册） |
 
 ## 9. 研发规范与评测
 

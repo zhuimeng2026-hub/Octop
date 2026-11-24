@@ -406,6 +406,33 @@ Octop 以多种形态交付，选择逻辑与渠道详见 [交付矩阵](./RELEA
 | **可维护性** | 单一权威文档原则（架构结论固化、避免第二套判定/实现）；活文档随代码更新 |
 | **体积** | 运行时分层下载（核心包 + 按需环境包），目标 246 MB → ≤190 MB（依赖瘦身 PR-0 后） |
 
+### 后端全量测试验收口径
+
+夜间失败归因与候选修复的可执行规范见[《后端夜间全量测试与修复工作流》](./backend-nightly-repair.md)；本节只保留产品验收门槛。
+
+后端无人值守全量测试沿用现有唯一的 systemd 计划：每天 **02:10（Asia/Shanghai）**
+触发 `octop-backend-full-test.timer`。验收报告必须记录实际测试 checkout 的分支与完整
+SHA；仅看到定时器成功、生产 checkout 的 SHA，或临时 `git-sync-latest.json` 记录，
+都不能证明本轮测试验证了 `develop`。
+
+需要验证 `develop` 时，服务端应把测试根目录/入口切到独立测试 checkout，并与生产
+`/opt/Octop`、生产数据目录隔离；不得仅在生产目录上把 `TEST_TARGET_BRANCH` 改成
+`develop`。测试报告中的 SHA、pytest 根目录和沙箱路径是验收证据。
+
+验收必须同时满足两道门槛：
+
+1. **测试门槛**：以首轮基线 `89d6fbe8` 为起点，在独立 `develop` checkout 中逐条处理
+   3 个提交：每条必须记录实际完整 SHA（不能把 `89d6fbe8` 误写成三提交），并明确“保留
+   并合入 `develop` 验证”或“明确弃用并解除定时依赖”。只有三条均有决定与 `0` 退出码、
+   实际 SHA 匹配、完整 pytest 日志及 JSON/MD 产物，才可通过；有失败用例为 **fail**，
+   证据或依赖缺失才为 **blocked**。
+2. **生产门槛**：生产只能验收正式 `main` `v*` tag 与实际进程 SHA；必须同时有进程/版本
+   证据、`/videogen/api/health` 返回 200、微信登录链路与素材库抽查、适用发布 schema/数据
+   安全检查和可执行回滚记录（生产切版待办见 [todo.md T-003](./todo.md)；执行前应更新
+   其中旧目标和健康检查路径，本节当前口径为准；测试手册见
+   [backend-full-test.md](./backend-full-test.md)）。仅 checkout
+   成功或健康检查返回 200 不足以通过；任一项缺失即 **blocked**。
+
 ---
 
 ## 7. 产品路线图
