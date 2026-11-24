@@ -1,7 +1,7 @@
 # 项目待办（人工 / 特定环境）
 
 > 状态：**活文档**（最近核实 2026-11-24）
-> 只收「**需要人 / 特定环境**」的事项：扫码登录、真机验证、真实账号、线下验收。
+> 只收「**需要人 / 特定环境**」的事项：扫码登录、真机验证、真实账号、线下验收，以及需要**生产服务器**或**仓库/平台权限**的运维动作。
 > 落点规则与状态词表见 [docs/README.md §文档维护规范](./README.md) 第 7 条。
 
 每条注明：环境要求、为什么不能在服务器做、已完成到哪一步、验收标准、**完成后回写**、相关文档。
@@ -15,6 +15,10 @@
 | # | 事项 | 需要的环境 | 状态 | 相关文档 |
 |---|---|---|---|---|
 | T-001 | 路线 C 实测：服务器复用桌面 Chrome 登录态操作视频号助手 | Windows 桌面端 | ⏳ 待安排 | [browser-cdp-lan-reuse.md](./browser-cdp-lan-reuse.md) |
+| T-002 | 真实微信扫码→远程回调→桌面会话恢复→授权只读业务 API 复验 | 隔离测试账号 + 可扫码环境 | ⏳ 待安排 | [PRD.md §4.2](./PRD.md#42-桌面端开发模式developer-mode) |
+| T-003 | 生产环境部署来源切到 `develop`（并解决与 §5.1「只跑 v* tag」的口径冲突） | 生产服务器 `ocdev.aixifs.com:13122` | ⏳ 待安排 | [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
+| T-004 | 清理 WIP 分支 `wip/product-library-batch-import`（三处 ref + 文档回写） | 生产服务器 + GitHub/CNB 仓库权限 | ⏳ 待安排 | [wip-branch-workflow.md §5/§7](./wip-branch-workflow.md) |
+| T-005 | 修复 fork 的 Actions「Mirror to CNB」令牌过期，并复核镜像链路 | CNB 访问令牌 + fork 仓库设置权限 | 🚧 进行中（人处理令牌） | [cnb-openapi.md](./cnb-openapi.md) |
 
 ---
 
@@ -94,3 +98,194 @@ Remove-NetFirewallRule -DisplayName 'Chrome CDP 9223'
 
 - [browser-cdp-lan-reuse.md](./browser-cdp-lan-reuse.md)：完整实测手册
 - [deployment-pitfalls.md](./deployment-pitfalls.md)：部署类踩坑的写法参考
+
+---
+
+## T-003 · 生产环境部署来源切到 `develop`
+
+**状态**：⏳ 待安排（2026-11-24 登记）
+
+### 要做什么
+
+把生产服务器 `/opt/Octop` 的部署来源从当前分支切到 `develop`，并**同时解决「生产该跑什么」的规范口径冲突**（见下方「需要先拍板」）。
+
+### 实测基线（2026-11-24，只读核对）
+
+服务器访问：`ssh -p 13122 root@ocdev.aixifs.com`（**22 端口不通，必须用 13122**）。
+
+| 项 | 实测值 |
+|---|---|
+| 工作树 | `/opt/Octop`，`git status --porcelain` 为空（干净） |
+| 当前 HEAD | `615e184b`，分支 `fix/full-test-12-failures`（跟踪 `origin/fix/full-test-12-failures`） |
+| `git describe --tags` | `desktop-v1.4.1-78-g615e184b` |
+| 目标 | `develop @ 23e398d5`（服务器本地 `develop` 已是该 SHA，且与 `cnb/develop` 一致） |
+| 服务 | `octop.service` active；ExecStart `/opt/Octop/.venv/bin/octop run --host 127.0.0.1 --port 8088`；WorkingDirectory `/opt/Octop`（editable 安装 → 跑的就是 checkout 的分支） |
+| 数据库 | `/opt/octop-data/octop.db`，`_schema_version = 29` |
+| 前端产物 | `src/octop/dashboard/` 已构建且被 gitignore → 切分支不影响 |
+
+### 风险已排除的部分
+
+- **无数据库迁移**：两个分支的迁移文件集完全相同（`026` / `027_user_mfa` / `028` / `029`），DB 已在 29，切过去不会触发新迁移；
+- **无工作树冲突**：工作树干净，`git checkout develop` 不会覆盖任何本地改动；
+- **前端产物不受影响**：`src/octop/dashboard/` 是构建产物，不随分支切换。
+
+**仍有行为差异**（不是纯 no-op）：`develop` 相对 `fix/full-test-12-failures` 有 69 个文件差异（+8413 / −1639），多出 `src/octop/infra/product_library/{recognition,base_library,image_quality}.py` 与对应测试；`git cherry` 显示 3 个提交补丁不同 → 切换后服务行为会变，**必须重启并验证**，不能只看 checkout 结果。
+
+### 需要先拍板（口径冲突，别跳过）
+
+当前规范写的是「生产只跑 `main` 上的 `v*` tag，禁止直接跑 `develop`」——见 [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 与 `AGENTS.md` §10；而本条的目标是让生产跑 `develop`。二者必须先收口成唯一口径：
+
+- **选项 A**：生产**部署来源 = `develop`**（测试通过后 `develop` 即上生产）→ 需同步改写 §5.1 与 `AGENTS.md` §10 的措辞，明确区分「部署来源 = develop」与「发布版本 = `main` 的 `v*` tag」；
+- **选项 B**：生产**部署来源 = `main` 的 `v*` tag** → 本条改为走 `release/*` → `main` → 打 tag → 生产 `git checkout` 到该 tag。
+
+拍板结果写进 §5.1（并在 `AGENTS.md` §10 留同口径指针），再执行切换。
+
+### 步骤
+
+```bash
+ssh -p 13122 root@ocdev.aixifs.com
+cd /opt/Octop
+git fetch origin develop
+git checkout develop
+git log -1 --oneline          # 期望 23e398d5
+systemctl restart octop.service
+systemctl is-active octop.service
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8088/api/health   # 期望 200
+```
+
+### 验收标准
+
+| 项 | 判定 |
+|---|---|
+| 版本 | `git -C /opt/Octop rev-parse HEAD` == `23e398d5`，`git describe --tags` 与之一致 |
+| 进程证据 | 进程确实跑在新代码上（版本响应 / 接口行为），**不能只看 checkout**（[wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 第 2 条） |
+| 健康检查 | `octop.service` active，`127.0.0.1:8088/api/health` 返回 200，外部 `13122` 端口同样可访问 |
+| 抽查 | 素材库相关接口（`/api/product-library/*`）与登录可用，无 500 |
+| 迁移 | `_schema_version` 仍为 29（不应变化） |
+
+### 回滚
+
+```bash
+cd /opt/Octop
+git checkout fix/full-test-12-failures
+systemctl restart octop.service
+```
+
+### 完成后回写
+
+- [wip-branch-workflow.md §5.1](./wip-branch-workflow.md)：按拍板结果改口径（选项 A / B），并写明线上实际跑的是哪个 ref
+- [wip-branch-workflow.md §7](./wip-branch-workflow.md)：登记行里「线上仍在跑」的说法按实际进程证据更新
+- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：远程后端实测表的「代码版本」单元格更新为切换后的版本
+- [PRD.md §9](./PRD.md)：版本基线表同步（如口径变了）
+
+### 相关
+
+- [wip-branch-workflow.md §5.1](./wip-branch-workflow.md)：生产环境只跑正式版本（本次要改的就是它）
+- [deployment-pitfalls.md](./deployment-pitfalls.md)：部署踩坑清单
+- [cnb-mirror.md](./cnb-mirror.md)：服务器上的仓库与镜像拓扑
+
+---
+
+## T-004 · 清理 WIP 分支 `wip/product-library-batch-import`
+
+**状态**：⏳ 待安排（2026-11-24 登记）
+
+### 要做什么
+
+确认生产不再运行该快照后，把这条 WIP 分支在三处 ref 上清掉，并把相关文档里的引用改成历史记录。
+
+### 已核实的前提（2026-11-24）
+
+| 判据（[wip-branch-workflow.md §5](./wip-branch-workflow.md)） | 结论 |
+|---|---|
+| ① 内容已逐项重放到 `develop` | ✅ 迁移 `027`→`028`（正文相同）；`analyse_import` / `commit_import_plan` 已在 `develop` 的 `product_library.py:466/602`；`vision.py` 上 develop 是超集；`docs/upstream-sync.md` 内容一致；develop 另有 `recognition.py` / `base_library.py` / `image_quality.py` |
+| ② 线上已不再运行该版本 | ✅ 实测线上 HEAD = `615e184b` ≠ 快照 `ea0c24c5`（**以实际进程/健康证据为准**，见 T-003） |
+| ③ 文档不再依赖该分支或 SHA | ⛔ 尚未完成：[product-library-import-architecture.md §4.2](./product-library-import-architecture.md) 与 [wip-branch-workflow.md §7](./wip-branch-workflow.md) 仍引用它 |
+
+### 需要处理的三处 ref
+
+| 位置 | 现状 |
+|---|---|
+| GitHub fork `zhuimeng2026-hub/Octop` | 已有 `wip/product-library-batch-import`（2026-11-24 为对齐镜像 ref 手工推上去的） |
+| CNB `mengxa.com/Octop` | 已有同名分支（原始所在地） |
+| 生产服务器 `/opt/Octop` | 本地分支 `wip/product-library-batch-import` + `remotes/cnb/wip/product-library-batch-import` 都在 |
+
+### 政策约束（按 [wip-branch-workflow.md §3 / §6](./wip-branch-workflow.md) 的现行措辞）
+
+- **不要把运行中的生产目录当默认操作面**；删 ref / 推 ref 属于需要单独评审的动作；
+- **镜像不会自动删除 CNB 多出的 ref**，清理要手动核对每一个实际发布过的 ref；
+- 「已推上 fork 的那份 WIP 分支是否保留」按 §6 的评审结论执行（本条不预设答案）；
+- 保留 SHA `ea0c24c5` 的历史引用即可，不必保留分支本身。
+
+### 步骤
+
+1. 先做 T-003（生产切到 `develop` 并验证），拿到「线上已不再运行该快照」的进程证据；
+2. 核对三处 ref 的当前 SHA 一致（都应是 `ea0c24c5`）；
+3. 按评审结论删除三处分支；
+4. 复核两侧镜像一致（见验收）。
+
+### 验收标准
+
+| 项 | 判定 |
+|---|---|
+| 分支已删 | `git ls-remote --heads fork` 与 `git ls-remote --heads cnb` 都不再出现 `wip/product-library-batch-import`；服务器 `git branch -a` 也不再出现 |
+| 镜像一致 | 两侧 refs 的 diff 只剩 CNB 自有的 `ci/reports` |
+| 文档已更新 | §4.2 的「代码版本」不再指向 `ea0c24c5`；§7 登记行状态改为「已清理」并注明清理日期与保留的历史 SHA |
+
+### 完成后回写
+
+- [wip-branch-workflow.md §7](./wip-branch-workflow.md)：登记行状态 → 已清理（保留 SHA 与历史链接）
+- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：实测记录改为当前正式版本
+- 本条目状态 → ✅ 已完成（附日期与 commit）
+
+---
+
+## T-005 · 修复 fork 的 Actions「Mirror to CNB」令牌过期
+
+**状态**：🚧 进行中（令牌由人更换，2026-11-24 登记）
+
+### 现象
+
+fork `zhuimeng2026-hub/Octop` 的 Actions 工作流「Mirror to CNB」失败，GitHub 上已推的提交**不会**自动同步到 cnb.cool：
+
+```
+Mirror to CNB（run 45361102519，push 事件，12s 失败）
+remote: Your Credentials have Expired.
+remote: 您的访问凭证已经过期。
+fatal: unable to access 'https://cnb.cool/mengxa.com/Octop.git/': error 400
+```
+
+fork 的 Actions secret `CNB_TOKEN` 最后更新于 **2026-10-27**，已过期。
+
+### 已手工补救（2026-11-24，只做了同步，没改策略）
+
+- `feat/video-production-workbench` 与缺失的标签 `video-workbench-2026-11-24` 已补推到 CNB；
+- `wip/product-library-batch-import` 也推了一份到 fork；
+- 当前两侧一致：分支 8 = 8、标签 8 = 8（仅 CNB 自有的 `ci/reports` 按工作流规则排除）。
+
+### 待办
+
+1. 在 cnb.cool 个人设置里重新生成访问令牌（需**仓库写权限** + `repo-issue:rw`）；
+2. 写回 fork 的 Actions secret：`gh secret set CNB_TOKEN --repo zhuimeng2026-hub/Octop`；
+3. 手动触发一次镜像并确认变绿：`gh workflow run mirror-to-cnb.yml --repo zhuimeng2026-hub/Octop`；
+4. 复核两侧 refs 一致。
+
+> 本条**只涉及更换令牌**，不涉及镜像策略变更（策略类改动按 [wip-branch-workflow.md §6](./wip-branch-workflow.md) 单独评审）。
+
+### 验收标准
+
+| 项 | 判定 |
+|---|---|
+| 工作流 | `gh run list --repo zhuimeng2026-hub/Octop` 中最新的「Mirror to CNB」为 success，且不再出现「您的访问凭证已经过期」 |
+| refs 一致 | `git ls-remote --heads fork` 与 `git ls-remote --heads cnb` 的 diff 只剩 `ci/reports`；标签两侧一致 |
+| 无回退 | 推送策略仍是**只做快进、不带 `--force`** |
+
+### 完成后回写
+
+- [cnb-openapi.md](./cnb-openapi.md)：踩坑记录里补上令牌过期这次的结论与复核结果
+- 本条目状态 → ✅ 已完成（附日期与新令牌生效的 run 链接；**不要**把令牌值写进文档）
+
+### 相关
+
+- [cnb-openapi.md](./cnb-openapi.md)：CNB API / 网页路径 / 踩坑记录
+- [cnb-mirror.md](./cnb-mirror.md)：镜像拓扑与服务器侧 cron
