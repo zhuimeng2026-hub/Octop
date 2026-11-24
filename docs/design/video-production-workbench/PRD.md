@@ -2,9 +2,10 @@
 
 - 日期：2026-11-23
 - 状态：设计规格已完成；2026-11-24 已完成本地桌面向导的首批实现与定向冒烟验证，完整验收仍以第 7 节为准
-- 目标分支：`feat/video-production-workbench`（从 main 创建）
+- 目标分支：`feat/video-production-workbench`（从 `develop` 创建，PR 回 `develop`；见 `AGENTS.md` §10 分支与发布）
 - 设计依据：`docs/design/product-video-wizard/README.md`、`docs/product-material-library.md`、`docs/backend-ai-storyboard-mvp.md`、`docs/remotion-video-pipeline.md`
 - 现有落点：`dashboard/src/pages/ProductVideoWizard/index.tsx`、`dashboard/src/pages/LocalVideoWizard/index.tsx`、`brief.ts`，桌面本地渲染桥、后端 product-library storyboard API、Remotion 本地渲染器
+- 兄弟文档：桌面端本机素材库与本机向导见 [local-library-wizard.md](./local-library-wizard.md)
 - 设计角色：高层产品/交互设计；实施建议分配给低成本编码模型，但不得把设计稿或任务清单视作已实现
 
 ## 0.1 防回退约束与变更记录（必须先读）
@@ -100,10 +101,10 @@ type OutputTarget = {
 ## 5. 状态/API/持久化
 
 保留已有 storyboard / projects / auth API（`docs/backend-ai-storyboard-mvp.md`）。低风险迭代优先客户端 composition + 可选后端扩展：
-- `GET/PUT /projects/{id}/storyboard`：读写故事板。服务端校验镜头类型、时长、授权素材。
-- 建议新增 `GET/PUT /projects/{id}/output-targets`：用户所属项目、profile preset 校验及版本号。
-- 建议新增 `POST /projects/{id}/render-batch`、`GET /projects/{id}/render-batches/{batch_id}`：可选；如果复用桌面桥接，则 UI 控制多目标序列任务，服务端只保存 manifest。**不能宣称已有这些接口。**
-- `GET /projects/{id}/storyboard-package` 兼容旧客户端；增加可选多目标导出时仍保持原行为。
+- `GET/PUT /api/product-library/projects/{id}/storyboard`：读写故事板。服务端校验镜头类型、时长、授权素材。
+- 建议新增 `GET/PUT /api/product-library/projects/{id}/output-targets`：用户所属项目、profile preset 校验及版本号。
+- 建议新增 `POST /api/product-library/projects/{id}/render-batch`、`GET /api/product-library/projects/{id}/render-batches/{batch_id}`：可选；如果复用桌面桥接，则 UI 控制多目标序列任务，服务端只保存 manifest。**不能宣称已有这些接口。**
+- `GET /api/product-library/projects/{id}/storyboard-package` 兼容旧客户端；增加可选多目标导出时仍保持原行为。
 - 幂等 job/target 键；部分失败不得覆盖其它成品；断线恢复和按目标重试；取消只影响尚未完成任务。
 - 用户隔离所有新增资源和路径，防止通过 asset ID 或 job ID 越权访问。
 - 保存时明确 draft version / dirty / confirmed / render snapshot；修改后失效旧版本确认但不删除旧成片。

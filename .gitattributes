@@ -12,3 +12,8 @@
 
 # This file itself, so the rules above stay readable on every platform.
 .gitattributes text eol=lf
+
+# Eval task sets are YAML. Pin LF for them (scoped, so the many workflow .yml
+# files keep whatever core.autocrlf gives them) — a CRLF checkout would make
+# every task-set diff look changed.
+docs/eval/**/*.yaml text eol=lf

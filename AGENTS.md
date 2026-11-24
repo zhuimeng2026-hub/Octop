@@ -410,6 +410,11 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
   A `dashboard/` change seen in a backend context is a NO-OP + report, not a build trigger.
   See `docs/deployment-boundary.md` (§2 decision table) — it is authoritative for this boundary.
 - Do not add blocking I/O in async functions — use `run_in_executor`.
+- **Do not write requirements in ambiguous wording.** `待定` / `二选一` / "either A or B" is not a
+  requirement, and an acceptance entry that cannot be decided is not an acceptance entry — see
+  [§12.1](#121-normative-keywords-rfc-2119--rfc-8174). Decide with the user, then record the decision.
+- Do not merge a change whose touched acceptance entries have no verdict — see
+  [§12.3](#123-definition-of-done-dod--before-merge).
 - **Do not publish the embedded backend address in user-facing distribution material.** The
   service URL baked into the desktop client (`ocbot.aixifs.com/videogen` and friends) is an
   implementation detail: the client connects to it on its own, so the download page, the
@@ -448,6 +453,11 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | WeChat Open Platform login (开放平台网站应用扫码) | `docs/wechat-open-login.md` |
 | SharedServices / RepoBundle | `infra/db/services.py` |
 | Branching & release | [§10](#10-change-workflow) Branching & release; `CONTRIBUTING.md`; `.cursor/skills/publish` |
+| Requirement wording, DoR / DoD | [§12](#12-requirements-wording-and-delivery-definitions) |
+| Eval format, layers, judging rules, CI wiring | `docs/eval/README.md` (normative) |
+| Engineering backlog / night-batch work items | `docs/backlog.md` (normative) |
+| Human or environment-specific todos | `docs/todo.md` |
+| Product requirement docs (PRD) | `docs/PRD.md`; per-topic requirement docs indexed in `docs/README.md` |
 
 ## 10. Change workflow
 
@@ -487,3 +497,107 @@ hotfix/* ──PR──► main (+ tag) and ──PR──► develop
 - Lead with the conclusion, then details; write complete sentences, not telegraphic fragments.
 - When marking work done, include verification commands and results (or explain why they were not run).
 - Do not pile on unrelated follow-ups; mention out-of-scope issues briefly, do not expand scope unilaterally.
+
+## 12. Requirements wording and delivery definitions
+
+This section governs **how requirements are written** and **when work counts as ready / done**.
+It is binding for agents and humans alike. Format and tooling for evals live in
+[`docs/eval/README.md`](docs/eval/README.md) (normative).
+
+### 12.1 Normative keywords (RFC 2119 / RFC 8174)
+
+Requirement statements — PRD entries, acceptance criteria, API descriptions, contract docs —
+MUST carry a normative keyword:
+
+| Chinese keyword | RFC 2119 keyword | Meaning | Binding |
+|-----------------|------------------|---------|----------|
+| 必须 / 不得 | **MUST** / **MUST NOT** | Mandatory; a violation blocks the merge | hard |
+| 应当 | **SHOULD** | Default; deviating requires a stated reason in the PR description | soft, must justify |
+| 可以 | **MAY** | Optional | none |
+| 建议 / 最好 | (non-normative) | A hint, **not** a requirement | none |
+
+Rules:
+
+- A requirement block MUST contain at least one normative keyword. Descriptive prose without a
+  keyword is context, not a requirement.
+- English keywords MUST be uppercase when normative — per RFC 8174, lowercase `must` / `should`
+  carries no requirement force.
+- **MUST NOT** leave a behaviour undecided: `待定` / `二选一` / `看情况` / "either A or B" is not a
+  requirement. Decide it with the user and record the decision, or split it into two separately
+  decidable requirements. (This is exactly why the "二选一" entry in the multi-category PRD was
+  un-implementable.)
+- Acceptance entries MUST be **decidable**: each maps to one automated case or one reproducible
+  manual walkthrough. Wording like "应该好用" is invalid.
+- 建议 / MAY-style statements MUST NOT be used as an acceptance basis.
+- Applies to **new or edited** requirement entries. Existing requirement documents are
+  grandfathered — do not mass-rewrite them, but never introduce new ambiguous wording while editing.
+
+### 12.2 Definition of Ready (DoR) — before implementation starts
+
+A requirement is Ready only when all of the following hold; otherwise it stays a draft:
+
+1. Problem statement + goal — the user problem being solved.
+2. Scope **and** explicit non-goals.
+3. At least one decidable acceptance entry ([§12.1](#121-normative-keywords-rfc-2119--rfc-8174)).
+4. Ownership resolved: the module that owns the behaviour ([§5](#5-module-boundaries)); runtime-library
+   behaviour is routed to that repo ([§2](#2-what-this-is)).
+5. Backend work: the HTTP shape is decided — summary, request/response models, error codes ([§7](#7-key-patterns)).
+6. User-visible strings: zh **and** en strings identified ([§7](#7-key-patterns) i18n).
+7. User-visible timestamps: the server-timezone source identified ([§7](#7-key-patterns) timezone).
+8. Schema change: the migration pair number assigned ([§7](#7-key-patterns)).
+9. Cross-platform behaviour: POSIX / Windows differences stated ([§7](#7-key-patterns)).
+10. Open questions closed — no undecided binary choices left in the text. Anything still open is
+    registered in the owning doc's 开放问题 table (or `docs/PRD.md` §8) with status 待决 and a
+    destination for the decision.
+
+### 12.3 Definition of Done (DoD) — before merge
+
+1. Every acceptance entry touched by the change has a verdict — pass / fail / n/a with reason —
+   recorded in the PR description or the owning requirement doc.
+2. At least one regression case exists for the changed behaviour: an automated test, or an explicit
+   documented manual check when automation is not feasible.
+3. Local verification stayed a smoke test ([§1](#1-collaboration-principles)); the full suite is CI's job.
+4. i18n parity: both `zh` and `en` updated together; `uv run pytest tests/unit/i18n -q` when i18n JSON changed.
+5. New or changed routes render readably in `/api/docs` — summary, description, typed models ([§7](#7-key-patterns)).
+6. Docs synced: this file, the `docs/README.md` index, and the owning requirement doc's status /
+   verification record (`docs/README.md` §文档维护规范). If the work was tracked as a backlog entry,
+   that entry's "完成后回写" list is also satisfied — the entry moves to 已完成 with the commit.
+7. No orphan imports or symbols introduced; no secrets in code, docs or logs ([§8](#8-do-not)).
+8. Behaviour-level changes ship with an eval case per [§12.4](#124-evaluations-evals) — or the PR
+   states why an existing automated test already covers it.
+
+### 12.4 Evaluations (evals)
+
+- Eval task format, layers, judging rules and CI wiring: [`docs/eval/README.md`](docs/eval/README.md) — normative.
+- Evals cover what unit tests assert badly: multi-step flows, permission boundaries, wording,
+  cross-layer regressions, and anything with an LLM in the loop.
+- A requirement that changes **agent behaviour** (slash commands, tool calls, gateway messaging,
+  model-driven output) MUST ship with at least one eval case, or justify in the PR why the existing
+  automated test already covers the behaviour.
+- When a requirement's wording is decided but the code is not written yet, the pending work MUST be
+  registered where it can be found — the owning doc's implementation-status table plus an eval task
+  with `status: planned`, or a `docs/backlog.md` entry — and MUST NOT stay implicit.
+
+### 12.5 Normative document map
+
+Which document governs what, and what wins when two disagree.
+
+| Concern | Authoritative source | Notes |
+|---------|----------------------|-------|
+| Agent constraints, module boundaries, bans | `AGENTS.md` | highest; overrides habit |
+| Requirement wording, DoR, DoD | `AGENTS.md` §12 | binding for the whole change lifecycle |
+| Eval format, layers, judging, CI wiring | `docs/eval/README.md` | normative |
+| Engineering backlog (P1 = unattended night-batch work) | `docs/backlog.md` | normative; an entry owns its scope / steps / acceptance / stop conditions |
+| Human or environment-specific todos | `docs/todo.md` | one landing point per todo — see `docs/README.md` §文档维护规范 rule 7 |
+| Document placement, index, single source of truth | `docs/README.md` §文档维护规范 | a new doc must be registered or merged |
+| Architecture rationale | `docs/adr/`, `docs/architecture.md` | ADR wins over prose |
+| HTTP contract | generated `/api/openapi.json` + `docs/api.md` | generated schema wins on shape |
+| Database schema | `src/octop/infra/db/migrations/` | pairs are canonical; see §7 |
+| Product requirements (PRD) | `docs/PRD.md` + the per-topic requirement docs indexed in `docs/README.md` | one topic, one document |
+| Branching & release | [§10](#10-change-workflow) + `CONTRIBUTING.md` | — |
+| Security policy | `SECURITY.md` | — |
+| Ownership / mandatory review | `.github/CODEOWNERS` | — |
+
+**Conflict rule**: the document that tracks the code wins on *facts* (schema, endpoints, paths) —
+but the conflict MUST be reconciled in the same change. Never leave two documents asserting
+different conclusions about the same behaviour.

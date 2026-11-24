@@ -1,8 +1,10 @@
 # 产品素材库：目录图片批量识别与归档
 
-> 状态：**M1 已实现**（Web 目录导入 + 视觉分类 + 人工确认归档）
+> 状态：**M1 已实现**（Web 目录导入 + 视觉分类 + 人工确认归档）；
+> **大图体积处理已实现**（2026-11-23，见 §11：客户端本地压缩 + 识别载荷拆分）
 > 目标读者：后端 / 前端 / 测试
 > 关联功能：产品素材库 `/product-library`（见 [product-material-library.md](product-material-library.md)）
+> 关联需求：跨产品分类选材见 [product-video-multi-category-materials.md](product-video-multi-category-materials.md)
 >
 > M1 落地清单（与下文设计对应）：
 > - `src/octop/infra/product_library/vision.py` — `CATEGORISE_PROMPT` / `categorise_image()` / `parse_categorisation_payload()`
@@ -11,6 +13,12 @@
 > - `dashboard/src/pages/ProductLibrary/index.tsx` — 产品列表「目录导入」按钮 + 三步向导 Modal
 > - `dashboard/src/api/modules/productLibrary.ts` — `analyzeImport` / `commitImport`
 > - `tests/unit/product_library/test_batch_import.py` — 9 个用例（分类校验、分组、去重、权限、失败隔离、router 接线）
+>
+> 大图体积处理落地清单（§11）：
+> - `dashboard/src/pages/ProductLibrary/importFiles.ts` — 导入队列、体积上限（`MAX_IMPORT_FILE_BYTES` 20 MiB / `MAX_IMPORT_TOTAL_BYTES` 45 MiB）
+> - `dashboard/src/pages/ProductLibrary/importCompression.ts` + `importCompression.worker.ts` — 浏览器端 Web Worker 压缩副本
+> - `src/octop/infra/product_library/batch_import.py` — `MAX_ORIGINAL_BYTES` 20 MiB 原图上限
+> - `src/octop/infra/product_library/vision.py` / `image_quality.py` — `MAX_IMAGE_BYTES` 8 MiB 识别载荷上限
 >
 > M2（任务持久化/进度）与 M3（桌面端目录对话框）尚未实现。
 
@@ -255,3 +263,88 @@ commitImport: (body: ImportCommit) => Promise<ImportResult>
 - 现有素材库能力见 [product-material-library.md](product-material-library.md)。
 - 视频分镜/制作包链路见 [backend-ai-storyboard-mvp.md](backend-ai-storyboard-mvp.md)、[local-studio-package.md](local-studio-package.md)。
 - 本功能是**新增**能力，不改变现有「手动上传 + 单张/批量识别 + 视频向导」流程；两者并列，用户按需选用。
+- 跨产品分类选材的工程侧需求与验收见 [product-video-multi-category-materials.md](product-video-multi-category-materials.md) 第二部分。
+
+## 11. 大图导入的体积处理（客户端压缩 + 识别载荷拆分）
+
+> 状态：**已实现**（2026-11-23，commit `cfcb0d19`）。
+> 本节是 §1–§9 的增量：解决「目录里有一张 27 MiB 的图，整批导入就失败」的问题。
+
+### 11.1 背景
+
+批量导入需要先上传图片并调用视觉识别。线上反向代理对单次请求有 50 MiB 限制，识别模型副本还需要控制在 8 MiB 以内；如果大图直接上传，容易导致整批请求失败，用户也无法判断是哪一张图片出错。
+
+### 11.2 目标
+
+- 将单张图片的产品导入上限明确为 20 MiB（含 20 MiB）。
+- 超过上限时按文件逐张提示并跳过，不影响同批次其他文件。
+- 为重要的大图提供「压缩副本并加入」入口，让用户在上传前生成本地副本后继续导入。
+- 保留原始文件不变；压缩副本只有在用户明确点击后才加入待识别队列。
+- 避免前端一次性提交超过线上 50 MiB 请求上限。
+
+### 11.3 用户流程
+
+1. 用户通过选择图片、选择文件夹或拖拽添加文件。
+2. 前端保留相对路径并建立导入队列；单文件超过 20 MiB 的文件进入「超大文件」列表，不自动上传。
+3. 超大文件行展示文件名和大小，并提供「压缩副本并加入」按钮。
+4. 用户点击后，浏览器在本地 Web Worker 中使用 `createImageBitmap` 和 `OffscreenCanvas` 生成压缩副本；原文件不被覆盖。
+5. 生成成功且副本不超过 20 MiB 时，以 `原文件名-compressed` 形式加入队列，并保留原目录路径。
+6. GIF、APNG、动态 WebP 等动画图片不自动压缩，提示「GIF 或动态图片请手动处理后再添加」。
+7. 用户点击「开始识别」后才发送分析请求；分析结果中的失败文件显示具体文件名，其他文件继续识别。
+8. 导入完成弹窗使用「完成」作为关闭按钮。
+
+### 11.4 限制与处理规则
+
+- 单文件原始导入上限：20 MiB，超过后不进入上传请求（前端 `MAX_IMPORT_FILE_BYTES`，后端 `batch_import.MAX_ORIGINAL_BYTES`）。
+- 单次分析请求前端队列总量上限：45 MiB（`MAX_IMPORT_TOTAL_BYTES`），用于避开反向代理 50 MiB 请求体限制；超限时提示用户分批操作。
+- 8 MiB 是发送给视觉识别模型的副本上限（`vision.MAX_IMAGE_BYTES` / `image_quality.MAX_IMAGE_BYTES`），不是用户原图上限，也不改变原图存储。
+- 后端使用 Pillow 生成识别预处理副本：校正 EXIF 方向、按像素上限缩放、按目标格式压缩至不超过 8 MiB；仅识别副本进入模型调用。
+- 原始导入文件仍按用户确认的内容保存，用于素材归档、哈希去重和后续展示。
+- 不支持的格式、空文件、识别失败或超过后端限制的文件均记录为单文件失败/跳过项，不使整批请求失败。
+- 后端分析阶段不创建产品或素材记录；用户确认分组后才提交归档。
+
+### 11.5 后端要求
+
+- 分析接口逐文件读取并校验大小，返回 `failed` / `skipped` 项时包含文件名、相对路径和原因。
+- 临时导入任务按用户隔离保存原始字节和清单；提交成功后清理临时目录，失败时保留以便重试。
+- 识别预处理在阻塞线程池中执行，不阻塞异步事件循环。
+- 视觉识别失败只影响当前文件；批量任务仍返回其他文件的分组结果。
+- HTTP 413 等请求级错误需向用户显示可操作提示，但不清空当前本地待导入队列。
+
+### 11.6 国际化文案
+
+中文和英文都必须提供以下文案：
+
+- 超大文件说明及具体文件名
+- 压缩副本并加入 / Compress copy and add
+- 动态图片需手动处理提示
+- 单次队列总量超限提示
+- 导入完成按钮「完成」 / 「Done」
+
+### 11.7 验收标准
+
+1. 20 MiB 文件可以进入导入流程，超过 20 MiB 的文件不会随分析请求发送。
+2. 超限列表显示具体文件名、文件大小和「压缩副本并加入」按钮。
+3. 静态 PNG/JPEG/WebP 可在浏览器本地生成压缩副本；透明 PNG 保留透明通道，原文件内容和文件名不被修改。
+4. 动画图片不会被静默扁平化，用户会收到手动处理提示。
+5. 压缩副本成功后仅副本进入队列，导入预览显示新的文件名和目录路径。
+6. 单次队列超过 45 MiB 时，前端阻止分析请求并提示分批；不依赖服务器返回 413 才发现问题。
+7. 后端对单文件超限、空文件、格式错误或识别失败逐项返回结果，同批次其他文件仍可完成。
+8. 视觉模型收到的预处理副本不超过 8 MiB，原始归档文件不因识别预处理而被改写。
+9. 导入完成弹窗按钮显示「完成」，不会再显示「取消」。
+
+### 11.8 验证记录
+
+- `npx vitest run src/pages/ProductLibrary/index.test.tsx`：5 passed
+- `npx tsc -b`：通过
+- `uv run pytest tests/unit/product_library/test_batch_import.py -q`：通过
+- `uv run pytest tests/unit/i18n -q`：85 passed
+- 生产 Vite 构建：通过，并生成独立压缩 Worker 产物
+- 浏览器冒烟验证：静态透明 PNG 成功从约 27.2 MiB 压缩至约 17.2 MiB；GIF、APNG、动态 WebP 均按规则拒绝自动压缩
+
+### 11.9 非目标
+
+- 不在服务器上覆盖或修改用户原始图片。
+- 不自动压缩动画图片，不承诺保留动画语义的通用转码。
+- 不修改 Nginx 线上配置；45 MiB 前端总量预检是当前产品侧的规避方案。
+- 不在用户未点击确认前自动上传压缩副本。

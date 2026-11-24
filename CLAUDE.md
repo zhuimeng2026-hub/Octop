@@ -77,7 +77,7 @@ Layering and hard bans are defined in `AGENTS.md` §5; the short version — dep
 
 **Dependency injection:** routers get `server: OctopServer = Depends(get_server)`; every repo is reached through `server.services` (`SharedServices` from `infra/db/services.py`). Never import a repo at module level outside `SharedServices` / `RepoBundle`.
 
-**Database:** SQLite (WAL) or PostgreSQL, one shared schema. Migrations are numbered pairs `src/octop/infra/db/migrations/00N_desc.sql` + `00N_desc.pg.sql`; the latest pair is **`028_product_library_asset_descriptions`**, and the version assertion in `tests/unit/db/test_db_pool.py` compares against `MAX_SCHEMA_VERSION`, which is derived from the migrations directory (no manual bump — add the migration pair and the assertion follows). Unreleased schema work folds into the current unreleased `00N` pair, not a new `00N+1`. Resource tables use an integer surrogate `id` PK plus a public string `{entity}_id` (ULID) that APIs and child FKs use.
+**Database:** SQLite (WAL) or PostgreSQL, one shared schema. Migrations are numbered pairs `src/octop/infra/db/migrations/00N_desc.sql` + `00N_desc.pg.sql`; the latest pair is **`029_product_library_base_images`**, and it is the **current unreleased** pair (on `develop`, no `v*` production tag contains it) — so further schema work folds into `029` rather than opening `030` until `029` ships. The version assertion in `tests/unit/db/test_db_pool.py` compares against `MAX_SCHEMA_VERSION`, which is derived from the migrations directory (no manual bump — add the migration pair and the assertion follows). Resource tables use an integer surrogate `id` PK plus a public string `{entity}_id` (ULID) that APIs and child FKs use.
 
 **Agent scope:** most agent routes nest under `/api/agents/{agent_id}/…`; a few legacy ones (MBTI) still use the `X-Octop-Agent-Id` header. Always load the agent row and check ownership via `_assert_agent_owner(row, user)` (admin bypass).
 
@@ -99,6 +99,8 @@ Layering and hard bans are defined in `AGENTS.md` §5; the short version — dep
 | `docs/deployment-boundary.md` | **Frontend/backend deployment boundary** — which env builds, artifact handoff, if-then decision table. Authoritative; read before any build/deploy. |
 | `docs/architecture.md` | Human-readable overview of the process model and runtime tree (AGENTS.md is the agent-facing twin) |
 | `docs/api.md`, `docs/cli.md`, `docs/adr/`, `docs/*.md` | Human API/CLI reference, ADRs, per-feature guides (LDAP, ACP, bridge, connectors, personas, teams) |
+| `docs/eval/README.md` | **Eval spec** — L0–L4 layers, task-set format, judging rules, CI wiring; the normative companion to `AGENTS.md` §12 |
+| `docs/backlog.md` | **Engineering backlog** — where a to-do that the agent can execute lives (P1 = unattended night-batch work); entry format, acceptance commands, stop conditions |
 | `plugins/` | Example plugin packages (`demo-toolkit`, `bilibili-anime`, `server-status`, …) — plugin authoring reference |
 | `desktop/` | Wails v3 desktop client shell + portable packaging (distinct from `infra/desktop/`, which is remote-screen streaming) |
 | `fnos/` | fnOS (飞牛) `.fpk` packaging and install scripts |

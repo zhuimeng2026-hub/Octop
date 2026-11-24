@@ -1,0 +1,152 @@
+# 首批样板任务集 —— 跨产品分类选材
+#
+# 格式与字段说明见 ../README.md §3。本文件是**样板**：新增任务照此结构写。
+# 需求来源：docs/product-video-multi-category-materials.md 第二部分（A7 验收标准，权威依据）
+
+domain: PVQ
+requirement_doc: docs/product-video-multi-category-materials.md
+
+tasks:
+  - id: PVQ-001
+    title: 追加分类后提交请求包含两个分类的素材 ID，且被取消勾选的素材保持取消
+    requirement: docs/product-video-multi-category-materials.md#a71-分类选择与素材勾选
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/ProductVideoWizard
+    type: automated
+    judge:
+      kind: test
+      command: npx vitest run src/pages/ProductVideoWizard/index.test.tsx -t "loads and submits scene assets from multiple product categories"
+      expect: exit_code == 0
+    evidence: []
+    regression: smoke
+    blocking: true
+    notes: 覆盖验收条目 2、3、4、10、11、12。
+
+  - id: PVQ-002
+    title: 切换主产品后，新主产品的画面重新默认选中
+    requirement: docs/product-video-multi-category-materials.md#a71-分类选择与素材勾选
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/ProductVideoWizard
+    type: automated
+    judge:
+      kind: test
+      command: npx vitest run src/pages/ProductVideoWizard/index.test.tsx -t "selects the new primary product's frames after switching the primary product"
+      expect: exit_code == 0
+    evidence: []
+    regression: smoke
+    blocking: true
+    notes: 覆盖验收条目 6。
+
+  - id: PVQ-003
+    title: 不继承他人路由带入的选择，已有项目优先
+    requirement: docs/product-video-multi-category-materials.md#a72-权限与数据隔离
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/ProductVideoWizard
+    type: automated
+    judge:
+      kind: test
+      command: npx vitest run src/pages/ProductVideoWizard/index.test.tsx -t "does not inherit another owner's route selection and gives an existing project precedence"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: true
+    notes: 覆盖验收条目 8、19、20。
+
+  - id: PVQ-004
+    title: 切换产品后忽略过期素材响应
+    requirement: docs/product-video-multi-category-materials.md#a75-性能与规模
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/ProductVideoWizard
+    type: automated
+    judge:
+      kind: test
+      command: npx vitest run src/pages/ProductVideoWizard/index.test.tsx -t "ignores a late asset response after switching products"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: true
+    notes: 覆盖验收条目 35。
+
+  - id: PVQ-005
+    title: 后端快照接受跨产品素材，但拒绝他人素材（整单失败）
+    requirement: docs/product-video-multi-category-materials.md#a72-权限与数据隔离
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: uv run pytest tests/unit/db/test_product_library_repo.py -q -k "multiple_products or owner_isolation"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: true
+    notes: >
+      覆盖验收条目 5、15、16、17、21。对应用例
+      test_snapshot_accepts_scene_assets_from_multiple_products /
+      test_owner_isolation_and_public_ids。
+
+  - id: PVQ-006
+    title: 主产品在多选器中不可移除，非主产品素材显示来源产品名
+    requirement: docs/product-video-multi-category-materials.md#a71-分类选择与素材勾选
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/ProductVideoWizard
+    type: manual
+    judge:
+      kind: steps
+      steps:
+        - 登录任意账号，进入 产品素材库 → 制作视频
+        - 确认「素材分类」多选框中主产品默认选中且无法取消（尝试取消应无反应或被拒绝）
+        - 追加第二个产品分类，确认其素材卡片上出现来源产品名称
+        - 对同一份素材库再走一遍，确认同名文件可凭来源产品名区分
+      evidence_required: [screenshot]
+    evidence: []
+    regression: nightly
+    blocking: false
+    notes: 覆盖验收条目 9、14。人工任务，每次结论需记录评测人、日期与 commit。
+
+  - id: PVQ-007
+    title: 数百条素材时，分类切换与提交仍可交互
+    requirement: docs/product-video-multi-category-materials.md#a75-性能与规模
+    layer: L4
+    severity: should
+    owner: dashboard/src/pages/ProductVideoWizard
+    type: perf
+    judge:
+      kind: threshold
+      command: 需先补一个可重复的本地素材集（≥300 条），暂缺执行脚本
+      metric: interaction_latency_ms
+      max: 500
+    evidence: []
+    regression: nightly
+    blocking: false
+    status: planned
+    notes: >
+      覆盖验收条目 33、34。**当前缺少可重复的样本与测量脚本**，任务处于「待补齐」状态：
+      需要一个种子数据集生成脚本 + 一次浏览器测量，否则该条无法判定。
+
+  - id: PVQ-008
+    title: 选中的素材在创建前被停用时，整单失败并点名被停用的文件
+    requirement: docs/product-video-multi-category-materials.md#a73-快照一致性与不可变性
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: uv run pytest tests/unit/db/test_product_library_repo.py tests/unit/api/test_product_library.py -q -k "deactivated"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    status: planned
+    notes: >
+      口径已于 2026-11-24 定下（整单失败并提示，实现契约见
+      docs/product-video-multi-category-materials.md A8.1），但**尚未实施**：
+      snapshot_project 目前仍静默跳过 active = 0 的素材。
+      实现完成后把 status 改为 active、blocking 改为 true，并补齐对应后端与前端回归用例。
