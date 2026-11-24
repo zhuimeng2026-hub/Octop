@@ -8,6 +8,13 @@
  */
 
 import { getAuthToken, request } from "./request";
+import type {
+  DesktopVideoTargetRequest,
+  DesktopVideoOutput,
+} from "../context/DesktopVideoJobsContext";
+
+export type LocalVideoTargetRequest = DesktopVideoTargetRequest;
+export type LocalVideoOutput = DesktopVideoOutput;
 
 export interface LocalAsset {
   id: string;
@@ -61,6 +68,24 @@ export interface PickedPath {
   mediaType: string;
 }
 
+export class LocalLibraryBridgeError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.name = "LocalLibraryBridgeError";
+    this.code = code;
+  }
+}
+
+function bridgeErrorCode(error: unknown): string {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && /^[A-Z_]+$/.test(code)) return code;
+  }
+  return "INTERNAL";
+}
+
 export function isLocalLibraryAvailable(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -73,10 +98,18 @@ async function call<T>(
   payload: Record<string, unknown> = {},
 ): Promise<T> {
   const bridge = window.octopDesktopLibrary;
-  if (!bridge) throw new Error("LOCAL_LIBRARY_UNAVAILABLE");
+  if (!bridge) throw new LocalLibraryBridgeError("LOCAL_LIBRARY_UNAVAILABLE");
   const token = getAuthToken();
-  if (!token) throw new Error("AUTH_REQUIRED");
-  return (await bridge.request(action, token, payload)) as T;
+  if (!token) throw new LocalLibraryBridgeError("AUTH_REQUIRED");
+  try {
+    return (await bridge.request(action, token, payload)) as T;
+  } catch (error) {
+    throw new LocalLibraryBridgeError(bridgeErrorCode(error));
+  }
+}
+
+export function supportsLocalRenderTargets(): boolean {
+  return window.octopDesktopLibrary?.renderTargetsVersion === 1;
 }
 
 export const localLibrary = {
@@ -179,6 +212,7 @@ export const localLibrary = {
     progress?: number | null;
     errorCode?: string;
     videoUrl?: string;
+    targets?: LocalVideoOutput[];
   }> {
     return call("jobStatus", { id });
   },
@@ -205,7 +239,11 @@ export const localLibrary = {
     script: unknown;
     assetMap: Record<string, string>;
     audioJson?: unknown;
+    targets?: LocalVideoTargetRequest[];
   }): Promise<{ jobId: string; state: string }> {
+    if (options.targets?.length && !supportsLocalRenderTargets()) {
+      throw new LocalLibraryBridgeError("BATCH_UNAVAILABLE");
+    }
     return call<{ jobId: string; state: string }>("renderLocal", {
       body: {
         projectId: options.projectId,
@@ -213,8 +251,21 @@ export const localLibrary = {
         script: options.script,
         assetMap: options.assetMap,
         audioJson: options.audioJson,
+        ...(options.targets?.length && supportsLocalRenderTargets()
+          ? { targets: options.targets }
+          : {}),
       },
     });
+  },
+
+  async saveLocal(id: string): Promise<boolean> {
+    const res = await call<{ saved: boolean }>("saveLocal", { id });
+    return Boolean(res?.saved);
+  },
+
+  async saveLocalBatch(id: string): Promise<boolean> {
+    const res = await call<{ saved: boolean }>("saveLocalBatch", { id });
+    return Boolean(res?.saved);
   },
 };
 

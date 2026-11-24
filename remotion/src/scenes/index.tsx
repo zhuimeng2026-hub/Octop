@@ -116,27 +116,22 @@ export const ImageScene: React.FC<{ scene: Scene; script: VideoScript }> = ({
   scene,
   script,
 }) => {
-  const theme = resolveTheme(script);
   return (
-    <SceneFrame scene={scene} script={script}>
-      <Content script={script}>
-        {scene.asset ? (
-          <Img
-            src={assetUrl(scene.asset)}
-            style={{
-              maxWidth: "82%",
-              maxHeight: "70%",
-              objectFit: "contain",
-              borderRadius: 16,
-            }}
-          />
-        ) : null}
-        {scene.caption ? (
-          <div style={{ fontSize: 38, color: theme.secondary, marginTop: 28 }}>
-            {scene.caption}
-          </div>
-        ) : null}
-      </Content>
+    <SceneFrame scene={scene} script={script} transitionMotion={false}>
+      {scene.asset ? (
+        <Img
+          src={assetUrl(scene.asset)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center",
+          }}
+        />
+      ) : null}
+      {scene.caption ? <MediaCaption text={scene.caption} /> : null}
     </SceneFrame>
   );
 };
@@ -145,31 +140,56 @@ export const VideoClipScene: React.FC<{ scene: Scene; script: VideoScript }> = (
   scene,
   script,
 }) => {
-  const theme = resolveTheme(script);
   return (
-    <SceneFrame scene={scene} script={script}>
-      <Content script={script}>
-        {scene.asset ? (
-          <RemotionVideo
-            src={assetUrl(scene.asset)}
-            style={{
-              maxWidth: "88%",
-              maxHeight: "76%",
-              objectFit: "contain",
-              borderRadius: 16,
-              backgroundColor: "#000000",
-            }}
-          />
-        ) : null}
-        {scene.caption ? (
-          <div style={{ fontSize: 38, color: theme.secondary, marginTop: 28 }}>
-            {scene.caption}
-          </div>
-        ) : null}
-      </Content>
+    <SceneFrame scene={scene} script={script} transitionMotion={false}>
+      {scene.asset ? (
+        <RemotionVideo
+          src={assetUrl(scene.asset)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: "center",
+            backgroundColor: "#000000",
+          }}
+        />
+      ) : null}
+      {scene.caption ? <MediaCaption text={scene.caption} /> : null}
     </SceneFrame>
   );
 };
+
+const MediaCaption: React.FC<{ text: string }> = ({ text }) => (
+  <div
+    style={{
+      position: "absolute",
+      left: "8%",
+      right: "8%",
+      bottom: "8%",
+      display: "flex",
+      justifyContent: "center",
+      pointerEvents: "none",
+    }}
+  >
+    <div
+      style={{
+        maxWidth: "100%",
+        padding: "16px 24px",
+        borderRadius: 12,
+        backgroundColor: "rgba(0, 0, 0, 0.68)",
+        color: "#FFFFFF",
+        fontSize: 38,
+        lineHeight: 1.35,
+        textAlign: "center",
+        textShadow: "0 2px 4px rgba(0, 0, 0, 0.8)",
+      }}
+    >
+      {text}
+    </div>
+  </div>
+);
 
 export const EndCardScene: React.FC<{ scene: Scene; script: VideoScript }> = ({
   scene,

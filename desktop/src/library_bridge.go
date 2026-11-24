@@ -77,7 +77,9 @@ func (l *libraryEventListener) DispatchWailsEvent(e *application.CustomEvent) {
 func libraryErrorCode(err error) string {
 	code := err.Error()
 	switch code {
-	case "AUTH_REQUIRED", "LIBRARY_NOT_FOUND", "LIBRARY_INVALID", "LIBRARY_IO", "INTERNAL", "CANCELLED", "RUNTIME_MISSING":
+	case "AUTH_REQUIRED", "LIBRARY_NOT_FOUND", "LIBRARY_INVALID", "LIBRARY_IO", "INTERNAL", "CANCELLED", "RUNTIME_MISSING", "SAVE_FAILED", "BUSY":
+		return code
+	case "INVALID_TARGETS", "BATCH_UNAVAILABLE":
 		return code
 	}
 	log.Printf("desktop library error: %v", err)
@@ -198,27 +200,37 @@ func (a *App) libraryAction(action, token string, payload map[string]json.RawMes
 	case "renderLocal":
 		return a.libraryRenderLocal(store, payload)
 
+	case "saveLocal":
+		return a.saveLocalJob(store, payload, false)
+
+	case "saveLocalBatch":
+		return a.saveLocalJob(store, payload, true)
+
 	case "jobStatus":
 		id := stringPayload(payload, "id")
 		if id == "" || a.video == nil {
 			return nil, errLibraryInvalid
 		}
+		owner := storeJobOwner(store.root)
+		a.video.load(owner)
+		a.video.ensureStream()
 		a.video.mu.Lock()
 		rec := a.video.jobs[id]
 		var snap any
-		if rec != nil {
+		if rec != nil && rec.Job.OwnerID == owner {
 			// snapshot() fills VideoURL from the local stream when rendering
 			// completed, so the local library can preview/download the result
 			// without any server round-trip.
 			job := a.video.snapshot(rec)
+			job.Targets = append([]VideoOutput(nil), job.Targets...)
 			snap = map[string]any{
 				"id": job.ID, "state": job.State,
 				"progress": job.Progress, "errorCode": job.ErrorCode,
-				"videoUrl": job.VideoURL,
+				"videoUrl": job.VideoURL, "targets": job.Targets,
 			}
 		}
 		a.video.mu.Unlock()
-		if rec == nil {
+		if rec == nil || rec.Job.OwnerID != owner {
 			return nil, errLibraryNotFound
 		}
 		return snap, nil
@@ -226,6 +238,75 @@ func (a *App) libraryAction(action, token string, payload map[string]json.RawMes
 	default:
 		return nil, errLibraryInvalid
 	}
+}
+
+func (a *App) saveLocalJob(store *localLibraryStore, payload map[string]json.RawMessage, batch bool) (any, error) {
+	if a.video == nil || a.app == nil {
+		return nil, errors.New("SAVE_FAILED")
+	}
+	id := stringPayload(payload, "id")
+	if id == "" {
+		return nil, errLibraryInvalid
+	}
+	owner := storeJobOwner(store.root)
+	a.video.load(owner)
+	a.video.mu.Lock()
+	r := a.video.jobs[id]
+	if r == nil || r.Job.OwnerID != owner {
+		a.video.mu.Unlock()
+		return nil, errLibraryNotFound
+	}
+	if r.Job.State != "completed" {
+		a.video.mu.Unlock()
+		return nil, errLibraryNotFound
+	}
+	job := a.video.snapshot(r)
+	copyRec := *r
+	copyRec.Job = job
+	if r.Targets != nil {
+		copyRec.Targets = append([]VideoTargetRequest(nil), r.Targets...)
+	}
+	if r.TargetOutputs != nil {
+		copyRec.TargetOutputs = map[string]string{}
+		for k, v := range r.TargetOutputs {
+			copyRec.TargetOutputs[k] = v
+		}
+	}
+	a.video.mu.Unlock()
+	if (batch && len(job.Targets) == 0) || (!batch && len(job.Targets) != 0) {
+		return nil, errLibraryNotFound
+	}
+	filename := safeVideoName(job.Name)
+	filter := "MP4 video"
+	ext := ".mp4"
+	filterExt := "*.mp4"
+	if batch {
+		filename += "-outputs"
+		filter, ext, filterExt = "ZIP archive", ".zip", "*.zip"
+	}
+	dest, err := a.app.Dialog.SaveFile().SetFilename(filename+ext).AddFilter(filter, filterExt).AttachToWindow(a.window).PromptForSingleSelection()
+	if err != nil {
+		return nil, errors.New("SAVE_FAILED")
+	}
+	if dest == "" {
+		return map[string]bool{"saved": false}, nil
+	}
+	if batch {
+		temp, err := os.CreateTemp(filepath.Dir(copyRec.Output), "batch-*.zip")
+		if err != nil {
+			return nil, errors.New("SAVE_FAILED")
+		}
+		tempPath := temp.Name()
+		_ = temp.Close()
+		_ = os.Remove(tempPath)
+		defer os.Remove(tempPath)
+		if err = zipVideoBatch(&copyRec, tempPath); err != nil || copyVideo(tempPath, dest) != nil {
+			return nil, errors.New("SAVE_FAILED")
+		}
+	} else if err := copyVideo(copyRec.Output, dest); err != nil {
+		return nil, errors.New("SAVE_FAILED")
+	}
+	return map[string]bool{"saved": true}, nil
 }
 
 // libraryIngest reads the chosen local paths, optionally spends one vision
@@ -469,7 +550,7 @@ func libraryBridgeJS(base, nonce string) string {
 		path = "/"
 	}
 	prefixCheck := strings.TrimRight(path, "/") + "/"
-	return `(function(){try{if(window.location.origin!==` + jsonString(origin) + `||!(window.location.pathname===` + jsonString(path) + `||window.location.pathname.indexOf(` + jsonString(prefixCheck) + `)===0))return;if(!window._wails||typeof window._wails.invoke!=="function")return;if(window.__octopDesktopLibraryInstalled)return;window.__octopDesktopLibraryInstalled=true;var nonce=` + jsonString(nonce) + `,seq=0,pending=new Map();window.addEventListener("octop:desktop-library-response",function(e){var d=e.detail||{},p=pending.get(d.id);if(!p)return;pending.delete(d.id);d.error?p.reject(Object.assign(new Error(d.error),{code:d.error})):p.resolve(d.result)});window.octopDesktopLibrary={version:1,request:function(action,token,payload){return new Promise(function(resolve,reject){if(!token){reject(new Error("AUTH_REQUIRED"));return}var id=String(++seq)+"-"+Math.random().toString(36).slice(2);pending.set(id,{resolve:resolve,reject:reject});var body=JSON.stringify({id:id,action:action,token:token,payload:payload||{}});window._wails.invoke("wails:event:emit:desktop:library:"+nonce+":"+encodeURIComponent(body))})}}}catch(e){}})();`
+	return `(function(){try{if(window.location.origin!==` + jsonString(origin) + `||!(window.location.pathname===` + jsonString(path) + `||window.location.pathname.indexOf(` + jsonString(prefixCheck) + `)===0))return;if(!window._wails||typeof window._wails.invoke!=="function")return;if(window.__octopDesktopLibraryInstalled)return;window.__octopDesktopLibraryInstalled=true;var nonce=` + jsonString(nonce) + `,seq=0,pending=new Map();window.addEventListener("octop:desktop-library-response",function(e){var d=e.detail||{},p=pending.get(d.id);if(!p)return;pending.delete(d.id);d.error?p.reject(Object.assign(new Error(d.error),{code:d.error})):p.resolve(d.result)});window.octopDesktopLibrary={version:1,renderTargetsVersion:1,request:function(action,token,payload){return new Promise(function(resolve,reject){if(!token){reject(new Error("AUTH_REQUIRED"));return}var id=String(++seq)+"-"+Math.random().toString(36).slice(2);pending.set(id,{resolve:resolve,reject:reject});var body=JSON.stringify({id:id,action:action,token:token,payload:payload||{}});window._wails.invoke("wails:event:emit:desktop:library:"+nonce+":"+encodeURIComponent(body))})}}}catch(e){}})();`
 }
 
 func libraryResponseJS(b []byte) string {

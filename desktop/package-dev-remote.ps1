@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     PC 端开发模式（Windows）：外壳直连远程后台，不启动本地 Python 运行时。
 

@@ -31,13 +31,13 @@ Navigation guide for AI coding agents working in this repository.
 
 - Turn tasks into verifiable goals (what to test, which command proves success).
 - For multi-step work, sketch a short plan: `step → verify: …`
-- Before saying "done", provide verification evidence; the default ship bar is **`make all` green** (see [§6 Run commands](#6-run-commands), [§10 Change workflow](#10-change-workflow)).
+- Before saying "done", report the focused local checks and their results. CI owns the full release gate (see [§6 Run commands](#6-run-commands), [§10 Change workflow](#10-change-workflow)).
 
 ### Local verification is a smoke test, not the full suite
 
-> **Do not run the full test suite locally.** The full suite (backend `uv run pytest`, frontend
-> `npm test`, desktop `go test ./...`) is the **CI gate's** job — it runs on the remote
-> pipeline and covers the platforms this machine does not.
+> **Run only the smallest local smoke check that verifies the change.** This is the project
+> default for every task. CI runs the full suite (`make all`, backend `uv run pytest`,
+> frontend `npm test`, desktop `go test ./...`). Commit hooks follow §6.
 
 | Change | Local verification (allowed) | Not allowed locally |
 |---|---|---|
@@ -453,8 +453,8 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 
 1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)). If the behavior belongs to a runtime library, change that repo (see [Runtime libraries](#runtime-libraries)).
 2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green (`make all` + dashboard build).
-3. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
-4. **Verify** — backend/ship bar: `make all` (`format-all` + `lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc -b` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).
+3. **Minimal implementation** — change only task-related files. Dashboard source is in `dashboard/`. Produce the static artifact in `src/octop/dashboard/` from a frontend environment when packaging or deployment is part of the task.
+4. **Verify** — follow [§1 local verification](#local-verification-is-a-smoke-test-not-the-full-suite). For `dashboard/` changes, run `cd dashboard && npx tsc -b` and a targeted regression when applicable. After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. CI runs the full release gate, including cross-platform coverage described in [§7](#7-key-patterns).
 5. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
 
 ### Branching & release

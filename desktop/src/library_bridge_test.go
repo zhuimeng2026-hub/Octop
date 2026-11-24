@@ -79,3 +79,21 @@ func TestLibraryErrorPreservesMissingRuntime(t *testing.T) {
 		t.Fatalf("runtime error changed to %q", got)
 	}
 }
+
+func TestLibraryRenderLocalRejectsInvalidTargets(t *testing.T) {
+	video := &videoManager{environment: VideoEnvironmentStatus{State: "ready"}, loaded: map[string]bool{}, jobs: map[string]*videoJobRecord{}}
+	app := &App{video: video}
+	store := &localLibraryStore{root: t.TempDir()}
+	body, err := json.Marshal(map[string]any{
+		"projectId": "project",
+		"script":    map[string]any{"scenes": []map[string]any{{}}},
+		"targets":   []map[string]any{{"id": "bad", "width": 1, "height": 720, "fps": 30, "filename": "bad.mp4"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = app.libraryRenderLocal(store, map[string]json.RawMessage{"body": body})
+	if err == nil || err.Error() != "INVALID_TARGETS" {
+		t.Fatalf("invalid targets were not rejected: %v", err)
+	}
+}

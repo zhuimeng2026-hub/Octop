@@ -16,11 +16,12 @@ import (
 // material bytes come from the client machine.
 
 type localRenderRequest struct {
-	ProjectID   string            `json:"projectId"`
-	Title       string            `json:"title"`
-	Script      json.RawMessage   `json:"script"`
-	AssetMap    map[string]string `json:"assetMap"` // export name -> local asset id
-	AudioJSON   json.RawMessage   `json:"audioJson"`
+	ProjectID string               `json:"projectId"`
+	Title     string               `json:"title"`
+	Script    json.RawMessage      `json:"script"`
+	AssetMap  map[string]string    `json:"assetMap"` // export name -> local asset id
+	AudioJSON json.RawMessage      `json:"audioJson"`
+	Targets   []VideoTargetRequest `json:"targets,omitempty"`
 }
 
 func (a *App) libraryRenderLocal(store *localLibraryStore, payload map[string]json.RawMessage) (any, error) {
@@ -44,8 +45,21 @@ func (a *App) libraryRenderLocal(store *localLibraryStore, payload map[string]js
 	// The caller's token is re-read from the request payload is not available here,
 	// so we scope jobs under a stable key derived from the store root.
 	owner := storeJobOwner(store.root)
+	a.video.load(owner)
 
 	if a.video.environmentSnapshot().State != "ready" {
+		return nil, errors.New("RUNTIME_MISSING")
+	}
+	if req.Targets != nil {
+		if !validVideoTargets(req.Targets) {
+			return nil, errors.New("INVALID_TARGETS")
+		}
+		if !a.video.environmentSnapshot().OutputBatchSupported {
+			return nil, errors.New("BATCH_UNAVAILABLE")
+		}
+	}
+	runtimeDir, err := videoRuntimeDir()
+	if err != nil {
 		return nil, errors.New("RUNTIME_MISSING")
 	}
 
@@ -53,13 +67,29 @@ func (a *App) libraryRenderLocal(store *localLibraryStore, payload map[string]js
 	if err != nil {
 		return nil, errors.New("INTERNAL")
 	}
+	a.video.mu.Lock()
+	if a.video.active != "" || (a.video.environmentRunning && a.video.environmentMode == "verify") {
+		a.video.mu.Unlock()
+		return nil, errors.New("BUSY")
+	}
+	a.video.active = id
+	a.video.mu.Unlock()
+	releaseReservation := func() {
+		a.video.mu.Lock()
+		if a.video.active == id {
+			a.video.active = ""
+		}
+		a.video.mu.Unlock()
+	}
 	jobDir := filepath.Join(a.video.dir(owner), id)
 	if err := os.MkdirAll(jobDir, 0700); err != nil {
+		releaseReservation()
 		return nil, errLibraryIO
 	}
 	dataDir := filepath.Join(jobDir, "data")
 	assetsDir := filepath.Join(dataDir, "assets")
 	if err := os.MkdirAll(assetsDir, 0700); err != nil {
+		releaseReservation()
 		return nil, errLibraryIO
 	}
 
@@ -76,11 +106,13 @@ func (a *App) libraryRenderLocal(store *localLibraryStore, payload map[string]js
 		needed[scene.Asset] = localID
 	}
 	if err := store.CopyInto(assetsDir, needed); err != nil {
+		releaseReservation()
 		return nil, err
 	}
 
 	// script.json — byte-for-byte what the client asked us to render.
 	if err := os.WriteFile(filepath.Join(dataDir, "script.json"), req.Script, 0600); err != nil {
+		releaseReservation()
 		return nil, errLibraryIO
 	}
 	if len(req.AudioJSON) > 0 {
@@ -89,19 +121,26 @@ func (a *App) libraryRenderLocal(store *localLibraryStore, payload map[string]js
 
 	// manifest.json — mirror package_export.py's shape so project.mjs validates.
 	scriptSum := sha256.Sum256(req.Script)
+	scriptHash := hex.EncodeToString(scriptSum[:])
 	manifest := videoManifest{
 		Schema: "octop-remotion-package/1", TemplateVersion: "1",
 		ProjectID: req.ProjectID, ProjectName: req.Title,
-		ScriptSHA: hex.EncodeToString(scriptSum[:]),
-		Assets:    []struct{ Path string `json:"path"`; SHA string `json:"sha256"`; Bytes int64 `json:"bytes"` }{},
+		ScriptSHA: scriptHash,
+		Assets: []struct {
+			Path  string `json:"path"`
+			SHA   string `json:"sha256"`
+			Bytes int64  `json:"bytes"`
+		}{},
 	}
 	for exportName, localID := range needed {
 		path, asset, aerr := store.AssetPath(localID)
 		if aerr != nil {
+			releaseReservation()
 			return nil, aerr
 		}
 		info, serr := os.Stat(path)
 		if serr != nil {
+			releaseReservation()
 			return nil, errLibraryIO
 		}
 		manifest.Assets = append(manifest.Assets, struct {
@@ -112,9 +151,11 @@ func (a *App) libraryRenderLocal(store *localLibraryStore, payload map[string]js
 	}
 	mb, err := json.Marshal(manifest)
 	if err != nil {
+		releaseReservation()
 		return nil, errLibraryIO
 	}
 	if err := os.WriteFile(filepath.Join(dataDir, "manifest.json"), mb, 0600); err != nil {
+		releaseReservation()
 		return nil, errLibraryIO
 	}
 
@@ -123,19 +164,20 @@ func (a *App) libraryRenderLocal(store *localLibraryStore, payload map[string]js
 			ID: id, ProjectID: req.ProjectID, OwnerID: owner,
 			Name: req.Title, State: "preparing", UpdatedAt: time.Now().Unix(),
 		},
-		DataDir: dataDir,
+		DataDir: dataDir, ScriptHash: scriptHash,
+		Targets: append([]VideoTargetRequest(nil), req.Targets...),
+	}
+	for _, target := range req.Targets {
+		rec.Job.Targets = append(rec.Job.Targets, VideoOutput{ID: target.ID, Platform: target.Platform, Filename: target.Filename, Width: target.Width, Height: target.Height, FPS: target.FPS, Status: "queued"})
 	}
 	a.video.mu.Lock()
 	a.video.jobs[id] = rec
+	a.video.persistLocked(rec)
 	a.video.mu.Unlock()
 	a.video.update(rec, "rendering", "", nil)
 
-	runtimeDir, err := videoRuntimeDir()
-	if err != nil {
-		a.video.fail(rec, "RUNTIME_MISSING")
-		return nil, errors.New("RUNTIME_MISSING")
-	}
 	go func() {
+		defer a.video.finish(rec)
 		_ = synthesizeLocalNarration(dataDir)
 		if e := startVideoWorker(a.video, rec, runtimeDir); e != nil {
 			if rec.Job.State != "cancelled" && rec.Job.State != "interrupted" {

@@ -44,6 +44,7 @@ declare global {
      */
     octopDesktopLibrary?: {
       version: number;
+      renderTargetsVersion?: number;
       request(
         action: string,
         token: string,

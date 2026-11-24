@@ -311,6 +311,7 @@ func (m *videoManager) persistLocked(rec *videoJobRecord) {
 }
 func (m *videoManager) snapshot(rec *videoJobRecord) VideoJob {
 	j := rec.Job
+	j.Targets = append([]VideoOutput(nil), rec.Job.Targets...)
 	if j.State == "completed" && rec.Capability != "" && m.listener != nil {
 		j.VideoURL = fmt.Sprintf("http://%s/video/%s/%s", m.listener.Addr().String(), j.ID, rec.Capability)
 	} else {
@@ -933,9 +934,14 @@ func startVideoWorker(m *videoManager, rec *videoJobRecord, runtimeDir string) e
 	}
 	if len(rec.Targets) > 0 {
 		if !batchDone || len(completedTargets) == 0 { return videoErr("RENDER_FAILED") }
-		rec.Output = filepath.Join(outDir, "manifest.json")
-		rec.TargetOutputs, rec.TargetCapabilities = map[string]string{}, map[string]string{}
-		for id, path := range completedTargets { cap, _ := randomToken(); rec.TargetOutputs[id], rec.TargetCapabilities[id] = path, cap }
+		outputPath := filepath.Join(outDir, "manifest.json")
+		targetOutputs, targetCapabilities := map[string]string{}, map[string]string{}
+		for id, path := range completedTargets { cap, _ := randomToken(); targetOutputs[id], targetCapabilities[id] = path, cap }
+		m.mu.Lock()
+		rec.Output = outputPath
+		rec.TargetOutputs = targetOutputs
+		rec.TargetCapabilities = targetCapabilities
+		m.mu.Unlock()
 		m.ensureStream()
 		if err := writeVideoBatchManifest(outDir, rec); err != nil { return videoErr("SAVE_FAILED") }
 		m.update(rec, "completed", "", nil)

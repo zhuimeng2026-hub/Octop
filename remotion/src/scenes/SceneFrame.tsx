@@ -11,8 +11,9 @@ import { resolveTheme, type Scene, type VideoScript } from "../types";
 export const SceneFrame: React.FC<{
   scene: Scene;
   script: VideoScript;
+  transitionMotion?: boolean;
   children: React.ReactNode;
-}> = ({ scene, script, children }) => {
+}> = ({ scene, script, transitionMotion = true, children }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
   const theme = resolveTheme(script);
@@ -32,9 +33,12 @@ export const SceneFrame: React.FC<{
           0,
         ], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
-  const shift = transitionFrames === 0 ? 0 : interpolate(frame, [0, transitionFrames], [18, 0], {
-    extrapolateRight: "clamp",
-  });
+  const shift =
+    !transitionMotion || transitionFrames === 0
+      ? 0
+      : interpolate(frame, [0, transitionFrames], [18, 0], {
+          extrapolateRight: "clamp",
+        });
 
   return (
     <div
