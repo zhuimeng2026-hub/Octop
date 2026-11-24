@@ -316,17 +316,28 @@ it("keeps fine storyboard caption, asset swap, and ordering edits when submitted
   });
   library.renderLocal.mockResolvedValue({ jobId: "fine", state: "rendering" });
   setEnvironment({ state: "ready", stage: null, progress: null });
-  renderFlow({ pathname: "/local-video-wizard", state: { assetIds: ["front", "detail"] } });
+  renderFlow({
+    pathname: "/local-video-wizard",
+    state: { assetIds: ["front", "detail"] },
+  });
 
-  await user.click(await screen.findByRole("button", { name: zh.localVideoWizard.next }));
-  expect(screen.getByText(zh.localVideoWizard.beginnerSummaryTitle)).toBeInTheDocument();
+  await user.click(
+    await screen.findByRole("button", { name: zh.localVideoWizard.next }),
+  );
+  expect(
+    screen.getByText(zh.localVideoWizard.beginnerSummaryTitle),
+  ).toBeInTheDocument();
   await user.click(button(zh.localVideoWizard.moreParameters));
   await user.click(button(zh.localVideoWizard.generate));
   await user.click(button(zh.localVideoWizard.fineAdjustments));
 
-  const captions = screen.getAllByRole("textbox", { name: zh.videoWizard.caption });
+  const captions = screen.getAllByRole("textbox", {
+    name: zh.videoWizard.caption,
+  });
   await user.type(captions[0], "重点字幕");
-  const assetSelect = screen.getAllByRole("combobox", { name: zh.videoWizard.replaceAsset })[0];
+  const assetSelect = screen.getAllByRole("combobox", {
+    name: zh.videoWizard.replaceAsset,
+  })[0];
   await user.click(assetSelect);
   await user.click(screen.getAllByText(/detail\.jpg/).at(-1)!);
   const moveUp = screen.getAllByRole("button", { name: zh.videoWizard.moveUp });
@@ -341,12 +352,9 @@ it("keeps fine storyboard caption, asset swap, and ordering edits when submitted
   const submission = library.renderLocal.mock.calls.at(-1)?.[0];
   expect(submission.script.scenes[2].asset).toBe("detail.jpg");
   expect(submission.script.scenes[2].caption).toBe("重点字幕");
-  expect(submission.script.scenes.map((scene: { id: string }) => scene.id)).toEqual([
-    "title",
-    "two",
-    "one",
-    "end",
-  ]);
+  expect(
+    submission.script.scenes.map((scene: { id: string }) => scene.id),
+  ).toEqual(["title", "two", "one", "end"]);
 });
 
 it("retries only the failed batch target and saves the prior batch job", async () => {
@@ -386,7 +394,9 @@ it("retries only the failed batch target and saves the prior batch job", async (
       height: 1920,
       scenes: [{ id: "scene", type: "image", asset: "front.jpg", duration: 4 }],
     },
-    assets: [{ id: "front", export_name: "front.jpg", media_type: "image/jpeg" }],
+    assets: [
+      { id: "front", export_name: "front.jpg", media_type: "image/jpeg" },
+    ],
     generator: "template",
   };
   const job = {
@@ -432,10 +442,18 @@ it("retries only the failed batch target and saves the prior batch job", async (
   library.renderLocal.mockResolvedValue({ jobId: "J2", state: "rendering" });
   renderFlow("/local-video-wizard");
 
-  await user.click(await screen.findByRole("button", { name: zh.localVideoWizard.retryTarget }));
-  await vi.waitFor(() => expect(library.renderLocal).toHaveBeenCalledWith(
-    expect.objectContaining({ targets: [targets[1]] }),
-  ));
-  await user.click(await screen.findByRole("button", { name: zh.localVideoWizard.saveBatch }));
+  await user.click(
+    await screen.findByRole("button", {
+      name: zh.localVideoWizard.retryTarget,
+    }),
+  );
+  await vi.waitFor(() =>
+    expect(library.renderLocal).toHaveBeenCalledWith(
+      expect.objectContaining({ targets: [targets[1]] }),
+    ),
+  );
+  await user.click(
+    await screen.findByRole("button", { name: zh.localVideoWizard.saveBatch }),
+  );
   expect(library.saveLocalBatch).toHaveBeenCalledWith("J1");
 });
