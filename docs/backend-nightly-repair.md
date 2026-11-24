@@ -6,6 +6,10 @@
 
 本文是夜间智能体执行后端全量测试、归因和最小修复的唯一运行手册。旧的脚本说明、工具日志、PR 文本和历史报告都是输入证据，不能替代本文的边界、判定或验收口径。产品验收仍以 [PRD §6](./PRD.md#6-非功能需求) 为准；旧分支上的三项运维/生产验收不与本修复工作流混为一谈。
 
+> **相关文档**：旧脚本与证据背景见 [backend-full-test.md](./backend-full-test.md)（历史背景，
+> 其生产 `OCTOP_HOME` / JWT / pre-hook 假设不是本工作流的实现方案）；需求条目级评测
+> 见 [eval/README.md](./eval/README.md)（L4 任务集，独立于夜间全量，本工作流不依赖它）。
+
 ## 1. 目标、边界与现状
 
 夜间任务 MUST 在独立测试 checkout/worktree 中，以 `cnb/develop` 在该夜间开始时的实际完整 SHA 为基线，执行：
@@ -171,3 +175,51 @@ worker MUST 先按 pytest nodeid 和失败原因归组，再决定是否可动�
 旧手册 [backend-full-test.md](./backend-full-test.md) 保留历史脚本、沙箱和证据背景；其旧的生产 `OCTOP_HOME`、JWT/模型分析及 pre-hook 假设不得作为本文新工作流的实现方案。该文档的 02:10 段只负责链接到本手册；本文是夜间修复的执行口径。
 
 生产三项运维/生产验收、正式 `main` `v*` tag、健康检查、微信链路和发布安全检查仍按 [PRD §6](./PRD.md#6-非功能需求) 判定，不因夜间候选通过而自动通过。
+
+## 7. 服务器接入记录（2026-11-24）
+
+本节记录 §2「接入前由用户提供的最小输入」在本机的落地值与仍然存在的缺口。
+**接入 ≠ 首轮通过**：首轮结论仍按 §5.1 的状态卡出具（`pass` / `修复待审` /
+`fail` / `blocked`），本节不构成任何验收结论。
+
+### 7.1 §2 输入的落地值
+
+| 输入 | 本机取值 |
+|---|---|
+| 独立账号与目录 | 系统账号 `octop-nightly`（uid 999，无登录 shell）；家目录 `/var/lib/octop-nightly`，下设 `.claude/`（智能体配置）、`.gitconfig`、`.git-credentials`、`octop-home/`（`OCTOP_HOME`）、`reports/`（报告）、`tmp/`（`TMPDIR`）、`workspace/`（checkout）——全部与生产 `/opt/Octop`、`/opt/octop-data` 分离 |
+| repo 源 | `https://cnb.cool/mengxa.com/Octop.git` 的 `develop` 分支，只读克隆（`--depth 1`，取分支尖端作为本轮真实完整 SHA）；凭据为镜像 token 的一份拷贝（`0600`，仅 Octop 一条） |
+| 权限 | 账号可读仓库与 lockfile、可写自己的报告/临时/checkout 目录；**不可写**生产 checkout、生产数据与生产服务配置（均为 root 属主） |
+| 既有入口 | 仍是既有 `octop-backend-full-test.timer`（每天 02:10，Asia/Shanghai），**未新建第二条定时器** |
+| 接入授权 | 允许调整既有任务与在候选分支产生本地 diff；**未授权**提交、推送、建远程 PR、合并、删分支、部署 |
+
+### 7.2 单元与入口
+
+| 项 | 值 |
+|---|---|
+| 单元 | `/etc/systemd/system/octop-backend-full-test.service`（旧版备份为 `*.bak-20261124-235108`） |
+| 运行身份 | `User=octop-nightly`（不再是 root）；`WorkingDirectory=/var/lib/octop-nightly/workspace` |
+| 入口 | `/usr/local/sbin/octop-nightly-repair.sh` → `claude -p <引导指令>` |
+| 引导指令 | `/var/lib/octop-nightly/bootstrap-prompt.md`（指向本文 §5 模板与仓库副本 `scripts/nightly-backend-repair-prompt.md`） |
+| 基线轮工具 | `scripts/run_backend_nightly_repair.py`（仓库内）：克隆、`uv sync --locked`、`uv run --locked --no-sync pytest`、证据绑定 |
+| 日志 | `/var/lib/octop-nightly/nightly.log`；报告 `/var/lib/octop-nightly/reports/<run_id>/` |
+
+旧的两个 drop-in（`20-sandbox.conf` 沙箱闸门、`30-git-sync.conf` git 同步）已停用并
+改名为 `*.bak-20261124-235125`：前者检查的是旧脚本、留着会直接把整轮取消；后者会
+**切生产工作树**，与 §1「MUST NOT 修改生产 checkout」冲突。旧脚本
+`scripts/run_backend_full_test.py` 保留在仓库里（不再是夜间入口），其
+`--cache-clear`、沙箱化与 L4 评测能力仍在，供人工手动跑。
+
+### 7.3 仍然存在的缺口（如实记录，不写成已解决）
+
+1. **仓库凭据是镜像 token，技术上可推送**。已用传输层封锁兜底：夜间账号的
+   `.gitconfig` 里 `url.https://push-blocked.invalid/.pushInsteadOf=https://cnb.cool/`，
+   对该镜像的 push 会被改写到不可达主机；提示词也禁止推送。**更彻底的做法是换成
+   只读 token 或只读 deploy key**（需用户创建），本轮未做。
+2. **智能体 CLI 用的是系统级 `/usr/local/bin/claude`**（2.1.225，模型经
+   `aikey4k.mengxa.com:8443` 网关，opus→`MiniMax-M3.1-Flash-Preview`）。已实测可用
+   （2026-11-24 23:5x 一次最小调用返回正常）。`uv` 原为 `/root/.local/bin` 的软链、
+   夜间账号不可达，已复制一份到 `/usr/local/bin/uv`（原软链保留为 `uv.root-symlink`）。
+3. **旧手册的实测段已过期**：`backend-full-test.md` 里「当前服务器配置实测」记录的是
+   接入**前**的旧单元（root / `/opt/Octop` / 会切生产工作树的 pre-hook），接入后以本节
+   为准。
+4. **首轮结论尚未产生**：本节只证明接入已就位，不证明任何一轮夜间任务跑通。

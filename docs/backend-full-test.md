@@ -1,5 +1,11 @@
 # 后端全量测试（定时）
 
+> **本文件是旧脚本的历史背景与证据口径。** 夜间任务的执行口径以
+> [backend-nightly-repair.md](./backend-nightly-repair.md)（唯一运行手册）为准：
+> 隔离 checkout、`cnb/develop` 真实 SHA 基线、`uv run --locked --no-sync`、
+> 失败归因与最小修复、候选快照与结果卡交接。本文件里的旧生产 `OCTOP_HOME`、
+> JWT/模型分析与 pre-hook 假设**不得**当作新工作流的实现方案。
+
 > 每天凌晨定时对**当前后端**跑一次完整 pytest，再用**子代理模型**
 > （默认 `qiniu/conatus-free`，连续 429 会自动切到备用模型）分析测试结果，
 > 产出可读的失败归因报告。
@@ -17,7 +23,11 @@
 | systemd 服务 | `/etc/systemd/system/octop-backend-full-test.service` | 一次性任务，输出追加到 `/opt/octop-test-reports/backend-full-test.log`；drop-in `20-sandbox.conf`（沙箱闸门）+ `30-git-sync.conf`（git 同步） |
 | systemd 定时器 | `/etc/systemd/system/octop-backend-full-test.timer` | 决定什么时候拉起（每天 02:00） |
 
-## 当前服务器配置实测（2026-11-24，只读）
+## 接入前的服务器配置实测（2026-11-24 23:00 之前，只读）
+
+> ⚠️ **已过期**：这是新工作流接入**前**的旧单元配置（root / `/opt/Octop` /
+> 会切生产工作树的 pre-hook）。接入后的实际配置见
+> [backend-nightly-repair.md §7](./backend-nightly-repair.md#7-服务器接入记录2026-11-24)。
 
 现有计划只有一条：`octop-backend-full-test.timer` 每天 **02:10（Asia/Shanghai）**
 触发服务；当前服务实测为：
