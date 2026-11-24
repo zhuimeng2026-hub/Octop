@@ -12,7 +12,9 @@ WIP 分支**不是**功能分支，也**不是**发布分支。它是**一次未
 
 1. **不丢东西** —— 把「服务器 / 本机工作树停在某个功能分支的半成品状态」固定成一个可寻址的 commit；
 2. **能重放** —— 后续**逐项**重放到 `develop`，而不是整体 merge，把在途快照的脏状态带进主干；
-3. **可追溯** —— 线上部署跑的就是这个版本时，文档可以用它标记「当前线上代码版本」。
+3. **留证** —— 若线上当时跑的就是这份快照，这份 commit 就是「部署被绕过」的现场证据（生产该跑 `v*` tag，见 §5.1）。
+
+快照**不是**上线版本。任何情况下，WIP 分支都不得作为部署来源。
 
 命名：`wip/<主题>` 或 `wip/<主题>-<YYYY-MM-DD>`，主题与对应 issue / 需求同名。
 
@@ -65,10 +67,27 @@ CRLF 需归一为 LF（遵守 `.gitattributes`）。
 WIP 分支**可以删除**，当且仅当以下三条全部满足：
 
 1. 快照里的每一项改动都已重放到 `develop`，或被明确放弃并在文档里记录；
-2. 线上部署**已不再**运行该版本，且没有任何文档把它记为「当前线上代码版本」；
+2. 线上部署**已不再**运行该版本；
 3. 相关文档已更新，不再引用该分支或该 SHA。
 
-未满足时：**保留分支**，或改打一个长期 tag（如 `wip/<主题>-<日期>`）保留可追溯性 —— tag 不可变，比分支更适合当历史锚点。
+> **若线上仍在运行该版本，那是流程偏差，不是保留分支的理由。**
+> 正确处置是**先把生产更新到正式版本**，而不是延长快照分支的寿命。详见 §5.1。
+
+### 5.1 生产环境只跑正式版本
+
+| 项 | 规定 |
+|---|---|
+| 允许的部署来源 | `main` 上的 `v*` tag（见 `AGENTS.md` §10「只有 `v*` tags 在 `main` 上是生产」） |
+| 禁止的部署来源 | WIP 快照分支、未合并的 feature 分支、工作树里的未提交改动、直接跑 `develop` |
+| `develop` 的角色 | **常在的集成分支**——测试通过后走 `release/*` → `main` → 打 `v*` tag，生产再拉该 tag |
+
+线上跑着 WIP 快照，是**部署流程被绕过**的偏差，处置顺序是：
+
+1. 先把生产更新到正式版本（`release/*` → `main` → `v*` tag → 生产 `git checkout` 到该 tag 并重启）；
+2. 确认服务实际跑的就是该版本（`git -C /opt/Octop log -1`、`git describe --tags`、服务健康检查）；
+3. 再按 §5 的三条判据删除 WIP 分支，并把 §4.2 之类的实测记录更新为正式版本号。
+
+**不要**反过来：为了让快照分支「有存在理由」而把生产留在快照版本上。
 
 ### 怎么验证「已重放」
 
@@ -106,7 +125,7 @@ git diff cnb/develop wip/<主题> -- <path>
 
 | 分支 | 快照提交 | 来源 | 状态 | 关联文档 |
 |---|---|---|---|---|
-| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **保留** —— 内容已逐项重放到 `develop`（迁移 `027`→`028`、`analyse_import` / `commit_import_plan` 路由、vision 分组分类能力均已在 `develop` 且已继续演进），但线上仍以此版本为基准，且被文档引为「当前线上代码版本」 | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
+| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **待处理** —— 内容已逐项重放到 `develop`（迁移 `027`→`028`、`analyse_import` / `commit_import_plan` 路由、vision 分组分类能力均已在 `develop` 且已继续演进），**不存在待补的工作**；但线上仍在跑这个快照版本，属 §5.1 的部署偏差 → 先把生产更新到 `v*` tag，再删分支 | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
 
 ---
 

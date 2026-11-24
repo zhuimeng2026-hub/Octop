@@ -490,6 +490,7 @@ hotfix/* ──PR──► main (+ tag) and ──PR──► develop
 - Hotfix: branch from `main`, PR to `main` (and tag if shipping), then PR into `develop`.
 - Day-to-day feature work: branch from `develop`, open PR **into `develop`** (not `main`).
 - A worktree with uncommitted in-flight work is snapshotted onto `wip/<topic>` — never merged wholesale into `develop`; replay item by item. Rules and the delete criteria: `docs/wip-branch-workflow.md`.
+- Production deployments come from a **`v*` tag on `main`** — never from a WIP snapshot, an unmerged branch, or a dirty worktree. `develop` is the always-present integration branch: after tests pass it flows `release/*` → `main` → `v*` tag, and production checks out that tag.
 - Human detail: `CONTRIBUTING.md`. Agent publish flow: `.cursor/skills/publish`.
 
 ## 11. Communication
