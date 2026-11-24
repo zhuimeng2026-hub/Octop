@@ -149,6 +149,8 @@ export default function ProductVideoWizardPage() {
   const nextUploadFileId = useRef(0);
   const requestVersion = useRef(0);
   const productIdRef = useRef<string | null>(null);
+  const assetProductIdsRef = useRef<string[]>([]);
+  const assetProductByIdRef = useRef<Record<string, string | undefined>>({});
   const routeSelectionApplied = useRef(false);
   const tRef = useRef(t);
   const generatedProjectRoute = useRef<{
@@ -261,6 +263,8 @@ export default function ProductVideoWizardPage() {
     setAssets([]);
     setSelectedAssetIds([]);
     setAssetProductIds([]);
+    assetProductIdsRef.current = [];
+    assetProductByIdRef.current = {};
     setProject(null);
     setDraft(null);
     setSaved(false);
@@ -366,6 +370,10 @@ export default function ProductVideoWizardPage() {
     let current = true;
     const id = product.id;
     const productIds = [...new Set([id, ...assetProductIds])];
+    const previousProductIds = assetProductIdsRef.current;
+    const addedProductIds = new Set(
+      productIds.filter((productId) => !previousProductIds.includes(productId)),
+    );
     productIdRef.current = id;
     setAssets([]);
     cleanUrls();
@@ -382,6 +390,10 @@ export default function ProductVideoWizardPage() {
             ),
           ).values(),
         ];
+        assetProductIdsRef.current = productIds;
+        assetProductByIdRef.current = Object.fromEntries(
+          items.map((asset) => [asset.id, asset.product_id]),
+        );
         setAssetLoadFailed(false);
         setAssets(items);
         const available = items.filter(
@@ -400,18 +412,33 @@ export default function ProductVideoWizardPage() {
             : undefined;
         if (explicitIds) routeSelectionApplied.current = true;
         setSelectedAssetIds((currentIds) => {
-          if (explicitIds) {
-            return available
-              .filter((asset) => explicitIds.includes(asset.id))
-              .map((asset) => asset.id);
-          }
           const availableIds = new Set(available.map((asset) => asset.id));
-          return [
-            ...new Set([
-              ...currentIds.filter((assetId) => availableIds.has(assetId)),
-              ...available.map((asset) => asset.id),
-            ]),
-          ];
+          const selected = new Set(
+            currentIds.filter((assetId) => availableIds.has(assetId)),
+          );
+          available.forEach((asset) => {
+            const isPrimaryRouteAsset = asset.product_id === id;
+            if (
+              (explicitIds &&
+                isPrimaryRouteAsset &&
+                explicitIds.includes(asset.id)) ||
+              (!explicitIds && addedProductIds.has(asset.product_id)) ||
+              (explicitIds &&
+                !isPrimaryRouteAsset &&
+                addedProductIds.has(asset.product_id))
+            ) {
+              selected.add(asset.id);
+            }
+          });
+          if (explicitIds) {
+            available
+              .filter(
+                (asset) =>
+                  asset.product_id === id && !explicitIds.includes(asset.id),
+              )
+              .forEach((asset) => selected.delete(asset.id));
+          }
+          return [...selected];
         });
       })
       .catch(() => {
@@ -484,6 +511,9 @@ export default function ProductVideoWizardPage() {
     setUploadProgress("");
     setProduct(next);
     setAssetProductIds(next ? [next.id] : []);
+    // Switching the primary product starts a new plan: the new product's
+    // category is loaded from scratch, so its frames default to selected.
+    assetProductIdsRef.current = [];
     productIdRef.current = next?.id ?? null;
     setBrief({
       ...EMPTY_VIDEO_BRIEF,
@@ -592,6 +622,9 @@ export default function ProductVideoWizardPage() {
           const loaded = await productLibraryApi.assets(id);
           if (productIdRef.current !== id || requestVersion.current !== version)
             return;
+          loaded.items.forEach((asset) => {
+            assetProductByIdRef.current[asset.id] = asset.product_id;
+          });
           setAssets((current) => [
             ...current.filter((asset) => asset.product_id !== id),
             ...loaded.items,
@@ -1103,7 +1136,24 @@ export default function ProductVideoWizardPage() {
                   assetProductIds={assetProductIds}
                   setAssetProductIds={(ids) => {
                     if (!product) return;
-                    setAssetProductIds([...new Set([product.id, ...ids])]);
+                    const nextIds = [...new Set([product.id, ...ids])];
+                    const nextIdSet = new Set(nextIds);
+                    assetProductIdsRef.current =
+                      assetProductIdsRef.current.filter((productId) =>
+                        nextIdSet.has(productId),
+                      );
+                    setSelectedAssetIds((current) =>
+                      current.filter((assetId) => {
+                        const asset = assets.find(
+                          (item) => item.id === assetId,
+                        );
+                        const productId =
+                          asset?.product_id ??
+                          assetProductByIdRef.current[assetId];
+                        return !productId || nextIdSet.has(productId);
+                      }),
+                    );
+                    setAssetProductIds(nextIds);
                   }}
                   pickProduct={pickProduct}
                   backToLibrary={() => navigate("/product-library")}

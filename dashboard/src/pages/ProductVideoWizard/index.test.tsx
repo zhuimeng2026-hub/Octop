@@ -537,9 +537,19 @@ describe("product video wizard", () => {
       product_id: "p2",
       filename: "second.jpg",
     };
-    api.products.mockResolvedValue({ items: [product, secondProduct] });
+    const thirdAsset = {
+      ...sceneAsset,
+      id: "asset3",
+      product_id: "p3",
+      filename: "third.jpg",
+    };
+    const thirdProduct = { ...product, id: "p3", name: "Third product" };
+    api.products.mockResolvedValue({
+      items: [product, secondProduct, thirdProduct],
+    });
     api.assets.mockImplementation(async (id: string) => ({
-      items: id === "p1" ? [sceneAsset] : [secondAsset],
+      items:
+        id === "p1" ? [sceneAsset] : id === "p2" ? [secondAsset] : [thirdAsset],
     }));
 
     renderWizard();
@@ -557,6 +567,15 @@ describe("product video wizard", () => {
     expect(
       screen.getAllByRole("checkbox").every((checkbox) => checkbox.checked),
     ).toBe(true);
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.selectOptions(
+      screen.getByRole("listbox", { name: "videoWizard.assetCategories" }),
+      "p3",
+    );
+    await screen.findByText("third.jpg · Third product");
+    expect(screen.getAllByRole("checkbox")[0]).not.toBeChecked();
+    expect(screen.getAllByRole("checkbox")[1]).toBeChecked();
+    expect(screen.getAllByRole("checkbox")[2]).toBeChecked();
 
     await user.click(screen.getByRole("button", { name: "videoWizard.next" }));
     await user.click(
@@ -567,9 +586,49 @@ describe("product video wizard", () => {
       expect(api.createProject).toHaveBeenCalledWith({
         product_id: "p1",
         name: expect.stringContaining(product.name),
-        asset_ids: [sceneAsset.id, secondAsset.id],
+        asset_ids: [secondAsset.id, thirdAsset.id],
       }),
     );
+  });
+
+  it("selects the new primary product's frames after switching the primary product", async () => {
+    const user = userEvent.setup();
+    const secondProduct = { ...product, id: "p2", name: "Second product" };
+    api.products.mockResolvedValue({ items: [product, secondProduct] });
+    api.assets.mockImplementation(async (id: string) => ({
+      items: id === "p1" ? [sceneAsset] : [foreignAsset],
+    }));
+
+    renderWizard();
+    const selector = await screen.findByRole("combobox", {
+      name: "videoWizard.product",
+    });
+    await user.selectOptions(selector, "p1");
+    await screen.findByText("front.jpg");
+    await user.selectOptions(
+      screen.getByRole("listbox", { name: "videoWizard.assetCategories" }),
+      "p2",
+    );
+    await screen.findByText("foreign.jpg · Second product");
+    // The user unchecks the extra product's frame while it is only a category.
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await waitFor(() =>
+      expect(screen.getAllByRole("checkbox")[1]).not.toBeChecked(),
+    );
+
+    // Switching the primary product starts a new plan: the new primary's
+    // frames come back selected.
+    await user.selectOptions(selector, "p2");
+    await waitFor(() =>
+      expect(screen.queryByText("front.jpg")).not.toBeInTheDocument(),
+    );
+    await screen.findByText("foreign.jpg");
+    await waitFor(() => {
+      const boxes = screen.getAllByRole("checkbox");
+      expect(boxes).toHaveLength(1);
+      expect(boxes[0]).toBeChecked();
+    });
+    cleanup();
   });
 
   it("does not inherit another owner's route selection and gives an existing project precedence", async () => {
