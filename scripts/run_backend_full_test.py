@@ -778,6 +778,46 @@ def analyze_with_failover(
     return analysis, attempts
 
 
+# ── L4 评测（夜间集合）───────────────────────────────────────────────────────
+#
+# 规范见 docs/eval/README.md §5「集合划分与 CI 接入」：夜间跑全量任务。
+# 执行器是同目录下的 scripts/run_eval_nightly.py（也可单独当 CLI 用）。
+# 拿不到执行器 / 执行器报错时，这一阶段记为「未执行」，**不改变** pytest 与
+# 子代理分析的结论 —— 评测是增量信息，不是全量测试的前置条件。
+
+
+def _eval_module() -> Any | None:
+    """加载同目录的评测执行器；拿不到就返回 None（评测阶段跳过并记原因）。"""
+    import importlib.util
+
+    path = Path(__file__).resolve().parent / "run_eval_nightly.py"
+    try:
+        spec = importlib.util.spec_from_file_location("run_eval_nightly", path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"无法加载 {path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception as exc:  # noqa: BLE001 — 评测是增量阶段，挂掉不影响主结论
+        log(f"评测执行器加载失败，L4 评测阶段跳过：{exc}")
+        return None
+
+
+def run_eval_stage() -> Any | None:
+    """跑一轮 L4 评测，返回执行器的 EvalOutcome（None = 未执行）。"""
+    module = _eval_module()
+    if module is None:
+        return None
+    # 评测与 pytest 用同一套沙箱与报告目录。
+    os.environ.setdefault("EVAL_ISOLATED_HOME", str(ISOLATED_HOME))
+    os.environ["EVAL_REPORT_DIR"] = str(REPORT_DIR)
+    os.environ["EVAL_PYTHON"] = PYTHON_BIN
+    outcome = module.run_eval_stage(repo_dir=REPO_DIR, report_dir=REPORT_DIR)
+    if outcome is not None and outcome.exception:
+        log(f"L4 评测阶段异常：{outcome.exception}")
+    return outcome
+
+
 # ── 报告 ─────────────────────────────────────────────────────────────────────
 
 
@@ -788,6 +828,7 @@ def write_report(
     detail: str,
     history: list[TestRun],
     attempts: list[ModelAttempt] | None = None,
+    evals: Any | None = None,
 ) -> Path:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -838,6 +879,8 @@ def write_report(
             for h in history
         ],
     }
+    if evals is not None:
+        payload["evals"] = evals.to_dict()
     json_path = REPORT_DIR / f"report-{stamp}.json"
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -891,6 +934,35 @@ def write_report(
         md += ["", "## 子代理分析", "", f"- 状态：{analysis.detail}"]
         if analysis.ok:
             md += ["", analysis.text]
+    if evals is not None:
+        summary = evals.summary
+        md += [
+            "",
+            "## L4 评测（夜间集合）",
+            "",
+            f"- 通过 {summary['pass']} / 失败 {summary['fail']} / 跳过 {summary['skipped']} / "
+            f"受阻 {summary['blocked']} / 非法 {summary['invalid']}",
+            f"- 明细报告：`{evals.json_path}`",
+        ]
+        if evals.exception:
+            md.append(f"- 阶段异常：{evals.exception}")
+        if evals.problems:
+            md += ["", "任务集问题：", ""] + [f"- {p}" for p in evals.problems]
+        if evals.results:
+            md += [
+                "",
+                "| 任务 | 领域 | 严重度 | 集合 | 结论 | 原因 |",
+                "|---|---|---|---|---|---|",
+            ]
+            for r in evals.results:
+                md.append(
+                    f"| `{r.id}` | {r.domain} | {r.severity} | {r.regression} | "
+                    f"**{r.status}** | {r.reason.replace('|', '/')} |"
+                )
+        md += [
+            "",
+            "> 依据 docs/eval/README.md §4：跳过与受阻都记原因，不算通过；未运行不写 pass。",
+        ]
     md.append("")
     md_path = REPORT_DIR / f"report-{stamp}.md"
     md_path.write_text("\n".join(md), encoding="utf-8")
@@ -942,6 +1014,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--setup-only", action="store_true", help="只做预检与准备")
     parser.add_argument("--no-analysis", action="store_true", help="只跑测试，不做子代理分析")
+    parser.add_argument(
+        "--no-evals", action="store_true", help="只跑测试，不跑 L4 评测（夜间集合）"
+    )
     args = parser.parse_args(argv)
 
     TEST_TIMEOUT_S = args.timeout
@@ -994,6 +1069,20 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
 
+        # ── L4 评测（夜间集合）：pytest 之后单独一段，结论并进同一份报告 ──
+        # 规范：docs/eval/README.md §5。评测失败会让本轮结论为 fail，
+        # 但评测自身异常不推翻 pytest 的结论（增量信息，不是前置条件）。
+        # 放在子代理分析之前：分析失败时评测结论仍然要落到报告里。
+        evals = None
+        if not args.no_evals:
+            evals = run_eval_stage()
+            if evals is not None:
+                s = evals.summary
+                log(
+                    f"L4 评测：通过 {s['pass']} / 失败 {s['fail']} / 跳过 {s['skipped']} / "
+                    f"受阻 {s['blocked']} / 非法 {s['invalid']}"
+                )
+
         # ── 子代理分析结果（主模型撞 429 就切备用模型） ──
         if not args.no_analysis:
             try:
@@ -1013,13 +1102,17 @@ def main(argv: list[str] | None = None) -> int:
                     f"子代理分析失败（{len(attempts)} 次尝试）：{detail}",
                     history,
                     attempts,
+                    evals,
                 )
                 return 2
 
-        final = "pass" if run.passed else "fail"
+        eval_failed = evals.failed_tasks if evals is not None else []
+        final = "pass" if run.passed and not eval_failed else "fail"
         detail = "全量测试通过" if run.passed else f"全量测试完成但有失败用例：{run.summary}"
-        write_report(run, analysis, final, detail, history, attempts)
-        return 0 if run.passed else 1
+        if eval_failed:
+            detail += f"；L4 评测有 {len(eval_failed)} 条失败任务"
+        write_report(run, analysis, final, detail, history, attempts, evals)
+        return 0 if final == "pass" else 1
     except Fatal as exc:
         log(f"不可跳过的异常：{exc}")
         return 2

@@ -143,14 +143,14 @@ tasks:
     type: automated
     judge:
       kind: test
-      command: uv run pytest tests/unit/db/test_product_library_repo.py tests/unit/api/test_product_library.py -q -k "deactivated"
+      command: uv run pytest tests/unit/db/test_product_library_repo.py -q -k "snapshot_fails_whole_project_when_a_selected_asset_is_archived or snapshot_still_returns_not_found_for_another_users_archived_asset"
       expect: exit_code == 0
     evidence: []
     regression: full
     blocking: false
-    status: planned
     notes: >
-      口径已于 2026-11-24 定下（整单失败并提示，实现契约见
-      docs/product-video-multi-category-materials.md A8.1），但**尚未实施**：
-      snapshot_project 目前仍静默跳过 active = 0 的素材。
+      口径于 2026-11-24 定下（整单失败并提示，实现契约见
+      docs/product-video-multi-category-materials.md A8.1），实现已于 2026-11-24 落地
+      （commit 5a3ccce5：错误码 PRODUCT_LIBRARY_ASSET_INACTIVE，HTTP 409，details.assets
+      点名文件，不留半成品项目）。命令指向实现新增的两条后端用例。
       实现完成后把 status 改为 active、blocking 改为 true，并补齐对应后端与前端回归用例。
