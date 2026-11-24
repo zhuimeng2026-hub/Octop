@@ -21,6 +21,7 @@
 ## T-001 · 路线 C 实测（服务器复用桌面 Chrome 登录态）
 
 **状态**：⏳ 待安排（2026-10-28 立项）
+**跟踪**：CNB issue [#32](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/32)
 
 ### 要做什么
 

@@ -63,6 +63,7 @@
 
 **状态**：待实施（登记日期：2026-11-24）
 **优先级**：P1 重要不紧急（适合夜间无人值守）
+**跟踪**：CNB issue [#24](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/24)
 **语义来源**：[product-video-multi-category-materials.md A8.1](./product-video-multi-category-materials.md) —— **行为契约只以 A8.1 为准，本条目不得另立口径**
 **可无人值守执行**：是
 
@@ -118,6 +119,7 @@ cd dashboard && npx tsc -b --pretty false
 
 **状态**：待实施（登记日期：2026-11-24）
 **优先级**：P1 重要不紧急
+**跟踪**：CNB issue [#29](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/29)
 **语义来源**：[eval/README.md §8.2 迁移计划](./eval/README.md) —— 步骤 E2；格式与判定规则见同文档 §2–§6
 **可无人值守执行**：是
 
@@ -152,6 +154,7 @@ uv run python -c "import yaml,pathlib; [yaml.safe_load(p.read_text(encoding='utf
 
 **状态**：待实施（登记日期：2026-11-24）
 **优先级**：P2 常规
+**跟踪**：CNB issue [#30](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/30)
 **语义来源**：[eval/README.md §5 集合划分与 CI 接入](./eval/README.md) —— 步骤 E3
 **可无人值守执行**：否（涉及 CI 策略改动，需要人确认门禁范围）
 
@@ -184,6 +187,7 @@ uv run python tests/evals/validate_tasks.py
 
 **状态**：待实施（登记日期：2026-11-24）
 **优先级**：P2 常规
+**跟踪**：CNB issue [#31](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/31)
 **语义来源**：[eval/README.md §8.1 已知缺口](./eval/README.md)
 **可无人值守执行**：否（涉及模型调用成本，需人定配额）
 
