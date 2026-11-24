@@ -805,13 +805,14 @@ def _eval_module() -> Any | None:
 
 def run_eval_stage() -> Any | None:
     """跑一轮 L4 评测，返回执行器的 EvalOutcome（None = 未执行）。"""
-    module = _eval_module()
-    if module is None:
-        return None
-    # 评测与 pytest 用同一套沙箱与报告目录。
+    # 评测与 pytest 用同一套沙箱与报告目录。注意：执行器在 import 时就读取这些
+    # 环境变量，所以必须**先设好再加载**。
     os.environ.setdefault("EVAL_ISOLATED_HOME", str(ISOLATED_HOME))
     os.environ["EVAL_REPORT_DIR"] = str(REPORT_DIR)
     os.environ["EVAL_PYTHON"] = PYTHON_BIN
+    module = _eval_module()
+    if module is None:
+        return None
     outcome = module.run_eval_stage(repo_dir=REPO_DIR, report_dir=REPORT_DIR)
     if outcome is not None and outcome.exception:
         log(f"L4 评测阶段异常：{outcome.exception}")
