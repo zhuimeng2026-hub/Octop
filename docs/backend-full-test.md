@@ -17,6 +17,92 @@
 | systemd 服务 | `/etc/systemd/system/octop-backend-full-test.service` | 一次性任务，输出追加到 `/opt/octop-test-reports/backend-full-test.log`；drop-in `20-sandbox.conf`（沙箱闸门）+ `30-git-sync.conf`（git 同步） |
 | systemd 定时器 | `/etc/systemd/system/octop-backend-full-test.timer` | 决定什么时候拉起（每天 02:00） |
 
+## 当前服务器配置实测（2026-11-24，只读）
+
+现有计划只有一条：`octop-backend-full-test.timer` 每天 **02:10（Asia/Shanghai）**
+触发服务；当前服务实测为：
+
+| 项 | 实测值 |
+|---|---|
+| `WorkingDirectory` | `/opt/Octop` |
+| `ExecStart` | `/opt/Octop/scripts/run_backend_full_test.py` |
+| `ExecStartPre` | `/usr/local/sbin/octop-full-test-sandbox-guard.sh`、`/usr/local/sbin/octop-git-sync-for-test.sh` |
+| systemd `TEST_TARGET_BRANCH` | `fix/full-test-12-failures` |
+| 当前 checkout | `fix/full-test-12-failures @ 615e184b` |
+
+因此现有配置仍测生产 checkout 的同名修复分支，不能把旧报告当作 `develop` 验收。
+最近的 `git-sync-latest.json` 若只是 `tmp/verify-old-script` 等临时手工记录，也不属于
+02:10 任务的运行证据；必须以本轮报告实际记录的 checkout、SHA 和 pytest 根目录为准。
+
+### develop 验收计划（沿用 02:10）
+
+夜间失败归因、最小修复、候选快照与报告交接 MUST 按唯一运行手册
+[backend-nightly-repair.md](./backend-nightly-repair.md) 执行；本文件以下内容保留为旧脚本的历史背景和沙箱证据，不得据此推断已完成新流程接入。
+
+服务端后续只调整这条既有 timer 所调用的测试服务：将实际测试根目录/入口改为独立的
+`develop` checkout，并保持生产 `/opt/Octop` 与生产数据目录不被测试切换或清理。不能只在
+生产目录把 `TEST_TARGET_BRANCH=develop`，因为同步脚本会切生产工作树。验收时检查：
+
+1. 报告记录独立 checkout 的 `develop` 分支、完整 SHA、pytest 根目录和隔离数据目录；
+2. 报告中的 SHA 与该独立 checkout 同步后的 `git rev-parse HEAD` 一致，且服务仍使用同一条
+   02:10 计划；
+3. 运行中/完成后生产服务 checkout、生产数据目录和 `octop.service` 均未被测试任务改动。
+
+#### 可交给执行 LLM 的 develop 检出与测试计划
+
+首轮核对清单固定为以下 3 个提交（`89d6fbe8` 是首轮基线，不代表三项已接入）：
+
+| SHA | 提交 |
+|---|---|
+| `89d6fbe88d7ad371dd212c668ed7131781bb9297` | `style(dashboard): 提交 pre-commit 格式化的测试文件` |
+| `5a3ccce5b6f2f985ff8cb86d6442fba2aca415f4` | `fix(product-library): 停用素材导致项目快照整单失败返回 409` |
+| `5f59d246da76789ef88a4ea32ba4707863e90b14` | `docs: 汇总文档规范细化与待办登记的在途改动` |
+
+以下命令只允许在独立测试 checkout 中执行；不要在生产 `/opt/Octop` 中执行 checkout，
+也不要继承生产服务的 `OCTOP_HOME`、JWT 或模型分析依赖：
+
+```bash
+set -eu
+run_dir="$(mktemp -d /var/tmp/octop-backend-test.XXXXXXXX)"
+mkdir -p "$run_dir/home" "$run_dir/octop-home"
+git clone --branch develop --single-branch \
+  https://cnb.cool/mengxa.com/Octop.git "$run_dir/repo"
+cd "$run_dir/repo"
+expected_sha=89d6fbe88d7ad371dd212c668ed7131781bb9297
+git checkout --detach "$expected_sha"
+test "$(git rev-parse HEAD)" = "$expected_sha"
+env -i PATH="$PATH" HOME="$run_dir/home" OCTOP_HOME="$run_dir/octop-home" \
+  uv sync --locked
+if env -i PATH="$PATH" HOME="$run_dir/home" OCTOP_HOME="$run_dir/octop-home" \
+  uv run --locked --no-sync pytest -m 'not live' -q >"$run_dir/pytest.log" 2>&1; then
+  rc=0
+else
+  rc=$?
+fi
+printf '%s\n' "$rc" >"$run_dir/pytest.exit"
+printf 'pytest_exit_code=%s\npytest_log=%s\n' "$rc" "$run_dir/pytest.log"
+exit "$rc"
+```
+
+整段应在新的 Bash 进程中运行（例如保存为脚本后由 systemd 调用），避免 SSH 交互 shell
+退出或断开时改变测试任务的退出状态。
+
+如果测试入口仍依赖生产 `octop.service`、生产管理 JWT 或生产模型分析，不能声称已完成
+独立 checkout 验收；该项记为 **blocked**，应由服务端改为隔离的命令级环境或独立测试服务。
+把现有 runner 回退到旧 SHA 也一律记为 **blocked**，不得当作 develop 结果。
+
+执行 LLM 必须把 3 个目标提交逐项列出（SHA、提交标题、涉及路径），并保存上述命令的
+完整 stdout/stderr、退出码、pytest 日志及 JSON/Markdown 报告。首轮报告状态只能是：
+`pass`（本轮命令和证据完整且 pytest 退出码为 0）、`fail`（测试完成但有失败用例，列出
+失败与归因）或 `blocked`（checkout、依赖、沙箱、产物或生产隔离证据缺失/异常）。首轮
+`pass` 只表示首轮运行通过，不等于三项已接入；三项接入仍须逐项保留/弃用并回写。
+`blocked` 不得改写成 `pass`。
+
+旧 runner 可复用沙箱闸门、重试和报表结构；但其默认 `OCTOP_REPO=/opt/Octop`、父进程
+`OCTOP_HOME` 为生产目录且分析阶段依赖生产管理 JWT/服务，因此在完成根目录与运行时隔离
+前，不应宣称已“原样复用”验证 `develop`。必要时由服务端安排独立 `uv run pytest` 入口，
+再接回现有报告流程。
+
 ## 运行流程
 
 0. **git 同步（ExecStartPre，先于一切）** —— `git fetch origin`，工作树干净就
