@@ -185,6 +185,9 @@ class ErrorCode(StrEnum):
     # ``details.part`` to download the matching shard on demand; servers see a
     # 503 telling them which extra to install.
     FEATURE_DEPS_MISSING = "FEATURE_DEPS_MISSING"
+    # Selected product-library assets were archived before the project snapshot
+    # was created. ``details.assets`` names the inactive files.
+    PRODUCT_LIBRARY_ASSET_INACTIVE = "PRODUCT_LIBRARY_ASSET_INACTIVE"
 
 
 _DEFAULT_STATUS: dict[ErrorCode, int] = {
@@ -361,6 +364,7 @@ _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.TEAM_NOT_SHAREABLE: 400,
     ErrorCode.LOCAL_DOWNLOAD_UNAVAILABLE: 403,
     ErrorCode.FEATURE_DEPS_MISSING: 503,
+    ErrorCode.PRODUCT_LIBRARY_ASSET_INACTIVE: 409,
 }
 
 

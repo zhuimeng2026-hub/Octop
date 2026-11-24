@@ -111,9 +111,11 @@ def snapshot_project(
     if any(asset_id not in selected for asset_id in asset_ids):
         return None
     assets = []
+    inactive_names: list[str] = []
     for asset_id in asset_ids:
         asset = selected[asset_id]
         if not asset["active"]:
+            inactive_names.append(asset["filename"])
             continue
         assets.append(
             {
@@ -130,6 +132,16 @@ def snapshot_project(
                     "priority",
                 )
             }
+        )
+    if inactive_names:
+        # Whole-snapshot failure: never write a partial project (A8.1 / A7.3 #25).
+        # Ownership was already validated above, so these names are the current
+        # user's own files; others' assets still map to NOT_FOUND via the check.
+        names = ", ".join(inactive_names)
+        raise OctopError.localized(
+            ErrorCode.PRODUCT_LIBRARY_ASSET_INACTIVE,
+            details={"assets": names},
+            assets=names,
         )
     snapshot = {"product": decode_product(product), "assets": assets, "version": 1}
     return repo.create_project(owner_id, product_id, name, snapshot)

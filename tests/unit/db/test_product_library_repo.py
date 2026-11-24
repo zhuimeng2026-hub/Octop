@@ -11,6 +11,7 @@ import pytest
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.product_library import ProductLibraryRepo
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.product_library.service import ProductLibraryService, render_script
 from octop.infra.utils.paths import PathLayout
 
@@ -100,6 +101,80 @@ def test_asset_paths_and_snapshot_remain_stable_after_product_edit_or_delete(
     ]
     assert exported[0]["export_name"].startswith(one["id"] + "-")
     assert "brief.pdf" not in json.dumps(script)
+
+
+def test_snapshot_fails_whole_project_when_a_selected_asset_is_archived(
+    repo: ProductLibraryRepo, tmp_path: Path
+) -> None:
+    """A7.3 #25 / A8.1: archived selection fails the whole snapshot, no partial write."""
+    service = ProductLibraryService(PathLayout(tmp_path / "octop"), repo)
+    product = _product(repo, 7, "Archived case")
+    side = service.store_asset(
+        owner_id=7,
+        product_id=product["id"],
+        filename="side.jpg",
+        media_type="image/jpeg",
+        data=b"side",
+        usage="scene",
+    )
+    front = service.store_asset(
+        owner_id=7,
+        product_id=product["id"],
+        filename="front.jpg",
+        media_type="image/jpeg",
+        data=b"front",
+        usage="scene",
+    )
+    repo.update_asset(7, side["id"], active=False)
+
+    with pytest.raises(OctopError) as caught:
+        service.create_snapshot(
+            owner_id=7,
+            product_id=product["id"],
+            name="Rejected",
+            asset_ids=[side["id"], front["id"]],
+        )
+    err = caught.value
+    assert err.code is ErrorCode.PRODUCT_LIBRARY_ASSET_INACTIVE
+    assert err.status == 409
+    assert err.details["assets"] == "side.jpg"
+    assert repo.list_projects(7) == []
+
+
+def test_snapshot_still_returns_not_found_for_another_users_archived_asset(
+    repo: ProductLibraryRepo, tmp_path: Path
+) -> None:
+    """A8.1 invariant: others' / missing assets stay 404, never disclosed as inactive."""
+    service = ProductLibraryService(PathLayout(tmp_path / "octop"), repo)
+    product = _product(repo, 8, "Owner")
+    mine = service.store_asset(
+        owner_id=8,
+        product_id=product["id"],
+        filename="mine.jpg",
+        media_type="image/jpeg",
+        data=b"mine",
+        usage="scene",
+    )
+    foreign_product = _product(repo, 9, "Foreign")
+    foreign = service.store_asset(
+        owner_id=9,
+        product_id=foreign_product["id"],
+        filename="foreign.jpg",
+        media_type="image/jpeg",
+        data=b"foreign",
+        usage="scene",
+    )
+    repo.update_asset(9, foreign["id"], active=False)
+
+    with pytest.raises(OctopError) as caught:
+        service.create_snapshot(
+            owner_id=8,
+            product_id=product["id"],
+            name="Foreign selected",
+            asset_ids=[mine["id"], foreign["id"]],
+        )
+    assert caught.value.code is ErrorCode.NOT_FOUND
+    assert caught.value.status == 404
 
 
 def test_snapshot_accepts_scene_assets_from_multiple_products(

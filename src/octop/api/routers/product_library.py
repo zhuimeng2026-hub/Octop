@@ -814,6 +814,12 @@ async def download_asset(
     status_code=201,
     response_model=ProjectResponse,
     summary="Create an immutable video project snapshot",
+    description=(
+        "Returns 409 PRODUCT_LIBRARY_ASSET_INACTIVE when any selected asset was archived "
+        "(active = 0) before the snapshot was created; the error details.name the inactive "
+        "files and no partial project is written. Assets owned by other users or missing "
+        "assets still return 404 NOT_FOUND."
+    ),
 )
 async def create_project(
     body: ProjectBody, user: Any = Depends(current_user), server: Any = Depends(get_server)

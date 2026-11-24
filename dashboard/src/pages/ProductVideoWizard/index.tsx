@@ -31,6 +31,7 @@ import {
   isActiveDesktopVideoJob,
   useDesktopVideoJobs,
 } from "../../context/DesktopVideoJobsContext";
+import { apiErrorMessage, parseApiError } from "../../utils/apiError";
 import { message } from "../../utils/antdMessage";
 import {
   decodeVideoBrief,
@@ -741,9 +742,16 @@ export default function ProductVideoWizardPage() {
         )}`,
         { replace: true },
       );
-    } catch {
+    } catch (error) {
       if (version === requestVersion.current) {
-        setError(t("videoWizard.generateFailed"));
+        const parsed = parseApiError(error);
+        // Only the archived-asset rejection gets a specific, named message;
+        // every other failure keeps the existing generic copy.
+        setError(
+          parsed?.code === "PRODUCT_LIBRARY_ASSET_INACTIVE"
+            ? apiErrorMessage(error, t("videoWizard.generateFailed"), t)
+            : t("videoWizard.generateFailed"),
+        );
         setStep(draft ? 3 : 1);
       }
     } finally {
