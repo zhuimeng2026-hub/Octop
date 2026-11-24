@@ -16,8 +16,7 @@
    │  zhuimeng2026-hub/Octop             │    Octop      │
    └──────────┘                          └───────────────┘
         ▲                                       ▲
-        │ 01:15 cron                            │ 01:40 cron (3 repos)
-        │ 01:40 cron (3 repos)                  │ 02:30 workflow fallback
+        │ 01:40 cron (4 repos)                 │ 02:30 workflow fallback
         └──── ocdev:/opt/Octop ──────────────────┘
 ```
 
@@ -62,8 +61,7 @@ https://cnb:<TOKEN>@cnb.cool/mengxa.com/Octop.git
 | 触发者 | 位置 | 作用 |
 |---|---|---|
 | GitHub Actions | `.github/workflows/mirror-to-cnb.yml` | 推 GitHub 后即时同步（秒级）；全分支 + 全标签；只快进不带 force |
-| 生产机 cron | `/etc/cron.d/octop-git-sync` → `/opt/Octop/scripts/sync_github_to_cnb.sh` | 每天 01:15 兜底同步 Octop |
-| 生产机 cron | `/etc/cron.d/cnb-git-sync-all` → `/usr/local/bin/cnb-git-sync-all` | 每天 01:40 同步三个仓库 |
+| 生产机 cron | `/etc/cron.d/cnb-git-sync-all` → `/usr/local/bin/cnb-git-sync-all` | 每天 01:40 同步四个仓库（含 Octop） |
 | GitHub Actions | 同上工作流的 `schedule`（30 18 * * *，UTC+8 02:30） | 兜底；fork 下 schedule 通常不触发 |
 | 生产机 cron | `/etc/cron.d/cnb-check` | 每 4 小时 CNB → GitHub 只读体检，只报告不 merge |
 
@@ -137,7 +135,7 @@ REPO_DIR='D:/Octop' GIT_TERMINAL_PROMPT=0 PATH="/tmp/octop-shim:$PATH" bash scri
 
 严格结论是：**token 有效、读权限确认、写权限缺一次真实落盘的证据**。
 CNB 按仓库授权，认证能过说明该 token 覆盖 `mengxa.com/Octop`；另外生产机上
-**同一份凭据每天 01:15/01:40 在成功推送**，这本身就是写权限的持续证明。
+**同一份凭据每天 01:40 在成功推送**，这本身就是写权限的持续证明。
 
 要补实证，两条命令任选（都不会污染主线）：
 
