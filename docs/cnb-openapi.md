@@ -64,8 +64,43 @@ curl -s -X POST \
 
 完整端点列表见 swagger.json 中的 `/{repo}/-/issues*` 系列（评论、标签、处理人、附件上传等）。
 
+### Web 页面路径（不是常规形状）
+
+API 路径与网页路径**不一样**，写文档链接时别用 `cnb.cool/{org}/{repo}/...`：
+
+| 目标 | 正确路径 |
+|---|---|
+| 仓库首页 | `https://cnb.cool/{org}/-/repos/{repo}` |
+| Issue 列表 / 单条 | `https://cnb.cool/{org}/-/repos/{repo}/-/issues[/{number}]` |
+
+例：`https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/23`。
+`cnb.cool/mengxa.com/Octop/...` 一律返回 404（不是 SPA 200），容易误判为「仓库不存在」。
+
+### 读取仓库内容（核对镜像是否同步）
+
+```
+GET /{repo}/-/git/contents/{file_path}?ref={branch}
+```
+
+返回的 `content` 是 **base64**，要解码后再判断内容；不解析 base64 会误以为「文件里没有目标关键字」。
+
 ## 踩坑记录
 
+0. **Actions 里的 `CNB_TOKEN` 可能过期，镜像会静默落后**。2026-11-24 实测：fork 的 GitHub Actions「Mirror to CNB」因 secret 里的令牌过期而失败（`remote: 您的访问凭证已经过期。` → HTTP 400），GitHub 上已推的提交**不会**自动到 cnb.cool；分支在 cnb 上停在旧 SHA。
+   核查方法（对比两个远端的 ref）：
+   ```bash
+   git ls-remote --heads fork > /tmp/fork.txt
+   git ls-remote --heads cnb  > /tmp/cnb.txt
+   git ls-remote --tags fork > /tmp/fork_tags.txt
+   git ls-remote --tags cnb  > /tmp/cnb_tags.txt
+   diff /tmp/fork.txt /tmp/cnb.txt
+   ```
+   手工补推（只做快进，不带 `--force`，与工作流策略一致）：
+   ```bash
+   git push cnb <branch>
+   git push cnb <tag-sha>:refs/tags/<tag>
+   ```
+   推送需要的是仓库**写**权限的令牌；本机 `.git-credentials` 里的凭据若仍有效，可直接用于 API 与 git 两种操作。
 1. **不要加 `/v1` 前缀**。探测时容易从 `/v1/...` 的 401 误推断版本前缀存在；实际网关对未认证请求一律先回 401，与路径是否存在无关。判定「路径是否正确」必须携带有效 token 再看返回码。
 2. **不要在 `cnb.cool` 主域上调 API**。主域是 Next.js 前端，所有未知路径（包括 `/api/*`）都返回 HTTP 200 的 SPA 404 页面，会掩盖真实错误。API 必须走 `api.cnb.cool`。
 3. **请求体生成避开 PowerShell 5.1 的 `ConvertTo-Json`**：它生成的多行/中文载荷可能被服务端判为 `invalid post form body`（HTTP 400）。建议用 Python 生成：
