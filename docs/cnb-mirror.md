@@ -5,6 +5,9 @@
 >
 > 相关文件：`.cnb.yml`（CNB 流水线）、`.github/workflows/mirror-to-cnb.yml`（镜像工作流）、
 > `scripts/sync_github_to_cnb.sh`（同步脚本）。
+>
+> 凭据部分（`~/.git-credentials` 的 path 级条目、`credential.useHttpPath` 匹配规则、
+> 体检自愈脚本）另见 [git-credentials.md](git-credentials.md)。
 
 ## 1. 链路总览
 
