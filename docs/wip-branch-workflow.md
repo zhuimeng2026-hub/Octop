@@ -33,11 +33,15 @@ WIP 分支**不是**功能分支，也**不是**发布分支。它是**一次未
 
 ## 3. 建立方式（约定）
 
-在**有未提交改动的工作树**上：
+不要把运行中的生产目录作为默认操作面，也不要直接在其中用 `git add -A` 再切换分支。经明确授权后，先只读核对 tracked / untracked / ignored 状态；按范围挑选路径，确认不含密钥、运行时状态或私有数据，再用独立工作树或安全拷贝留档。
+
+留档必须记录来源 base SHA，以及显式选中路径的新增、修改、删除清单（删除也必须记录，否则重放会丢失删除）。生产密钥不得直接复制；快照也不授权 push、部署或删分支。
+
+在独立工作树或安全拷贝上：
 
 ```bash
 git switch -c wip/<主题>          # 或 git checkout -b wip/<主题>
-git add -A
+git add -- <已核对且获授权的路径>
 git commit -m "wip: <一句话说明这批在途改动是什么>"
 ```
 
@@ -57,7 +61,7 @@ CRLF 需归一为 LF（遵守 `.gitattributes`）。
 
 - WIP 分支**不整体 merge 进 `develop`**；按项拣选（cherry-pick 或手工重放）；
 - 重放时**以 `develop` 为准**，冲突按 `develop` 的口径解决；
-- 重放完成后，在 WIP 提交信息末尾追加一行「已重放：<commit / PR>」，便于判断清理时机；
+- 已发布的 WIP 重放记录放在追踪处，不 amend 已发布提交；清理前可保留 SHA 或历史链接。重放完成后，在追踪记录追加「已重放：<commit / PR>」；
 - 迁移编号会随 `develop` 推进而变（例如快照里的 `027` 落地时已成 `028`），比对时要按**内容**而不是文件名判断。
 
 ---
@@ -67,8 +71,8 @@ CRLF 需归一为 LF（遵守 `.gitattributes`）。
 WIP 分支**可以删除**，当且仅当以下三条全部满足：
 
 1. 快照里的每一项改动都已重放到 `develop`，或被明确放弃并在文档里记录；
-2. 线上部署**已不再**运行该版本；
-3. 相关文档已更新，不再引用该分支或该 SHA。
+2. 线上部署**已不再**运行该版本，并已核对每个实际发布过的 ref；
+3. 相关文档已更新，不再依赖该分支或该 SHA（历史引用可以保留）。
 
 > **若线上仍在运行该版本，那是流程偏差，不是保留分支的理由。**
 > 正确处置是**先把生产更新到正式版本**，而不是延长快照分支的寿命。详见 §5.1。
@@ -84,7 +88,7 @@ WIP 分支**可以删除**，当且仅当以下三条全部满足：
 线上跑着 WIP 快照，是**部署流程被绕过**的偏差，处置顺序是：
 
 1. 先把生产更新到正式版本（`release/*` → `main` → `v*` tag → 生产 `git checkout` 到该 tag 并重启）；
-2. 确认服务实际跑的就是该版本（`git -C /opt/Octop log -1`、`git describe --tags`、服务健康检查）；
+2. 确认实际服务进程与健康检查跑的就是该版本（仅看 checkout 不足；需核对进程、版本响应或等价运行证据）；
 3. 再按 §5 的三条判据删除 WIP 分支，并把 §4.2 之类的实测记录更新为正式版本号。
 
 **不要**反过来：为了让快照分支「有存在理由」而把生产留在快照版本上。
@@ -106,18 +110,13 @@ git diff cnb/develop wip/<主题> -- <path>
 
 ## 6. 与镜像链路（GitHub → CNB）的关系
 
-镜像工作流（`.github/workflows/mirror-to-cnb.yml`）逐个推送 origin 的**全部分支与标签**，末尾再比对两侧 ref 是否一致。**只存在于 CNB 一侧的分支或标签会让校验步骤变红**：
+镜像工作流（`.github/workflows/mirror-to-cnb.yml`）按现有权限与镜像拓扑推送来源 ref；不要直接命令向未核实的 remote 推送生产来源快照。镜像不会自动删除 CNB 多出的 ref；清理前必须核对每个实际发布过的 ref。当前 workflow 的现有例外以配置为准（不要假定已排除 `wip/`）：
 
 ```
 ::error::CNB 与 origin 的引用仍不一致，请人工介入
 ```
 
-所以 WIP 分支二选一：
-
-- 同步推一份到 origin（`git push origin wip/<主题>`），两侧 ref 自然一致；
-- 或在校验里显式排除（如把 `refs/heads/wip/` 一并 `grep -v` 掉）。
-
-无论哪种，都**不要**用 `--force` 推镜像，工作流策略是只做快进。
+不要把“推送 WIP”或“排除 WIP”写成既有机制；如需变更镜像策略，先按权限和现有镜像配置单独评审。无论哪种，都**不要**用 `--force` 推镜像。
 
 ---
 
@@ -125,7 +124,7 @@ git diff cnb/develop wip/<主题> -- <path>
 
 | 分支 | 快照提交 | 来源 | 状态 | 关联文档 |
 |---|---|---|---|---|
-| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **待处理** —— 内容已逐项重放到 `develop`（迁移 `027`→`028`、`analyse_import` / `commit_import_plan` 路由、vision 分组分类能力均已在 `develop` 且已继续演进），**不存在待补的工作**；但线上仍在跑这个快照版本，属 §5.1 的部署偏差 → 先把生产更新到 `v*` tag，再删分支 | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
+| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **待处理** —— 内容已逐项重放到 `develop`；“线上仍在跑”仅为登记记录（登记证据日期 2026-11-24），须以实际进程/健康证据复核，不能据此宣称当前线上状态；完成后按 §5 核对实际发布 refs 再清理 | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
 
 ---
 

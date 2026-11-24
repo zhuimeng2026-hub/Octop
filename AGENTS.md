@@ -36,8 +36,11 @@ Navigation guide for AI coding agents working in this repository.
 ### Local verification is a smoke test, not the full suite
 
 > **Run only the smallest local smoke check that verifies the change.** This is the project
-> default for every task. CI runs the full suite (`make all`, backend `uv run pytest`,
-> frontend `npm test`, desktop `go test ./...`). Commit hooks follow §6.
+> default for every task. CI runs the configured checks: the dashboard job builds and tests;
+> Linux and Windows Python jobs run lint, typecheck, and `make test`; the same-repository,
+> non-release-sync live job starts for eligible PRs, while individual live tests skip when
+> credentials are absent. Desktop M1 checks are path-filtered
+> focused tests plus desktop packaging/build checks. Commit hooks follow §6.
 
 | Change | Local verification (allowed) | Not allowed locally |
 |---|---|---|
@@ -249,10 +252,9 @@ bash scripts/deploy-dashboard.sh        # [frontend-env only] sync built artifac
 > Locally run **only the focused commands for the code you touched** — a single test file,
 > a single package, a typecheck, a build. See
 > [Local verification is a smoke test, not the full suite](#local-verification-is-a-smoke-test-not-the-full-suite).
-> `make all` and the whole-suite pytest are **not** local steps; pre-commit still runs them
-> on commit, so a red suite blocks the commit anyway.
+> `make all` and the whole-suite pytest are **not** local steps; CI owns the full release gate.
 
-**Git hooks (required for local commits):** after cloning, run **`make install-hooks`** once. That sets `core.hooksPath=.githooks` so every `git commit` runs **`make all`** (which first runs **`format-all`**: backend Ruff + dashboard Prettier write, then lint / typecheck / test) and dashboard **`npm run build`**. Formatted files that were already staged are re-added so the commit includes the formatted content. Bypass only in emergencies: `SKIP_PRECOMMIT=1 git commit …` or `git commit --no-verify`. Do **not** skip hooks to land red tests — fix the suite first (CI runs on Linux **and** Windows).
+**Git hooks (required for local commits):** after cloning, run **`make install-hooks`** once. That sets `core.hooksPath=.githooks` so each commit runs `.githooks/pre-commit`: backend `make format`, `make lint`, `make typecheck`, and `make test-smoke`; staged dashboard changes additionally run frontend formatting and `npm run build`, unless `SKIP_FRONTEND=1` is set. A commit containing only root `README.md` / `README.*.md` changes skips these checks. After backend formatting, only the original staged ACMR paths that still exist are re-staged before the frontend formatter runs; dashboard-only formatting is not implied. Bypass only in emergencies: `SKIP_PRECOMMIT=1 git commit …` or `git commit --no-verify`. Do **not** skip hooks to land red tests — fix the suite first (CI runs on Linux **and** Windows).
 
 ## 7. Key patterns
 
@@ -441,7 +443,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | Internationalization (dashboard) | `dashboard/src/locales/`, `dashboard/src/i18n.ts`, `dashboard/src/utils/apiError.ts` |
 | Server timezone (config.json) | `default_timezone` in `config.py`; `GET /api/settings/timezone`; `dashboard/src/hooks/useServerTimezone.ts`; `dashboard/src/utils/formatMessageTime.ts` |
 | Test layout & shared helpers | `tests/support/` (`fakes`, `auth`, `http`, `scenarios`, `app`), `tests/integration/conftest.py`, `tests/unit/{db,cron,gateway,agents,api,cli}/` |
-| Pre-commit hooks | `make install-hooks` → `.githooks/pre-commit` (`make all` incl. `format-all` + dashboard build) |
+| Pre-commit hooks | `make install-hooks` → `.githooks/pre-commit` (staged-path backend gate; dashboard format/build only when applicable) |
 | What is a Thread? | `infra/gateway/threads.py`, `infra/db/repos/threads.py` |
 | Workspace backend resolution | `infra/backend/resolver.py`, `infra/backend/adapter.py` |
 | Connectors & OAuth | `infra/connectors/catalog.json` (built-in metadata + i18n), `infra/connectors/`, `api/routers/connectors.py`; human list: `docs/connectors.md` |
@@ -462,9 +464,9 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 ## 10. Change workflow
 
 1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)). If the behavior belongs to a runtime library, change that repo (see [Runtime libraries](#runtime-libraries)).
-2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green (`make all` + dashboard build).
+2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green for the staged paths; it is not an unconditional full-suite or dashboard build.
 3. **Minimal implementation** — change only task-related files. Dashboard source is in `dashboard/`. Produce the static artifact in `src/octop/dashboard/` from a frontend environment when packaging or deployment is part of the task.
-4. **Verify** — follow [§1 local verification](#local-verification-is-a-smoke-test-not-the-full-suite). For `dashboard/` changes, run `cd dashboard && npx tsc -b` and a targeted regression when applicable. After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. CI runs the full release gate, including cross-platform coverage described in [§7](#7-key-patterns).
+4. **Verify** — follow [§1 local verification](#local-verification-is-a-smoke-test-not-the-full-suite). For `dashboard/` changes, choose one relevant smoke check (`cd dashboard && npx tsc -b`, a focused build, or one test file); do not imply all three ran. After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. CI runs the full release gate, including cross-platform coverage described in [§7](#7-key-patterns).
 5. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
 
 ### Branching & release
@@ -555,7 +557,10 @@ A requirement is Ready only when all of the following hold; otherwise it stays a
 ### 12.3 Definition of Done (DoD) — before merge
 
 1. Every acceptance entry touched by the change has a verdict — pass / fail / n/a with reason —
-   recorded in the PR description or the owning requirement doc.
+   recorded in the PR description or the owning requirement doc. A documentation-only change or
+   exploratory check must be labelled as such; it does not become a product acceptance result.
+   `fail` or `blocked` on a required check MUST NOT be merged as done. `n/a` is valid only when
+   the check genuinely does not apply and the reason is recorded; not run is never `pass`.
 2. At least one regression case exists for the changed behaviour: an automated test, or an explicit
    documented manual check when automation is not feasible.
 3. Local verification stayed a smoke test ([§1](#1-collaboration-principles)); the full suite is CI's job.

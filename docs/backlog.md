@@ -61,7 +61,7 @@
 
 ### B-001 · 停用素材的整单失败口径落地（第 25 条实现）
 
-**状态**：待实施（登记日期：2026-11-24）
+**状态**：待实施（登记日期：2026-11-24；代码与现有用例复核于 2026-11-24）
 **优先级**：P1 重要不紧急（适合夜间无人值守）
 **跟踪**：CNB issue [#24](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/24)
 **语义来源**：[product-video-multi-category-materials.md A8.1](./product-video-multi-category-materials.md) —— **行为契约只以 A8.1 为准，本条目不得另立口径**
@@ -78,6 +78,7 @@
 - `dashboard/src/pages/ProductVideoWizard/index.tsx`
 - `tests/unit/db/test_product_library_repo.py`、`tests/unit/api/test_product_library.py`
 - `dashboard/src/pages/ProductVideoWizard/index.test.tsx`
+- 回写：`docs/product-video-multi-category-materials.md`（需求复核记录）、`docs/eval/examples/product-video-multi-category.yaml`（PVQ-008）、本条目（状态/commit）
 
 **不在范围**：不改 `ProductResponse` / 快照结构（不做「部分成功」）；不改归属校验语义（他人素材仍 404）；不新增 API；不碰迁移、插件、桌面端其它模块；不顺手重构 `service.py`。
 
@@ -125,9 +126,9 @@ cd dashboard && npx tsc -b --pretty false
 
 **背景**：评测体系目前只有 `PVQ` 一个领域的样板（[examples/product-video-multi-category.yaml](./eval/examples/product-video-multi-category.yaml)）。规范已立但覆盖面不足，`PLB`（批量导入）与 `LLW`（桌面本机素材库）两个领域的 `must` 需求条目还没有对应的可执行任务，不做的后果是这两块需求永远只能靠人读文档验收。
 
-**范围**：仅新增/修改 `docs/eval/examples/` 下的 YAML 任务集文件与 `docs/eval/README.md` 的 §8.2 状态行；**不写代码、不改 CI**。
+**范围**：仅新增/修改 `docs/eval/examples/` 下的 YAML 任务集文件与 `docs/eval/README.md` 的 §8.2 状态行；必要时在对应需求文档补入任务 ID 反向链接；**不写代码、不改 CI**。
 
-**不在范围**：不改任何 `src/`、`dashboard/`、`tests/` 文件；不改需求文档；不实现校验脚本（那是 B-003）。
+**不在范围**：不改任何 `src/`、`dashboard/`、`tests/` 文件；不改变需求语义；不实现校验脚本（那是 B-003）。若反向链接缺失，完成 B-002 时可按需补入需求文档的任务 ID 引用。
 
 **前置条件**：读 `docs/eval/README.md` 全文（尤其是 §3 字段表、§4 判定红线、§6 领域前缀表）；读两份需求文档（`docs/product-image-batch-import.md`、`docs/design/video-production-workbench/local-library-wizard.md`）。
 
@@ -160,22 +161,22 @@ uv run python -c "import yaml,pathlib; [yaml.safe_load(p.read_text(encoding='utf
 
 **背景**：任务集目前靠人工维护，字段写错不会被拦下；PR 也不会按 `owner` 自动挑选受影响任务。
 
-**范围**：`tests/evals/` 下的校验脚本与任务集目录、CI workflow 的增量步骤。
+**范围（白名单）**：`tests/evals/` 下的校验脚本与任务集目录、pre-commit 对 `docs/eval/**` 变更的增量校验、CI workflow 的增量校验/选择步骤。
 
-**不在范围**：不改 `.github/workflows/ci.yml` 既有门禁的通过标准；不引入新的第三方依赖（脚本用标准库 + 已有的 `pyyaml`）；不改评测判定语义。
+**不在范围**：不改 `.github/workflows/ci.yml` 既有门禁的通过标准；不引入新的第三方依赖（脚本用标准库 + 已有的 `pyyaml`）；不改评测判定语义；不落地 E2/E3 之外的行为评测。
 
 **前置条件**：B-002 已完成；读 `docs/eval/README.md` §3 与 §5。
 
 **步骤**：
 1. 建 `tests/evals/validate_tasks.py`：校验必填字段、枚举值、id 唯一且不复用、`requirement` 指向的文档存在、`status: planned` 的任务不得出现在门禁集合。
-2. 把校验接进 pre-commit（仅在 `docs/eval/**` 变更时触发）与 CI。
-3. 实现按变更路径匹配 `owner` 前缀挑选任务的最小实现；匹配不到时跑 `smoke`。
+2. 明确白名单后分别接入：pre-commit 只做 `docs/eval/**` 变更时的格式/字段校验；CI 做任务选择并按明示配置执行受审命令，不把校验误写成已启用的行为门禁。
+3. 按 `docs/eval/README.md` §5 实现任务选择：覆盖 direct owner、共享配置/锁文件、任务集改动、未知代码四类变更；共享路径无法安全判定时跑受影响领域全集，无法识别领域时跑全量非 live；明确文档-only 时才可回退 `smoke`。
 
-**验收命令**：
+**验收命令**（只验证本条范围）：
 ```
 uv run python tests/evals/validate_tasks.py
 ```
-通过标准：故意写错的字段能被拦下（附一条自测用例）。
+通过标准：故意写错的字段能被拦下（附一条自测用例）；自测还必须证明零匹配命令不会因退出码 0 被判通过，并覆盖 direct owner、共享锁/配置、任务集改动、未知代码四类选择；实际接入 pre-commit/CI 的选择与路径须以仓库配置为准，不以“脚本可运行”冒充门禁已启用。
 
 **停止条件**：需要改动既有 CI 门禁的通过标准，或需要新增依赖 → 停，报告。
 

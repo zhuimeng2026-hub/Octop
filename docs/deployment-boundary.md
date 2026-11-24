@@ -21,9 +21,9 @@
 | 你的交付物 | `src/octop/dashboard/` 里的静态文件 | 运行中的 `octop.service` |
 
 **关键事实**：`src/octop/dashboard/**` 在 `.gitignore:83` 中被排除，产物**不入版本库**。
-后端环境通过 `git pull` 拿到的永远是后端源码，不是前端源码。因此"后端环境发现前端代码
-变化"在正常情况下**不可能发生**——如果你在后端环境看到了 `dashboard/` 的变化，说明你
-处在共享工作区里，此时你的身份是后端，**正确动作依然是 NO-OP**（见 §2）。
+共享整仓 checkout 中，`git pull` 也会同步受跟踪的 `dashboard/` 前端源码；只有
+`src/octop/dashboard/**` 构建产物被 gitignore，不会随 `git pull` 传输。后端环境发现前端源码变化时，
+仍按本文边界执行 **NO-OP**，不在后端构建；如需上线，交由前端环境构建并交接产物（见 §2）。
 
 **本机（`/opt/Octop`，后端环境）的具体形态**：`dashboard/` 源码与 `src/octop/dashboard/`
 产物同处一棵树（共享工作区）；Node 装在 `/root/.nvm/` 下但**不在默认 PATH**。这些都
@@ -49,7 +49,7 @@
 |---|---|
 | **拥有** | `src/octop/` 后端源码、`config.json`、`octop.service`、产物目录的**运行副本** |
 | **产出** | 运行中的服务（只读托管 `src/octop/dashboard/`） |
-| **合法动作** | `git pull` 后 `systemctl restart octop.service`（editable 安装无需重装）；必要时重同步产物 |
+| **合法动作** | 按发布流程取得后端源码（生产只从 `main` 的 `v*` tag，见 `AGENTS.md` §10），再 `systemctl restart octop.service`（editable 安装无需重装）；必要时从前端环境重同步产物 |
 | **NEVER** | 运行 `npm` / `npx` / `vite` / `npm run build` / `make build-frontend`；install Node；手改产物目录 |
 
 ---

@@ -16,12 +16,13 @@ tasks:
     type: automated
     judge:
       kind: test
+      cwd: dashboard
       command: npx vitest run src/pages/ProductVideoWizard/index.test.tsx -t "loads and submits scene assets from multiple product categories"
       expect: exit_code == 0
     evidence: []
     regression: smoke
     blocking: true
-    notes: 覆盖验收条目 2、3、4、10、11、12。
+    notes: 覆盖验收条目 2、3、4、11；未覆盖加载失败重试（10）或带入选择（12）。
 
   - id: PVQ-002
     title: 切换主产品后，新主产品的画面重新默认选中
@@ -32,6 +33,7 @@ tasks:
     type: automated
     judge:
       kind: test
+      cwd: dashboard
       command: npx vitest run src/pages/ProductVideoWizard/index.test.tsx -t "selects the new primary product's frames after switching the primary product"
       expect: exit_code == 0
     evidence: []
@@ -41,19 +43,20 @@ tasks:
 
   - id: PVQ-003
     title: 不继承他人路由带入的选择，已有项目优先
-    requirement: docs/product-video-multi-category-materials.md#a72-权限与数据隔离
+    requirement: docs/product-video-multi-category-materials.md#a71-分类选择与素材勾选
     layer: L4
     severity: must
     owner: dashboard/src/pages/ProductVideoWizard
     type: automated
     judge:
       kind: test
+      cwd: dashboard
       command: npx vitest run src/pages/ProductVideoWizard/index.test.tsx -t "does not inherit another owner's route selection and gives an existing project precedence"
       expect: exit_code == 0
     evidence: []
     regression: full
     blocking: true
-    notes: 覆盖验收条目 8、19、20。
+    notes: 只验证不继承另一 owner 的 route state 与已有项目优先；未覆盖后端隔离条目 8、19、20。
 
   - id: PVQ-004
     title: 切换产品后忽略过期素材响应
@@ -64,31 +67,32 @@ tasks:
     type: automated
     judge:
       kind: test
+      cwd: dashboard
       command: npx vitest run src/pages/ProductVideoWizard/index.test.tsx -t "ignores a late asset response after switching products"
       expect: exit_code == 0
     evidence: []
     regression: full
     blocking: true
-    notes: 覆盖验收条目 35。
+    notes: 仅验证忽略过期响应；未验证实际取消或去重（验收条目 35）。
 
   - id: PVQ-005
-    title: 后端快照接受跨产品素材，但拒绝他人素材（整单失败）
-    requirement: docs/product-video-multi-category-materials.md#a72-权限与数据隔离
+    title: 后端快照接受跨产品素材
+    requirement: docs/product-video-multi-category-materials.md#a71-分类选择与素材勾选
     layer: L4
     severity: must
     owner: src/octop/infra/product_library
     type: automated
     judge:
       kind: test
-      command: uv run pytest tests/unit/db/test_product_library_repo.py -q -k "multiple_products or owner_isolation"
+      command: uv run pytest tests/unit/db/test_product_library_repo.py -q -k "test_snapshot_accepts_scene_assets_from_multiple_products"
       expect: exit_code == 0
     evidence: []
     regression: full
     blocking: true
     notes: >
-      覆盖验收条目 5、15、16、17、21。对应用例
-      test_snapshot_accepts_scene_assets_from_multiple_products /
-      test_owner_isolation_and_public_ids。
+      仅覆盖 A7.1 第 5 条，对应用例
+      test_snapshot_accepts_scene_assets_from_multiple_products。跨用户素材拒绝与整单
+      原子失败没有被该用例断言，须由后续专门用例覆盖。
 
   - id: PVQ-006
     title: 主产品在多选器中不可移除，非主产品素材显示来源产品名
@@ -100,7 +104,7 @@ tasks:
     judge:
       kind: steps
       steps:
-        - 登录任意账号，进入 产品素材库 → 制作视频
+        - 使用隔离的测试账号和测试素材，进入 产品素材库 → 制作视频
         - 确认「素材分类」多选框中主产品默认选中且无法取消（尝试取消应无反应或被拒绝）
         - 追加第二个产品分类，确认其素材卡片上出现来源产品名称
         - 对同一份素材库再走一遍，确认同名文件可凭来源产品名区分
@@ -108,7 +112,7 @@ tasks:
     evidence: []
     regression: nightly
     blocking: false
-    notes: 覆盖验收条目 9、14。人工任务，每次结论需记录评测人、日期与 commit。
+    notes: 覆盖验收条目 9、14。不得使用真实用户数据；人工任务，每次结论需记录评测人、日期与 commit。
 
   - id: PVQ-007
     title: 数百条素材时，分类切换与提交仍可交互
@@ -127,8 +131,8 @@ tasks:
     blocking: false
     status: planned
     notes: >
-      覆盖验收条目 33、34。**当前缺少可重复的样本与测量脚本**，任务处于「待补齐」状态：
-      需要一个种子数据集生成脚本 + 一次浏览器测量，否则该条无法判定。
+      仅涉及验收条目 34。合并去重（33）由现有结构断言覆盖；当前仍缺少可重复的样本
+      与测量脚本：需要一个种子数据集生成脚本 + 一次浏览器测量，否则该条无法判定。
 
   - id: PVQ-008
     title: 选中的素材在创建前被停用时，整单失败并点名被停用的文件

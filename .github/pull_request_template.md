@@ -18,10 +18,10 @@
 
 ## Test plan
 
-<!-- How did you verify this? Include commands run (e.g. `make all`). -->
+<!-- How did you verify this? Record the focused commands actually run and their results; CI owns the full gate. -->
 
-- [ ] `make all` passes locally
-- [ ] Added/updated tests
+- [ ] Focused verification recorded above (UI: screenshot/recording; behavior: regression; docs: diff/link check; otherwise explain why not applicable)
+- [ ] Added/updated a behavior regression when applicable, or recorded why testing is not applicable
 
 ## Checklist
 

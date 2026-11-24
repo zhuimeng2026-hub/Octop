@@ -20,6 +20,8 @@ PRD 里的「验收标准」是**给人读的**；评测任务集是**给机器�
 
 适用边界：评测**不替代**单元测试。单元测试断言函数，评测断言**需求**——多步流程、权限边界、文案、跨层回归，以及任何 LLM 在回路里的行为。
 
+本项目的 PR 任务默认使用固定 fixture、模拟 provider 或确定性快照断言工具调用、权限边界和结构化输出；认证与工具权限不得只靠 LLM 评分。随机性的真实模型任务只有在 E4 明示配置后才能启用，并须记录样本、模型与评分量表版本、通过阈值和配额。
+
 ---
 
 ## 2. 评测分层
@@ -53,15 +55,15 @@ PRD 里的「验收标准」是**给人读的**；评测任务集是**给机器�
 | `severity` | enum | `must` / `should` / `may` —— 对应需求的 MUST / SHOULD / MAY |
 | `owner` | string | 该行为的代码归属路径（便于定位回归） |
 | `type` | enum | `automated` / `manual` / `visual` / `perf` / `rubric` |
-| `judge` | object | 判定器，见 §3.1 |
+| `judge` | object | 判定器，见 §3.1；可选 `cwd` 指定执行工作目录（默认仓库根目录） |
 | `evidence` | array | 证据产物（人工任务必须含截图或日志） |
 | `regression` | enum | `smoke` / `full` / `nightly` —— 该任务进哪套集合 |
 | `blocking` | bool | 失败是否阻断合并 |
-| `status` | enum（可选，默认 `active`） | `planned` / `active` / `deprecated` —— `planned` = 口径已定但**尚未实施**，`deprecated` = 已废弃但保留文件 |
+| `status` | enum（可选，默认 `active`） | 唯一状态字段：`planned` / `active` / `deprecated`；`planned` = 口径已定但**尚未实施**，`deprecated` = 已废弃但保留文件 |
 | `live` | bool（可选） | 是否需要真实外部调用 / 真实模型 |
 | `notes` | string（可选） | 已知限制、跳过理由、后续计划 |
 
-> `status: planned` 的任务**不得**进入 CI 门禁，也**不得**被当作已通过；它表示需求口径已经定下、但实现尚未落地。任务转为 `active` 的那一刻起，才按 §5 参与集合划分与阻断判定。
+> `status: planned` 的任务**不得**进入 CI 门禁，也**不得**被当作已通过；它表示需求口径已经定下、但实现尚未落地。`status: active` 只表示任务可执行，不表示已经接入 CI；是否进入 pre-commit、PR 或 nightly 由 §5 的实际配置决定。废弃任务只使用 `status: deprecated`，不得另加第二个状态字段。
 
 ### 3.1 判定器（`judge`）
 
@@ -71,6 +73,7 @@ PRD 里的「验收标准」是**给人读的**；评测任务集是**给机器�
 # automated：命令 + 期望
 judge:
   kind: test
+  cwd: dashboard
   command: npx vitest run src/pages/ProductVideoWizard/index.test.tsx -t "loads and submits scene assets from multiple product categories"
   expect: exit_code == 0
 
@@ -81,6 +84,12 @@ judge:
     - 用账号 A 打开 /product-library，创建产品「主产品」并上传一张 scene 图
     - 追加产品「副产品」，观察画面列表出现其素材
   evidence_required: [screenshot, log]
+
+# visual：固定素材/快照 + 可复用的视觉检查步骤；不能只写“看起来对”
+judge:
+  kind: visual
+  steps: [打开固定快照, 按检查项逐项比对并截图]
+  reference: docs/eval/fixtures/<name>
 
 # perf：阈值断言
 judge:
@@ -105,11 +114,11 @@ judge:
 
 ## 4. 判定规则（红线）
 
-1. **可判定性**：每条断言必须能被复述为布尔命题。不可判定的措辞（「体验流畅」「基本可用」）**不得**写进任务集，应改写为阈值或拆条。
+1. **可判定性**：每条断言必须能被复述为布尔命题。不可判定的措辞（「体验流畅」「基本可用」）**不得**写进任务集，应改写为阈值或拆条。任务执行器必须排除零匹配的命令/测试：命令退出码为 0 但没有收集到目标用例时，不得判为通过。
 2. **证据强制**：`type: manual` / `visual` / `rubric` 的任务**必须**留下证据（截图、日志、录屏之一），并在结论里记录**评测人、日期、commit**。无证据的走查结论无效。
-3. **绑定 commit**：任何结论必须绑定具体 commit；未绑定视为未执行。
+3. **绑定 commit**：任何结论必须绑定具体 commit，并说明工作树是否有未提交改动、运行环境、证据路径与实际结果；未绑定或只写预期结果视为未执行。
 4. **跳过需说明**：任务被跳过时，必须记录原因（环境不具备、依赖未装、需求未实现）与后续计划，不得静默跳过。
-5. **失败分类**：结论必须归入以下之一，便于分流：
+5. **失败分类**：仅当结论为失败时，才归入以下之一，便于分流；状态另记为 `pass` / `fail` / `n/a` / `blocked`（或既有词表中含义等价的词），未运行不得写 `pass`：
    - `defect` 功能缺陷 → 进缺陷流程
    - `wording` 文案 / i18n 问题 → 回 `dashboard/src/locales` 或 `src/octop/i18n`
    - `perf` 性能不达标 → 进性能议题
@@ -124,15 +133,16 @@ judge:
 
 | 集合 | 内容 | 本地 | PR | 夜间 | 发版前 |
 |---|---|---|---|---|---|
-| `smoke` | 关键路径的 `must` 任务，L0 + 少量 L3/L4 | ✅（pre-commit / 定向命令） | ✅ | ✅ | ✅ |
-| `full` | 该领域全部任务 | 按需 | ✅ | ✅ | ✅ |
-| `nightly` | 全量任务，含 `live: true` 与 L4 rubric 任务 | ❌ | ❌ | ✅ | ✅ |
+| `smoke` | 关键路径的 `must` 任务，L0 + 少量 L3/L4 | 按需 | 由已启用配置决定 | 由已启用配置决定 | ✅ |
+| `full` | 该领域全部任务 | 按需 | 由已启用配置决定 | 由已启用配置决定 | ✅ |
+| `nightly` | 全量任务，含 `live: true` 与 L4 rubric 任务 | ❌ | ❌ | 需明示执行器配置 | ✅ |
 
 接入约定：
 
-- PR 门禁只跑**受影响**任务集：按变更路径 → `owner` 前缀匹配挑选任务；匹配不到时跑 `smoke`。
-- 夜间跑全量，含需要真实模型的 `live` 任务。
-- 发版前必须 `full` 全绿；`nightly` 失败不得静默——进不稳定用例清单并在 PR 里说明。
+- PR 门禁（目标态）按变更选择任务：direct owner 变更跑对应任务；公共配置/锁文件变更覆盖共享依赖；任务集改动校验受影响集合；未知代码或无法安全判定共享路径时跑受影响领域全集，无法识别领域时跑全量非 live。只有明确文档-only 才可回退 `smoke`。该规则在执行器接入前是规划，不得写成当前已启用的门禁。
+- 夜间由明示配置的执行器按本仓库受审命令运行全量，含需要真实模型的 `live` 任务；没有配置就不能宣称已跑夜间。
+- 目标态发版前需按明示配置运行 `full`；`planned` / `deprecated`、人工任务和缺少真实凭据的 live 任务不得被调度器吞掉或虚标通过。当前未接入执行器时，不得宣称 `full` 已绿；失败或 blocked 不得合入为完成，`nightly` 失败不得静默。
+- 现有通用 CI 单独运行同仓 live pytest 作业，与新任务集分开；凭据缺失时具体测试可 skip，不能把“未运行/跳过”写成行为评测通过。非阻断与未跑是不同状态，均须如实记录。
 - CI 失败日志必须完整落到产物（artifact），不得只留最后一行。
 
 ---
@@ -150,6 +160,8 @@ tests/evals/                     # 可执行任务集（未来落地位置）
   evidence/                      # 人工评测证据（仅小体积截图入库，大文件走 CI artifact）
 ```
 
+YAML 顶层必须是 `domain`、`requirement_doc`、`tasks`；`tasks` 为列表。任务执行器默认在仓库根目录工作；前端命令必须在 `judge.cwd: dashboard` 下执行，后端命令默认在仓库根目录。执行记录至少包含 `commit`、工作树未提交说明、环境、证据和实际结果。
+
 领域前缀（`id` 的 `DOMAIN`）：
 
 | 前缀 | 领域 | 归属文档 |
@@ -166,7 +178,7 @@ tests/evals/                     # 可执行任务集（未来落地位置）
 
 - 目录与文件名 kebab-case；`id` 大写前缀 + 三位序号。
 - 任务**新增即注册**：同步在 `docs/README.md` 之外的领域需求文档里留引用（需求条目 → 任务 id）。
-- 任务 id **不复用**：删除的任务标记 `deprecated: true` 保留文件，不物理删除。
+- 任务 id **不复用**：删除的任务保留文件并改为 `status: deprecated`，不物理删除。
 
 ---
 
@@ -194,7 +206,7 @@ tests/evals/                     # 可执行任务集（未来落地位置）
 | L1 | ✅ 完整 | `tests/unit/**` |
 | L2 | ✅ 流程已规定 | `AGENTS.md` §1「本地验证是冒烟」 |
 | L3 | ⚠️ 部分 | `tests/integration/**`、浏览器冒烟脚本、桌面桥 Go 测试 |
-| L4 | ⚠️ 规范已立，任务集待补齐 | 格式见本文档 §3；样板任务集 [examples/product-video-multi-category.yaml](./examples/product-video-multi-category.yaml)（PVQ 8 条）；CI 接入与证据归档未落地 |
+| L4 | ⚠️ 规范与 PVQ 样板已存在，执行器/CI 接入未启用 | 格式见本文档 §3；样板任务集 [examples/product-video-multi-category.yaml](./examples/product-video-multi-category.yaml)（PVQ 8 条）；校验、执行器、门禁与证据归档仍待 B-002/B-003 |
 
 **已知缺口**：
 

@@ -10,7 +10,7 @@ Thank you for your interest in contributing! Octop is the control-plane applicat
 git clone https://github.com/TencentCloud/Octop.git octop
 cd octop
 make install          # backend dev dependencies
-make install-hooks    # once per clone: pre-commit runs make all + dashboard build
+make install-hooks    # once per clone: staged-path pre-commit gate
 make all              # format-all + backend lint + typecheck + test (ship bar)
 ```
 
@@ -28,7 +28,7 @@ make check-all        # full stack quality gate
 | Command | Description |
 |---------|-------------|
 | `make install` | Install Python dev dependencies |
-| `make install-hooks` | Point git at `.githooks` (pre-commit: `make all` + dashboard build) |
+| `make install-hooks` | Point git at `.githooks` (pre-commit checks staged paths; dashboard format/build only when applicable) |
 | `make all` | `format-all` + backend lint + typecheck + test |
 | `make check-all` | Full stack quality gate |
 | `make dev` | Start frontend + backend dev servers |
@@ -60,7 +60,7 @@ hotfix/* ──PR──► main (+ tag) and ──PR──► develop
 1. Fork (if needed) and create a feature branch from **`develop`**
 2. Open the PR with base **`develop`** (not `main`, unless it is a release or hotfix)
 3. Add or update tests for behavior changes — CI runs on **Linux and Windows**; follow the cross-platform rules in [AGENTS.md](AGENTS.md) §7 (prefer `tmp_path` / `pathlib`, `fake_bin_path` for mocked binaries, `posix_only` for Unix-only cases)
-4. Ensure `make install-hooks` is enabled locally; run `make all` (backend) or `make check-all` (full stack) before submitting — pre-commit enforces the same gate
+4. Ensure `make install-hooks` is enabled locally; run the smallest focused check for the changed area before submitting. Record the actual command and let CI run the release gate.
 5. Update `CHANGELOG.md` when user-facing behavior changes
 6. Open a PR with a clear description and test plan
 
@@ -74,7 +74,7 @@ To ensure code quality and collaboration efficiency, please observe the followin
 
 #### 1. 📸 Provide visual proof (screenshots / recordings)
 
-Always attach screenshots, whether in the PR description or a comment.
+Attach screenshots or recordings when the change affects visible UI; otherwise provide the evidence appropriate to the affected behavior.
 
 - Let reviewers **see the "human"** — prove the code was manually reviewed and crafted with care.
 - UI changes must include interface screenshots.
@@ -85,14 +85,14 @@ Always attach screenshots, whether in the PR description or a comment.
 
 #### 2. 🧪 Complete test cases & passing CI
 
-**Every PR must include test cases, and they must be complete.**
+**Every behavior change PR must include or update an appropriate regression case, and explain when a test is not applicable.** Documentation-only and exploratory PRs must record their focused checks instead.
 
 - ✅ New feature → add the corresponding unit / integration tests.
 - ✅ Bug fix → add a regression test to prevent recurrence.
 - ✅ Adequate coverage → core logic is well covered.
 - ✅ **All CI workflows must pass** → don't expect reviewers to fix failing CI for you.
 
-> ⚠️ Run `npm test` / `pytest` / `go test` locally before pushing to remote.
+> ⚠️ Do not imply full local suites were run. Record the focused command(s) actually run; CI owns the full matrix.
 
 #### 3. 🔄 Collaborating with AI: confirm shared understanding
 
@@ -174,7 +174,7 @@ Branch from `main` → PR into `main` (tag if shipping a patch) → PR into `dev
 git clone https://github.com/TencentCloud/Octop.git octop
 cd octop
 make install
-make install-hooks    # 每个 clone 执行一次：提交前跑 make all + 前端 build
+make install-hooks    # 每个 clone 执行一次：提交前按暂存路径运行门禁
 make all              # format-all + 后端 lint / typecheck / test
 ```
 
@@ -206,7 +206,7 @@ make check-all        # 全栈质量门禁
 1. 从 **`develop`** 创建特性分支
 2. PR 的 base 选 **`develop`**（release / hotfix 除外）
 3. 补充测试（CI 同时跑 **Linux / Windows**，路径与假二进制遵循 [AGENTS.md](AGENTS.md) §7）
-4. 本地执行过 `make install-hooks`；提交前 `make all` 或 `make check-all` 必须绿（hooks 会强制执行）
+4. 本地执行过 `make install-hooks`；按影响范围运行最小定向检查，并记录实际命令与结果；完整门禁由 CI 执行。
 5. 用户可见变更时更新 `CHANGELOG.md`
 6. 提交 Pull Request
 
@@ -220,7 +220,7 @@ make check-all        # 全栈质量门禁
 
 #### 1. 📸 提供视觉证明（截图/录屏）
 
-**必须贴截图**，无论放在 PR 描述中还是评论里。
+UI 变更必须贴截图或录屏；非 UI 变更按影响提供行为回归、文档差异/链接校验或其他适当证据。
 
 - 让 reviewer **看到"人"** —— 证明这段代码是经过人工检查、用心完成的
 - UI 变更必须有界面截图
@@ -231,7 +231,7 @@ make check-all        # 全栈质量门禁
 
 #### 2. 🧪 测试用例完整 & CI 通过
 
-**所有 PR 必须包含测试用例，且测试用例必须完整。**
+**涉及行为变更的 PR 必须新增或更新适当的回归用例，并说明不适用测试的理由。** 纯文档或探索性 PR 应记录实际定向检查。
 
 要求：
 
@@ -240,7 +240,7 @@ make check-all        # 全栈质量门禁
 - ✅ 覆盖率达标 → 核心逻辑测试覆盖充分
 - ✅ **所有 CI Workflow 必须通过** → 不要期望 reviewer 去帮你 fix 失败的 CI
 
-> ⚠️ 提交前先在本地运行 `npm test` / `pytest` / `go test` 等，确认无误后再推送到远程。
+> ⚠️ 不要把未运行的全量套件写成通过。提交前记录实际运行的定向命令与结果，完整门禁由 CI 执行。
 
 #### 3. 🔄 与 AI 协作：确认理解一致
 
