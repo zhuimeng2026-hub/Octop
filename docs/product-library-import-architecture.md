@@ -85,7 +85,7 @@
 | 验证项 | 结果 |
 |---|---|
 | 服务状态 | ✅ `octop.service` active；`/videogen/api/health` → 200 |
-| 代码版本 | `ea0c24c5 wip: 备份线上工作树在途改动`（与本地 develop `6205ce99` 不同，为线上在途备份） |
+| 代码版本 | `ea0c24c5 wip: 备份线上工作树在途改动`（线上在途快照，存于分支 `wip/product-library-batch-import`；与本地 develop `6205ce99` 不同。快照用途与清理判据见 [wip-branch-workflow.md](./wip-branch-workflow.md)） |
 | `batch_import.py` | ✅ 存在（13974 B，Nov 18 20:55） |
 | `/imports/analyze` 路由 | ✅ 401（非 404），已注册 |
 | `/imports/commit` 路由 | ✅ 401（非 404），已注册 |

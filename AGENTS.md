@@ -489,6 +489,7 @@ hotfix/* ──PR──► main (+ tag) and ──PR──► develop
 - Do **not** push a production tag from a release/feature branch before it is on `main`.
 - Hotfix: branch from `main`, PR to `main` (and tag if shipping), then PR into `develop`.
 - Day-to-day feature work: branch from `develop`, open PR **into `develop`** (not `main`).
+- A worktree with uncommitted in-flight work is snapshotted onto `wip/<topic>` — never merged wholesale into `develop`; replay item by item. Rules and the delete criteria: `docs/wip-branch-workflow.md`.
 - Human detail: `CONTRIBUTING.md`. Agent publish flow: `.cursor/skills/publish`.
 
 ## 11. Communication
@@ -588,6 +589,7 @@ Which document governs what, and what wins when two disagree.
 | Requirement wording, DoR, DoD | `AGENTS.md` §12 | binding for the whole change lifecycle |
 | Eval format, layers, judging, CI wiring | `docs/eval/README.md` | normative |
 | Engineering backlog (P1 = unattended night-batch work) | `docs/backlog.md` | normative; an entry owns its scope / steps / acceptance / stop conditions |
+| WIP branch (worktree snapshot) workflow | `docs/wip-branch-workflow.md` | normative; when to snapshot, how to replay, when it may be deleted |
 | Human or environment-specific todos | `docs/todo.md` | one landing point per todo — see `docs/README.md` §文档维护规范 rule 7 |
 | Document placement, index, single source of truth | `docs/README.md` §文档维护规范 | a new doc must be registered or merged |
 | Architecture rationale | `docs/adr/`, `docs/architecture.md` | ADR wins over prose |
