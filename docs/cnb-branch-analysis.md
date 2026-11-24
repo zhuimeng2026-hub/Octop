@@ -120,23 +120,45 @@ tail -50 /opt/Octop/scripts/logs/cnb-branch-analysis.log
 ### 4.1 `git ls-remote cnb` 会失败——凭据匹配口径
 
 仓库 `.git/config` 里设了 `credential.usehttppath=true`，而 `~/.git-credentials` 中
-cnb.cool 只有 **host 级**条目（没有 `mengxa.com/Octop.git` 这个 path 级条目）。
+cnb.cool 当时只有 **host 级**条目（没有 `mengxa.com/Octop.git` 这个 path 级条目）。
 两者一撞，`git ls-remote --heads cnb` 直接报：
 
 ```
 fatal: could not read Username for 'https://cnb.cool/mengxa.com/Octop.git'
 ```
 
-解法：命令行 `-c credential.useHttpPath=false` 覆盖（命令行优先于文件配置），
-命中 host 级凭据。
+当时用 `-c credential.useHttpPath=false` 覆盖（命令行优先于文件配置）命中 host 级凭据，
+但那个「host 级」正是 4.2 折叠事故的引信——**host 级凭据被写回去时，path 级条目就没了**。
+
+现在的解法（2026-11-25 起）：保持 `useHttpPath=true`，并保证 `~/.git-credentials` 里
+**path 级条目存在**（`/opt/envctl/credentials/restore-git-creds.sh` 负责重建，共 11 条，
+其中 `https://cnb:…@cnb.cool/mengxa.com/Octop.git` 是 Octop 专用 token）。
+path 级匹配取到的凭据写回时也带 path，不会牵连同 host 的兄弟条目。
 
 ### 4.2 `git ls-remote` 会改写 `~/.git-credentials`
 
 credential store 在认证成功后会把规范化 URL 写回去，**同 host 的另一条 path 级
-条目会被折叠掉**（实测 6 条变 5 条，`cnb-api` 那条 `WeChatBridge` 条目可能消失）。
+条目会被折叠掉**（实测 11 条变 9 条，`cnb.cool` 上 `username=cnb` 的
+`mengxa.com/Octop.git` 与 `mengxa.com/WeChatBridge.git` 两条一起消失）。
 
-解法：脚本把凭据**复制一份到临时文件**，用 `GIT_CREDENTIAL_STORE` 指过去，
-真实凭据文件全程只读。跑完删临时目录。
+解法：脚本把凭据**复制一份到临时文件**，用命令行 helper 指过去，真实凭据文件全程只读。跑完删临时目录。
+
+⚠️ **本机 git 2.34.1 上 `GIT_CREDENTIAL_STORE` 环境变量无效**（`git credential-store store`
+照样写 `$HOME/.git-credentials`），所以光设环境变量不构成隔离。真正生效的是三件事一起做：
+
+```
+-c credential.helper=                          # 空值 → 清空整条 helper 链
+-c credential.helper=store --file=<临时副本>    # 只读写这份副本
+-c credential.useHttpPath=true                  # path 级匹配，写回带 path，不折叠兄弟条目
+```
+
+第一步不能省：`credential approve` 会写**所有**已配置的 helper，全局那个无参数的
+`store`（指向真实 `~/.git-credentials`）若还在链上，照样被写。
+
+2026-11-21 ~ 11-25 连续五晚体检报「path 级 `cnb.cool/mengxa.com/Octop.git` 缺失」，
+根因就是这里：脚本带着 `-c credential.useHttpPath=false` 跑，取到 host 级凭据后
+按 `credential-store` 的语义（写回时删掉同 protocol+host+username 的全部条目、忽略 path）
+把两条 path 级条目一起吞掉 —— 每夜 01:30 自己折叠自己，03:10 体检再自愈。2026-11-25 已修。
 
 ### 4.3 免费通道有两种限流
 

@@ -74,17 +74,26 @@ def now_iso() -> str:
 
 
 class Git:
-    """带隔离 credential store 的 git 封装。
+    """带隔离 credential store 的 git 封装（本机 git 2.34.1 实测）。
 
-    两个必须绕开的坑（实测于本机 /opt/Octop）：
+    三个必须绕开的坑，三个坑都真实咬过：
 
-    1. 仓库级 .git/config 设了 credential.usehttppath=true，而 ~/.git-credentials
-       里 cnb.cool 只有 host 级条目（没有 mengxa.com/Octop.git 这个 path 级条目），
-       照默认配置跑 `git ls-remote cnb` 会直接报 "could not read Username"。
-       解法：命令行 -c credential.useHttpPath=false 覆盖（命令行优先于文件配置）。
-    2. `git ls-remote` 成功后 git 会把规范化 URL 写回 ~/.git-credentials，
-       同 host 的另一条 path 级条目会被折叠掉（实测 6 条变 5 条）。
-       解法：复制一份凭据到临时文件，用 GIT_CREDENTIAL_STORE 指过去，真实文件全程不动。
+    1. `GIT_CREDENTIAL_STORE` 环境变量在这个 git 上**完全无效**：
+       `GIT_CREDENTIAL_STORE=/tmp/x git credential-store store` 照样写 `$HOME/.git-credentials`。
+       所以隔离只能靠命令行 `-c credential.helper="store --file=<副本>"`。
+    2. `credential approve` 会写**所有**已配置的 helper —— 光在后面挂 `--file=` 不够，
+       全局那个无参数的 `store` 排在前面照样把规范化 URL 写回真实 `~/.git-credentials`。
+       必须先用一个空值的 `credential.helper=` 把整条 helper 链清空，再挂副本。
+    3. `credential.useHttpPath=true` 时按 path 级精确匹配；path 带前导斜杠（`git fill`
+       生成的 `path=/mengxa.com/Octop.git`）匹配不到 → 报 "could not read Username"。
+       而 `useHttpPath=false`（host 级匹配）取到凭据后会**写回一条 host 级条目**，
+       把同 host 同 username 的所有 path 级条目折叠掉 —— 实测 11 条变 9 条
+       （`cnb.cool` 上 `username=cnb` 的 Octop / WeChatBridge 两条 path 级被吞）。
+       这是 2026-11-21 ~ 11-25 连续五晚凭据体检报「path 级缺失」的根因，
+       每夜 01:30 这个任务自己折叠自己、03:10 体检再自愈。
+
+    最终形态：空 helper 清链 + `store --file=<副本>` + `useHttpPath=true`，
+    读写都只落在副本上，真实 `~/.git-credentials` 全程不动。
     """
 
     def __init__(self, repo_dir: str):
@@ -98,16 +107,23 @@ class Git:
             open(self._store, "w").close()
         os.chmod(self._store, 0o600)
         self.env = os.environ.copy()
+        # GIT_CREDENTIAL_STORE 在本机 git 上无效，但设了也无害；留着是给未来 git 版本兜底。
         self.env["GIT_CREDENTIAL_STORE"] = self._store
         self.env["GIT_TERMINAL_PROMPT"] = "0"
         self.env["GIT_ASKPASS"] = "echo"
         self.env.pop("GIT_DIR", None)
+        # 命令行优先于文件配置，仓库级 .git/config 里的 useHttpPath=true 会被这三条覆盖成同一语义
+        self._cred_args = [
+            "-c", "credential.helper=",                              # 清空 helper 链（含全局 store）
+            "-c", f"credential.helper=store --file={self._store}",    # 只读写这份副本
+            "-c", "credential.useHttpPath=true",                      # path 级匹配，取到凭据后不会写回 host 级
+        ]
 
     def close(self) -> None:
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def run(self, args: list[str], timeout: int = 180) -> tuple[int, str, str]:
-        cmd = ["git", "-C", self.repo_dir, "-c", "credential.useHttpPath=false"] + args
+        cmd = ["git", "-C", self.repo_dir] + self._cred_args + args
         try:
             p = subprocess.run(
                 cmd,

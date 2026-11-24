@@ -17,7 +17,8 @@
 # 做什么：
 #   1. 检查真实 store 里本仓库需要的条目在不在（只读）
 #   2. 用【隔离副本】跑 ls-remote 验证各 https 远端真的能通
-#      （隔离副本会被 git 改写，真实 store 不会 —— 坑 1）
+#      （隔离副本会被 git 改写，真实 store 不会 —— 坑 1；
+#      要真的不碰真实 store，必须用空 credential.helper= 清空 helper 链，见 verify_remote）
 #   3. 缺条目 / 远端不通 → 调用 /opt/envctl/credentials/restore-git-creds.sh 重写并复验
 #
 # 退出码：0 = 一切正常；1 = 原本有问题、已修复；2 = 仍有问题（需人工看日志）
@@ -107,7 +108,12 @@ chmod 600 "$ISO" 2>/dev/null
 
 verify_remote() {
     local label="$1" url="$2" mode="$3" out rc
-    local -a cfg=(-c "credential.helper=store --file=$ISO")
+    # 第一条空的 credential.helper 必须有：credential approve 会写【所有】已配置的 helper，
+    # 而全局 ~/.gitconfig 里的 credential.helper=store 指向真实 ~/.git-credentials。
+    # 不清链的话，git 认证成功后会把规范化 URL 同时写回真实 store（实测 2026-11-25：
+    # 隔离副本验证完，真实 store 的条目被重排），一旦这次是 host 级匹配就会折叠 path 级条目。
+    # 写法同 cnb_branch_analysis.py：空值清链 → 只挂 --file=<副本>。
+    local -a cfg=(-c "credential.helper=" -c "credential.helper=store --file=$ISO")
     if [ "$mode" = "path" ]; then
         cfg+=(-c credential.useHttpPath=true)
     else
