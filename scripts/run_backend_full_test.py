@@ -796,6 +796,9 @@ def _eval_module() -> Any | None:
         if spec is None or spec.loader is None:
             raise ImportError(f"无法加载 {path}")
         module = importlib.util.module_from_spec(spec)
+        # 必须先登记进 sys.modules：模块里有 @dataclass，dataclasses 会回查
+        # sys.modules[cls.__module__]，没登记会直接抛 AttributeError。
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module
     except Exception as exc:  # noqa: BLE001 — 评测是增量阶段，挂掉不影响主结论
