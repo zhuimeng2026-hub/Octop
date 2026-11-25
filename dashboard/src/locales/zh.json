@@ -8579,6 +8579,8 @@
       "confirm": "确认渲染",
       "result": "查看成片"
     },
+    "mainProduct": "主产品（默认标题和卖点）",
+    "materialSources": "素材来源分类（可多选）",
     "inbox": "未归档素材",
     "selectedCount": "已选 {{count}} 张",
     "noMaterials": "这里还没有素材，请先导入图片。",

@@ -5,7 +5,7 @@
 - 目标分支：`feat/video-production-workbench`（从 `develop` 创建，PR 回 `develop`；见 `AGENTS.md` §10 分支与发布）
 - 设计依据：`docs/design/product-video-wizard/README.md`、`docs/product-material-library.md`、`docs/backend-ai-storyboard-mvp.md`、`docs/remotion-video-pipeline.md`
 - 现有落点：`dashboard/src/pages/ProductVideoWizard/index.tsx`、`dashboard/src/pages/LocalVideoWizard/index.tsx`、`brief.ts`，桌面本地渲染桥、后端 product-library storyboard API、Remotion 本地渲染器
-- 兄弟文档：桌面端本机素材库与本机向导见 [local-library-wizard.md](./local-library-wizard.md)
+- 规格关系：本文是[总 PRD §3.2](../../PRD.md#32-素材与视频专用应用核心)引用的视频制作权威规格，适用于桌面精简模式。桌面本机数据边界与早期向导接入记录见 [local-library-wizard.md](./local-library-wizard.md)。
 - 设计角色：高层产品/交互设计；实施建议分配给低成本编码模型，但不得把设计稿或任务清单视作已实现
 
 ## 0.1 防回退约束与变更记录（必须先读）
@@ -19,6 +19,7 @@
 3. **编辑与生成必须可恢复**：精细调整、单目标失败、重新渲染或刷新页面不得清空已选素材和用户手改内容；失败只能影响对应目标，不能覆盖已经完成的成片。
 4. **多平台必须是真实规格**：不同画幅必须传递到真实的渲染输入并产出对应像素尺寸；不能只改文件名或在 UI 中假称已生成。
 5. **本地与远程边界不可混淆**：桌面调试模式的前端修改由 Vite 热更新即时生效；原生桥或 Go 代码变更必须重建/重启桌面壳；后端部署不负责构建前端。文案和验收说明不得把这三种生效方式混为一谈。
+6. **跨产品分类选材必须覆盖桌面实际入口**：桌面本机向导须将主产品与多选的素材来源分类独立管理。切换查看分类须保留已勾选素材，分镜和本机渲染须使用完整选材。涉及选材、入口或精简模式的改动，须从桌面「视频制作」入口验证两类素材进入同一分镜和实际成片。Web 向导验收与桌面验收分别记录。见[总 PRD §3.2](../../PRD.md#32-素材与视频专用应用核心)。
 
 ### 防误改流程
 
@@ -78,7 +79,8 @@
 ```ts
 type OutputTarget = {
   id: string;
-  platform: 'douyin'|'xiaohongshu'|'channels'|'kuaishou'|'bilibili'|'tiktok'|'instagram'|'youtube'|'custom';
+  /** Optional legacy platform hint; the rendered file is identified by profile and dimensions. */
+  platform?: 'douyin'|'xiaohongshu'|'channels'|'kuaishou'|'bilibili'|'tiktok'|'instagram'|'youtube'|'custom';
   profile: 'short_vertical'|'landscape'|'square'|'custom';
   width: number;
   height: number;
@@ -92,7 +94,7 @@ type OutputTarget = {
 
 **默认建议**而非固定平台强制标准：短视频 1080x1920 / 30fps；横屏 1920x1080 / 30fps；方形 1080x1080 / 30fps。所有具体平台规则是可版本化 preset，用户可覆盖；不要把 YouTube/B站一概等同仅横屏（Shorts 也可竖屏），Instagram 同理可选 Reels。多平台通常可以合并相同 render profile 避免重复生成；差异化字幕安全区、片尾 CTA 和平台文案时则各自生成变体。
 
-一个源故事板对应多个 **OutputVariant**，包括 crop/contain/blur padding、safe areas、caption layout、localization、BGM 权益约束。每个平台输出独立文件及 manifest.json，UI 必须呈现「预计产物」与真实完成情况。
+一个源故事板对应多个 **OutputVariant**，包括 crop/contain/blur padding、safe areas、caption layout、localization、BGM 权益约束。相同渲染规格的平台共享一个真实文件；只有规格或版式确实不同才输出独立文件及 manifest.json，UI 必须呈现「预计产物」与真实完成情况。
 
 保持 `script.json` 向后兼容：旧 schema 不支持的字段放在版本化 `output-manifest.json` 或新增可选字段，由渲染入口消费；老式单平台 ZIP 仍应可渲染。不使用「只改文件名」伪造多比例输出；每个变体真实创建对应尺寸的 Remotion Composition/render input。
 
@@ -122,7 +124,7 @@ type OutputTarget = {
 - 新增镜头级 AI 生成能力时必须通过后端限额/鉴权/费用提示；如接口尚无，先仅提供受支持的手动编辑，禁用占位按钮。
 
 ### P0C — 多平台批量交付
-- 输出页展示八个平台及 custom，按真实渲染 profile 编组；允许同平台不同版式；增加各变体的尺寸/语言/字幕安全区与批量选择。
+- 制作参数页展示八个平台复选框以保存营销意图；输出页用竖屏、横屏、方形和 custom 规格复选框按真实 profile 编组，并显示相关平台建议。平台关联不作为独立编辑字段；只有尺寸、帧率或版式确实不同才创建多个 target。
 - Remotion 本地渲染以 profile 参数真实出不同像素尺寸，准确反馈每一项成功/失败；产物 manifest 与 zip；无本地运行时 fallback 保持 ZIP 导出。
 - 多语言 TTS / 配乐授权是依赖项；本期未支持的组合应清晰提示，不能默默使用错误语言/曲目。
 

@@ -8579,6 +8579,8 @@
       "confirm": "Confirm rendering",
       "result": "Finished video"
     },
+    "mainProduct": "Main product (default title and selling points)",
+    "materialSources": "Material source categories (multi-select)",
     "inbox": "Unfiled materials",
     "selectedCount": "{{count}} selected",
     "noMaterials": "No materials here yet. Import images to continue.",

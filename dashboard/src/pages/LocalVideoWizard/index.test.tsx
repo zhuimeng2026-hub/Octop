@@ -9,6 +9,10 @@ import zh from "../../locales/zh.json";
 import LocalLibrary from "../LocalLibrary";
 import VideoEnvironment from "../VideoEnvironment";
 import LocalVideoWizard from "./index";
+import {
+  defaultLocalVideoTargets,
+  LocalVideoTargetSettings,
+} from "./LocalVideoOutput";
 
 const library = vi.hoisted(() => ({
   list: vi.fn(),
@@ -140,6 +144,82 @@ function renderFlow(
 
 const button = (name: string) => screen.getByRole("button", { name });
 
+it("groups platforms that share one render specification", () => {
+  const targets = defaultLocalVideoTargets([
+    "douyin",
+    "xiaohongshu",
+    "channels",
+    "kuaishou",
+    "bilibili",
+    "tiktok",
+    "instagram",
+    "youtube",
+  ]);
+
+  expect(targets).toHaveLength(2);
+  expect(targets[0]).toMatchObject({
+    width: 1080,
+    height: 1920,
+    fps: 30,
+  });
+  expect(targets[1]).toMatchObject({
+    width: 1920,
+    height: 1080,
+    fps: 30,
+  });
+});
+
+it("uses output format checkboxes and shows static recommendations", () => {
+  render(
+    <LocalVideoTargetSettings
+      targets={defaultLocalVideoTargets(["douyin", "youtube"])}
+      platformOptions={[
+        ["douyin", "抖音"],
+        ["xiaohongshu", "小红书"],
+        ["channels", "视频号"],
+        ["kuaishou", "快手"],
+        ["bilibili", "B站"],
+        ["tiktok", "TikTok"],
+        ["instagram", "Instagram"],
+        ["youtube", "YouTube"],
+      ].map(([key, label]) => ({ key, label }))}
+      onChange={() => undefined}
+    />,
+  );
+  expect(screen.getByRole("checkbox", { name: "竖屏" })).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "横屏" })).toBeInTheDocument();
+  expect(screen.getAllByText("抖音").length).toBeGreaterThan(0);
+  expect(screen.getByText("YouTube standard")).toBeInTheDocument();
+});
+
+it("shows all eight marketing platforms as wrapping checkboxes", async () => {
+  const user = userEvent.setup();
+  library.list.mockResolvedValue(photos);
+  renderFlow({
+    pathname: "/local-video-wizard",
+    state: { assetIds: ["front"] },
+  });
+
+  await user.click(
+    await screen.findByRole("button", { name: zh.localVideoWizard.next }),
+  );
+  await user.click(button(zh.localVideoWizard.moreParameters));
+
+  expect(screen.getAllByRole("checkbox")).toHaveLength(8);
+  for (const label of [
+    "抖音",
+    "小红书",
+    "视频号",
+    "快手",
+    "B站",
+    "TikTok",
+    "Instagram",
+    "YouTube",
+  ]) {
+    expect(screen.getByText(label)).toBeInTheDocument();
+  }
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   bridge.supportsTargets = false;
@@ -203,6 +283,61 @@ it("keeps imported photos usable when AI recognition fails and carries only the 
     screen.getByRole("checkbox", { name: "detail.jpg" }),
   ).not.toBeChecked();
   expect(screen.getByText("已选 1 张")).toBeInTheDocument();
+});
+
+it("keeps selected materials across independently selected product categories", async () => {
+  const user = userEvent.setup();
+  const crossCategoryAssets: LocalAsset[] = [
+    { ...photos[0], productId: "main-product" },
+    { ...photos[1], productId: "support-product" },
+  ];
+  library.list.mockResolvedValue(crossCategoryAssets);
+  library.listProducts.mockResolvedValue([
+    { id: "main-product", name: "主产品", assetCount: 1 },
+    { id: "support-product", name: "辅助产品", assetCount: 1 },
+  ]);
+  planLocal.mockResolvedValue({
+    script: {
+      title: "跨分类视频",
+      width: 1080,
+      height: 1920,
+      scenes: [],
+    },
+    assets: crossCategoryAssets.map((asset) => ({
+      id: asset.id,
+      export_name: asset.filename,
+      media_type: asset.mediaType,
+    })),
+    generator: "template",
+  });
+  renderFlow({
+    pathname: "/local-video-wizard",
+    state: {},
+  });
+
+  const supportSource = await screen.findByRole("checkbox", {
+    name: "辅助产品",
+  });
+  expect(supportSource).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "front.jpg" })).toBeChecked();
+  await user.click(supportSource);
+  const detail = await screen.findByRole("checkbox", { name: "detail.jpg" });
+  expect(detail).not.toBeChecked();
+  await user.click(detail);
+  await user.click(supportSource);
+  expect(
+    screen.queryByRole("checkbox", { name: "detail.jpg" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox", { name: "辅助产品" }));
+  expect(screen.getByRole("checkbox", { name: "detail.jpg" })).toBeChecked();
+  expect(screen.getByText("已选 2 张")).toBeInTheDocument();
+  await user.click(button(zh.localVideoWizard.next));
+  await user.click(button(zh.localVideoWizard.generate));
+
+  await vi.waitFor(() => expect(planLocal).toHaveBeenCalled());
+  expect(
+    planLocal.mock.calls[0][0].assets.map((asset: { id: string }) => asset.id),
+  ).toEqual(["front", "detail"]);
 });
 
 it("keeps storyboard edits across the sidebar and component setup and retries with a single submission", async () => {
@@ -456,4 +591,63 @@ it("retries only the failed batch target and saves the prior batch job", async (
     await screen.findByRole("button", { name: zh.localVideoWizard.saveBatch }),
   );
   expect(library.saveLocalBatch).toHaveBeenCalledWith("J1");
+});
+
+it("submits both selected output targets from the normal render action", async () => {
+  bridge.supportsTargets = true;
+  setEnvironment({
+    state: "ready",
+    stage: null,
+    progress: null,
+    outputBatchSupported: true,
+  });
+  const targets = defaultLocalVideoTargets(["douyin", "youtube"]);
+  const plan = {
+    script: { title: "双尺寸视频", width: 1080, height: 1920, scenes: [] },
+    assets: [],
+    generator: "template",
+  };
+  sessionStorage.setItem(
+    "octop.local-video-wizard.draft.42",
+    JSON.stringify({
+      draftId: "draft-primary-batch",
+      assetIds: [],
+      productId: "",
+      title: "双尺寸视频",
+      format: "portrait",
+      language: "zh",
+      seconds: 4,
+      sellingPoints: true,
+      instructions: "",
+      generator: "template",
+      purpose: "",
+      audience: "",
+      platforms: [],
+      targetDuration: "",
+      style: "",
+      supplementalRequirements: "",
+      advancedSettings: false,
+      fineAdjustments: false,
+      targets,
+      step: 3,
+      plan,
+      job: null,
+    }),
+  );
+  library.renderLocal.mockResolvedValue({
+    jobId: "J-primary-batch",
+    state: "rendering",
+  });
+  renderFlow("/local-video-wizard");
+
+  await userEvent
+    .setup()
+    .click(
+      await screen.findByRole("button", { name: zh.localVideoWizard.render }),
+    );
+  await vi.waitFor(() =>
+    expect(library.renderLocal).toHaveBeenCalledWith(
+      expect.objectContaining({ targets }),
+    ),
+  );
 });

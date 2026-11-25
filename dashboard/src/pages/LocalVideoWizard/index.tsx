@@ -54,6 +54,7 @@ const pendingSubmissions = new Map<
   string,
   Promise<{ jobId: string; state: string }>
 >();
+const pendingTargetSpecs = new Map<string, LocalVideoTarget[]>();
 const platformOptions: ReadonlyArray<readonly [PlatformKey, string]> = [
   ["douyin", "抖音"],
   ["xiaohongshu", "小红书"],
@@ -81,6 +82,7 @@ type WizardDraft = {
   draftId: string;
   assetIds: string[];
   productId: string;
+  sourceProductIds?: string[];
   title: string;
   format: "portrait" | "landscape" | "square";
   language: "zh" | "en";
@@ -132,6 +134,9 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
   const [productId, setProductId] = useState(
     hasEntry ? entry.productId || "" : draft?.productId || "",
   );
+  const [sourceProductIds, setSourceProductIds] = useState<string[]>(
+    draft?.sourceProductIds ?? (draft?.productId ? [draft.productId] : []),
+  );
   const [selected, setSelected] = useState<string[]>(
     (hasEntry ? entry.assetIds || [] : draft?.assetIds || []).slice(0, 200),
   );
@@ -182,6 +187,8 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
   const [busy, setBusy] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const renderSubmitting = useRef(false);
+  const submittedTargets = useRef(new Map<string, LocalVideoTarget[]>());
+  const pendingTargets = useRef(new Map<string, LocalVideoTarget[]>());
   const [error, setError] = useState("");
   const [environmentError, setEnvironmentError] = useState(false);
   const available = isLocalLibraryAvailable();
@@ -194,14 +201,59 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
     desktopVideo.environmentStatus.outputBatchSupported === true;
   const product = products.find((p) => p.id === productId);
   const visible = assets.filter((a) =>
-    productId ? a.productId === productId : !a.productId,
+    sourceProductIds.includes(a.productId || ""),
   );
-  const chosen = visible.filter((a) => selected.includes(a.id));
+  const chosen = assets.filter((a) => selected.includes(a.id));
   const name = (
     title.trim() ||
     product?.name ||
     t("localVideoWizard.defaultTitle")
   ).slice(0, 200);
+  const normalizeJob = (raw: Job, expected?: LocalVideoTarget[]): Job => {
+    const specs = expected ?? submittedTargets.current.get(raw.id);
+    if (!specs?.length) return raw;
+    const actual = new Map(
+      (raw.targets ?? []).map((target) => [target.id, target]),
+    );
+    return {
+      ...raw,
+      targets: specs.map((spec) => ({
+        ...spec,
+        ...(actual.get(spec.id) ?? {}),
+        id: spec.id,
+        platform: spec.platform,
+        filename: spec.filename,
+        width: spec.width,
+        height: spec.height,
+        fps: spec.fps,
+        status:
+          actual.get(spec.id)?.status ??
+          (raw.state === "completed" || raw.state === "failed"
+            ? "failed"
+            : "queued"),
+        ...(actual.has(spec.id)
+          ? {}
+          : raw.state === "completed" || raw.state === "failed"
+          ? { errorCode: "TARGET_RESULT_MISSING" }
+          : {}),
+      })),
+    };
+  };
+  useEffect(() => {
+    if (!job?.targets?.length) return;
+    submittedTargets.current.set(
+      job.id,
+      job.targets.map((target) => ({
+        id: target.id,
+        platform: target.platform,
+        profile: target.profile,
+        width: target.width,
+        height: target.height,
+        fps: target.fps,
+        filename: target.filename,
+      })),
+    );
+  }, [job?.id, job?.targets]);
 
   useEffect(() => {
     if (!available) return;
@@ -216,13 +268,22 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
             items.find((a) => entry.assetIds?.includes(a.id))?.productId ||
             ""
           : draft?.productId || prods[0]?.id || "";
+        const initialSources = hasEntry
+          ? Array.from(
+              new Set([
+                initialProduct,
+                ...items
+                  .filter((a) => entry.assetIds?.includes(a.id))
+                  .map((a) => a.productId || ""),
+              ]),
+            )
+          : draft?.sourceProductIds ?? [initialProduct];
         if (hasEntry || !draft) setProductId(initialProduct);
+        setSourceProductIds(initialSources);
         if (!hasEntry && !draft)
           setSelected(
             items
-              .filter((a) =>
-                initialProduct ? a.productId === initialProduct : !a.productId,
-              )
+              .filter((a) => initialSources.includes(a.productId || ""))
               .map((a) => a.id)
               .slice(0, 200),
           );
@@ -245,6 +306,7 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
           assetIds: selected,
           draftId,
           productId,
+          sourceProductIds,
           title,
           format,
           language,
@@ -280,6 +342,7 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
     language,
     plan,
     productId,
+    sourceProductIds,
     seconds,
     selected,
     sellingPoints,
@@ -307,7 +370,7 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
     return () => {
       alive = false;
     };
-  }, [assets, productId, previews]);
+  }, [assets, sourceProductIds, previews]);
   useEffect(() => {
     if (!job || !activeStates.has(job.state)) return;
     let alive = true;
@@ -315,7 +378,7 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
       void localLibrary
         .jobStatus(job.id)
         .then((next) => {
-          if (alive) setJob(next);
+          if (alive) setJob(normalizeJob(next));
         })
         .catch(() => {
           if (alive) setError(t("localVideoWizard.statusFailed"));
@@ -332,7 +395,7 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
     void localLibrary
       .jobStatus(job.id)
       .then((updated) => {
-        if (alive) setJob(updated);
+        if (alive) setJob(normalizeJob(updated));
       })
       .catch(() => undefined);
     return () => {
@@ -348,7 +411,13 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
     void pending
       .then((result) => {
         if (alive) {
-          setJob({ id: result.jobId, state: result.state });
+          setJob(
+            normalizeJob(
+              { id: result.jobId, state: result.state },
+              pendingTargetSpecs.get(draftId) ??
+                pendingTargets.current.get(draftId),
+            ),
+          );
           setStep(4);
         }
       })
@@ -385,12 +454,6 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
 
   const changeProduct = (id: string) => {
     setProductId(id);
-    setSelected(
-      assets
-        .filter((a) => (id ? a.productId === id : !a.productId))
-        .map((a) => a.id)
-        .slice(0, 200),
-    );
     setTitle("");
   };
   const generate = async () => {
@@ -501,21 +564,52 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
         plan.assets.map((a) => [a.export_name, a.id]),
       );
       const projectId = `local-${Date.now()}`;
+      const effectiveTargets =
+        requestTargets ?? (targets.length ? targets : undefined);
+      if (effectiveTargets?.length && !batchSupported) {
+        setError(t("localVideoWizard.batchUnavailable"));
+        return;
+      }
+      if (
+        effectiveTargets?.some(
+          (target) => target.width < 1 || target.height < 1,
+        )
+      ) {
+        setError(t("localVideoWizard.invalidTarget"));
+        return;
+      }
       submission = localLibrary.renderLocal({
         projectId,
         title: name,
         script: plan.script,
         assetMap,
-        ...(requestTargets ? { targets: requestTargets } : {}),
+        ...(effectiveTargets ? { targets: effectiveTargets } : {}),
       });
+      if (effectiveTargets?.length) {
+        const specs = effectiveTargets.map((target) => ({ ...target }));
+        pendingTargets.current.set(draftId, specs);
+        pendingTargetSpecs.set(draftId, specs);
+      }
       pendingSubmissions.set(draftId, submission);
       const result = await submission;
+      const submitted = effectiveTargets?.length
+        ? effectiveTargets.map((target) => ({ ...target }))
+        : undefined;
+      if (submitted) submittedTargets.current.set(result.jobId, submitted);
       const nextJob = {
         id: result.jobId,
         state: result.state,
+        ...(submitted
+          ? {
+              targets: normalizeJob(
+                { id: result.jobId, state: result.state },
+                submitted,
+              ).targets,
+            }
+          : {}),
       };
       setJob(nextJob);
-      const nextHistory = requestTargets
+      const nextHistory = effectiveTargets
         ? priorJob &&
           priorJob.targets?.some((target) => target.status === "completed")
           ? [
@@ -537,7 +631,7 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
               JSON.stringify({
                 ...stored,
                 step: 4,
-                job: { id: result.jobId, state: result.state },
+                job: nextJob,
                 batchHistory: nextHistory,
               }),
             );
@@ -567,6 +661,8 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
       if (submission) {
         pendingSubmissions.delete(draftId);
       }
+      pendingTargets.current.delete(draftId);
+      pendingTargetSpecs.delete(draftId);
       renderSubmitting.current = false;
       setBusy(false);
     }
@@ -575,7 +671,11 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
     const failed = job?.targets?.find(
       (target) => target.id === targetId && target.status === "failed",
     );
-    const retrySpec = targets.find((target) => target.id === targetId);
+    const retrySpec =
+      submittedTargets.current
+        .get(job?.id ?? "")
+        ?.find((target) => target.id === targetId) ??
+      targets.find((target) => target.id === targetId);
     if (!job || !failed || !retrySpec) return;
     await render([retrySpec], job);
   };
@@ -724,15 +824,48 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
             <Card title={t("localVideoWizard.steps.materials")}>
               <Space direction="vertical" style={{ width: "100%" }}>
                 {assets.length > 0 && (
-                  <Select
-                    value={productId}
-                    onChange={changeProduct}
-                    style={{ width: 300 }}
-                    options={[
-                      ...products.map((p) => ({ value: p.id, label: p.name })),
-                      { value: "", label: t("localVideoWizard.inbox") },
-                    ]}
-                  />
+                  <Space direction="vertical" style={{ width: "100%" }}>
+                    <Typography.Text strong>
+                      {t("localVideoWizard.mainProduct")}
+                    </Typography.Text>
+                    <Select
+                      aria-label={t("localVideoWizard.mainProduct")}
+                      value={productId}
+                      onChange={changeProduct}
+                      style={{ width: 300 }}
+                      options={[
+                        ...products.map((p) => ({
+                          value: p.id,
+                          label: p.name,
+                        })),
+                        { value: "", label: t("localVideoWizard.inbox") },
+                      ]}
+                    />
+                    <Typography.Text strong>
+                      {t("localVideoWizard.materialSources")}
+                    </Typography.Text>
+                    <Space wrap>
+                      {[
+                        ...products,
+                        { id: "", name: t("localVideoWizard.inbox") },
+                      ].map((source) => (
+                        <Checkbox
+                          key={source.id || "inbox"}
+                          aria-label={source.name}
+                          checked={sourceProductIds.includes(source.id)}
+                          onChange={(event) =>
+                            setSourceProductIds((old) =>
+                              event.target.checked
+                                ? Array.from(new Set([...old, source.id]))
+                                : old.filter((id) => id !== source.id),
+                            )
+                          }
+                        >
+                          {source.name}
+                        </Checkbox>
+                      ))}
+                    </Space>
+                  </Space>
                 )}
                 <Typography.Text type="secondary">
                   {t("localVideoWizard.selectedCount", {
@@ -946,14 +1079,23 @@ function LocalVideoWizardInner({ ownerId }: { ownerId: string | number }) {
                             </label>
                             <label>
                               {t("localVideoWizard.platforms")}
-                              <Select
-                                mode="multiple"
+                              <Checkbox.Group
                                 value={platforms}
-                                onChange={setPlatforms}
-                                options={platformOptions.map(
-                                  ([value, label]) => ({ value, label }),
-                                )}
-                              />
+                                onChange={(values) =>
+                                  setPlatforms(values as string[])
+                                }
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: "8px 16px",
+                                }}
+                              >
+                                {platformOptions.map(([value, label]) => (
+                                  <Checkbox key={value} value={value}>
+                                    {label}
+                                  </Checkbox>
+                                ))}
+                              </Checkbox.Group>
                             </label>
                             <label>
                               {t("localVideoWizard.targetDuration")}
