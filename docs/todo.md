@@ -17,7 +17,7 @@
 | T-001 | 路线 C 实测：服务器复用桌面 Chrome 登录态操作视频号助手 | Windows 桌面端 | ⏳ 待安排 | [browser-cdp-lan-reuse.md](./browser-cdp-lan-reuse.md) |
 | T-002 | 真实微信扫码→远程回调→桌面会话恢复→授权只读业务 API 复验 | 隔离测试账号 + 可扫码环境 | ⏳ 待安排 | [PRD.md §4.2](./PRD.md#42-桌面端开发模式developer-mode) |
 | T-003 | 生产环境部署来源切到 `main` 的 `v*` tag（口径按选项 B 收口） | 生产服务器 `ocdev.aixifs.com:13122` | ✅ 已完成 | [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
-| T-004 | 清理 WIP 分支 `wip/product-library-batch-import`（三处 ref + 文档回写） | 生产服务器 + GitHub/CNB 仓库权限 | ⏳ 待安排 | [wip-branch-workflow.md §5/§7](./wip-branch-workflow.md) |
+| T-004 | 清理 WIP 分支 `wip/product-library-batch-import`（三处 ref + 文档回写） | 生产服务器 + GitHub/CNB 仓库权限 | ✅ 已完成 | [wip-branch-workflow.md §5/§7](./wip-branch-workflow.md) |
 | T-005 | 修复 fork 的 Actions「Mirror to CNB」令牌过期，并复核镜像链路 | CNB 访问令牌 + fork 仓库设置权限 | 🚧 进行中（人处理令牌） | [cnb-openapi.md](./cnb-openapi.md) |
 | T-006 | 前端产物重建：替换线上「手工改前缀」的产物 | 前端构建环境（Windows / Node） | ⏳ 待安排 | [deployment-pitfalls.md §1.1](./deployment-pitfalls.md) |
 
@@ -207,7 +207,7 @@ systemctl restart octop.service
 
 ## T-004 · 清理 WIP 分支 `wip/product-library-batch-import`
 
-**状态**：⏳ 待安排（2026-11-24 登记）
+**状态**：✅ 已完成（2026-11-25 执行；T-003 先行完成）
 
 ### 要做什么
 
@@ -228,6 +228,29 @@ systemctl restart octop.service
 | GitHub fork `zhuimeng2026-hub/Octop` | 已有 `wip/product-library-batch-import`（2026-11-24 为对齐镜像 ref 手工推上去的） |
 | CNB `mengxa.com/Octop` | 已有同名分支（原始所在地） |
 | 生产服务器 `/opt/Octop` | 本地分支 `wip/product-library-batch-import` + `remotes/cnb/wip/product-library-batch-import` 都在 |
+
+### 执行结果（2026-11-25）
+
+三条判据（[wip-branch-workflow.md §5](./wip-branch-workflow.md)）逐条核对：
+
+| 判据 | 核对结果 |
+|---|---|
+| 1. 每一项改动都已重放 | 快照相对 `main` 的新增行 **2749 行，其中 2403 行逐行已在 `main`**；其余 346 行是**同一批功能的改写形态**，不是丢失的工作：迁移 `027_product_library_asset_descriptions` → `main` 的 **`028_`**（编号因 `027_user_mfa` 占用而顺延）；桌面端 `download.go` 的「首启下载运行时」→ `main` 的 **manifest 分片下载 + bootstrap** 设计；Gitee 发布链（`release_notes.py`）→ `main` 的 **`push_readme.py` + `assets.py` 单一事实源**；两份文档 → `main` 的 `docs/gitee-release.md` 与 `docs/desktop-bootstrap-installer.md` |
+| 2. 线上已不再运行该版本 | 生产已于 2026-11-25 切到 `main` 的 `v1.5.0`（见 T-003 的进程与健康证据） |
+| 3. 文档不再依赖该分支 | §7 登记行改为「已清理」；§4.2「代码版本」改为 `v1.5.0`；本条状态改为 ✅ |
+
+**清理动作**：本地分支、GitHub fork、CNB 三处同名分支全部删除；保留 SHA `ea0c24c5` 的历史引用
+（`git show ea0c24c5` 仍可读），另 `v1.4.0-gitee.1` tag 继续锚住该批 Gitee 发布通道的提交。
+
+**同批清理的其他分支**（均已并入 `main`，逐条用 `git merge-base --is-ancestor` / 行覆盖比对确认）：
+`chore/nightly-l4-evals`、`codex/backend-nightly-repair`、`docs/desktop-session-renewal-handover`、
+`feat/backup-include-product-library`、`feat/product-library-batch-import-vision`、
+`feat/video-production-workbench`、`feature/nightly-candidate-push`、`fix/full-test-12-failures`、
+`fix/nightly-bwrap-skip`、`fix/octop-home-isolation`。
+
+**保留**：`main` / `develop` 两条主干；`backup/layered-download-pr3-pr5-pending`（未合并的待办备份）、
+`feat/electron-upstream-sync-20261123`（未合并的上游 Electron 同步工作）；CNB 自有的 `ci/reports`
+（镜像脚本按设计排除）。`upstream/*` 是上游 TencentCloud 仓库的只读镜像，不在本仓库清理范围。
 
 ### 政策约束（按 [wip-branch-workflow.md §3 / §6](./wip-branch-workflow.md) 的现行措辞）
 

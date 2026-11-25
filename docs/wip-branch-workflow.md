@@ -126,7 +126,7 @@ git diff cnb/develop wip/<主题> -- <path>
 
 | 分支 | 快照提交 | 来源 | 状态 | 关联文档 |
 |---|---|---|---|---|
-| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **待处理** —— 内容已逐项重放到 `develop`；**线上已于 2026-11-25 切到 `main` 上的 `v1.5.0`**（进程与健康证据见 [todo.md T-003](./todo.md)），本快照已不是线上来源；分支本身的清理见 [todo.md T-004](./todo.md) | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
+| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **已清理（2026-11-25）** —— 内容已逐项重放到 `develop`/`main`（逐行覆盖比对 2749 行中 2403 行原样在 `main`，其余为同批功能的改写形态：迁移 027→028、桌面端改 manifest 分片下载、Gitee 链改 `push_readme.py` 单一事实源）；线上已于同日切到 `main` 的 `v1.5.0`；本地 + GitHub + CNB 三处分支均已删除，保留 SHA `ea0c24c5` 的历史引用与 `v1.4.0-gitee.1` tag | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
 
 ---
 
