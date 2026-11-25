@@ -37,6 +37,7 @@ export interface DesktopVideoJob {
 export interface DesktopVideoOutput {
   id: string;
   platform?: string;
+  profile?: DesktopVideoTargetRequest["profile"];
   filename: string;
   width: number;
   height: number;
