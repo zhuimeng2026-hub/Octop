@@ -88,6 +88,11 @@ curl -s https://host/videogen/ | grep -c 'C:/Program'
 
 **应急修法**（生产机不能构建前端时，改已部署的产物）：
 
+> **现状（2026-11-25 14:14）**：线上产物已由前端环境用 `BASE_URL=/videogen` **正规重建**
+> 并同步，坏前缀与手工改写版一并消失（入口由 `index.wl19tg2O.js` 变为 `index.EI87YVH7.js`）。
+> 下面的应急改写**仅保留为「产物已坏且暂时无法重建」时的手段**，不是常规路径；常规路径是
+> 在前端环境重建后用 `scripts/deploy-dashboard.sh` 同步。
+
 1. 先备份产物：`cp -a src/octop/dashboard /opt/octop-data/dashboard-backups/<ts>-badwin-base`
 2. 把产物里的坏前缀改成**相对路径**（`/C:/.../videogen/` → 空）：
    - `index.html` 的 `src`/`href` → `assets/xxx.js`、`favico.svg`（文档相对）

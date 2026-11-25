@@ -19,7 +19,7 @@
 | T-003 | 生产环境部署来源切到 `main` 的 `v*` tag（口径按选项 B 收口） | 生产服务器 `ocdev.aixifs.com:13122` | ✅ 已完成 | [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
 | T-004 | 清理 WIP 分支 `wip/product-library-batch-import`（三处 ref + 文档回写） | 生产服务器 + GitHub/CNB 仓库权限 | ✅ 已完成 | [wip-branch-workflow.md §5/§7](./wip-branch-workflow.md) |
 | T-005 | 修复 fork 的 Actions「Mirror to CNB」令牌过期，并复核镜像链路 | CNB 访问令牌 + fork 仓库设置权限 | 🚧 进行中（人处理令牌） | [cnb-openapi.md](./cnb-openapi.md) |
-| T-006 | 前端产物重建：替换线上「手工改前缀」的产物 | 前端构建环境（Windows / Node） | ⏳ 待安排 | [deployment-pitfalls.md §1.1](./deployment-pitfalls.md) |
+| T-006 | 前端产物重建：替换线上「手工改前缀」的产物 | 前端构建环境（Windows / Node） | ✅ 已完成 | [deployment-pitfalls.md §1.1](./deployment-pitfalls.md) |
 
 ---
 
@@ -338,7 +338,7 @@ fork 的 Actions secret `CNB_TOKEN` 最后更新于 **2026-10-27**，已过期�
 
 ## T-006 · 前端产物重建：替换线上「手工改前缀」的产物
 
-**状态**：⏳ 待安排（2026-11-25 登记）
+**状态**：✅ 已完成（2026-11-25 14:14 由前端环境重建并同步上线）
 
 ### 要做什么
 
@@ -372,6 +372,25 @@ grep -o 'src="[^"]*"' src/octop/dashboard/index.html        # 期望 src="/video
 # 同步到生产
 bash scripts/deploy-dashboard.sh
 ```
+
+### 执行结果（2026-11-25 14:14）
+
+前端环境（SSH 来源 `113.67.10.30`）用 `BASE_URL=/videogen` 重新构建并同步，线上产物
+已被**正规构建**取代——不再是 11-23 那份 MSYS 污染构建，也不再是我在生产机上手工改过
+前缀的那份。部署脚本按惯例把被替换的产物留在 `dashboard-backups/20261125-141444/`。
+
+| 项 | 实测 |
+|---|---|
+| 产物前缀 | `index.html` 的 `src` = `/videogen/assets/index.EI87YVH7.js`；产物内 `C:/Program` 残留 **0** |
+| `BASE_PATH` | 构建期常量 `BASE_PATH="/videogen"`（不再是运行时推导的手工版） |
+| PWA | `manifest.json` 的 `id` / `start_url` / `scope` 均为 `/videogen/`；`pwa-192/512.png`、`apple-touch-icon.png` 公网 200 |
+| 源码对应关系 | main 的最新前端提交 `52508e42`（devLogin）新增文案**全部命中**产物；更早提交中被改写/删除的旧文案在产物中**不存在**（方向正确）→ 产物对应 main 的 `dashboard/src` |
+| 可达性 | `index.html` 的 11 个引用、入口 JS 的 `new URL()` 引用，公网全部 200 |
+| 缓存 | 入口文件名由 `index.wl19tg2O.js` 变为 `index.EI87YVH7.js`（内容哈希变化）→ 浏览器必取新版，`immutable` 缓存不再构成问题；`index.html` 仍为 `no-cache` |
+| 真实取用 | nginx 访问日志显示真实浏览器已在拉取 `index.EI87YVH7.js`、`manifest.json`、PWA 图标与 `/videogen/api/health`，无 404 |
+
+> 遗留的唯一验证限制：本机无浏览器二进制，**未做真实浏览器渲染断言**（渲染结论建立在
+> 全量引用可达 + 入口与文案对应关系之上）。如面板仍有异常，先看浏览器 Network 是否有 404。
 
 ### 验收标准
 
