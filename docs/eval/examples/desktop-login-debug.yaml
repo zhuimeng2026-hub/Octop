@@ -16,7 +16,7 @@ tasks:
         - 确认直接进入应用，身份接口返回普通测试账号，授权只读接口返回 200，请求记录中没有微信授权请求。
       evidence_required: [log]
     evidence: [脱敏启动及请求日志]
-    notes: "Loopback Vite-to-backend probe passed for ordinary user, /api/auth/me, and read-only /api/agents. Actual Wails window and both full launchers remain to be witnessed."
+    notes: "PowerShell launcher built and launched Wails/WebView2 against the isolated backend; Vite bound 127.0.0.1:5174, native navigation reached the dashboard, and same-origin debug login returned 200/no-store. Git Bash launcher remains to be witnessed."
     regression: smoke
     blocking: true
     status: active
@@ -37,7 +37,7 @@ tasks:
         - 使用无令牌请求访问同一测试实例的受保护 API，确认返回 401。
       evidence_required: [log]
     evidence: [脱敏错误及请求日志]
-    notes: "Cross-origin 403, anonymous protected API 401, direct/non-loopback launcher rejection, and debug Vite host override rejection were observed. Wrong-credential browser walk-through remains pending."
+    notes: "Cross-origin 403, anonymous protected API 401, direct/non-loopback launcher rejection, Vite host override rejection, and wrong-credential browser failure with empty auth storage were observed."
     regression: smoke
     blocking: true
     status: active
@@ -57,7 +57,7 @@ tasks:
         - 清除开关并重复上述检查。
       evidence_required: [log]
     evidence: [脱敏启动及请求日志]
-    notes: "Production build and normal-mode Vite configuration do not register the debug middleware; actual browser WeChat-provider discovery remains pending."
+    notes: "Normal mode returned 404 for the debug endpoint; browser-only fake OAuth discovery showed the existing WeChat SSO button. Production build and preview configuration do not register the debug middleware."
     regression: smoke
     blocking: true
     status: active
