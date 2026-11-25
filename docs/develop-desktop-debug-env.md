@@ -290,11 +290,19 @@ POST `http://127.0.0.1:8088/api/auth/login` → 校验返回 `user.role=="user"`
   ```
   有 human → ai(推理) → tool(工具调用) → ai(最终回复) 即对话成功。
 
-### 坑 E：后台启动后端子进程被回收
+### 坑 E：装完制作组件后还要手动点「验证制作环境」
+- **develop 新语义（2026-11-25）**：组件下载解压完成后，桌面壳会**自动跑一次真实渲染验证**（`video_install.go` 的 `runPostInstallVerification()` → `startEnvironment("verify")`），成功后直达 `ready`，无需再手动点验证按钮。验证仍是一段 1 秒测试 MP4，不是简单文件检查。
+- 触发 BUSY（下载后狭窄窗口内有渲染任务）时会降级为普通 check，并在日志里写明；此时仍可能显示「尚未验证」，手动点一次即可。
+- **验证失败一定有日志**：worker 的真实 stderr（堆栈/模块错误）逐行写入 **exe 同目录 `desktop-nav.log`**（4MB 轮转，dev 模式同时打 stderr）。相关行：
+  - `video install: parts in place, starting automatic render verification`（自动验证起点标记）
+  - `video environment state=... code=...` / `video env: verify failed (code=... waitErr=... final=...)`（结果与真实原因）
+- 排障直接 `grep -iE 'video (install|env|environment)' <exe目录>/desktop-nav.log`。
+
+### 坑 F：后台启动后端子进程被回收
 - 用 Bash 后台命令时若命令里带 `&`，工具的外层 shell 退出会一并杀掉子进程。
 - 正确：直接用工具的 `run_in_background=true`，命令里**不要**加 `&`。
 
-### 坑 F：健康请求首次为空
+### 坑 G：健康请求首次为空
 - `octop run` 首次启动约 13s，第一次 `/api/health` 常为空。用重试循环，不要一次就下结论。
 
 ---
