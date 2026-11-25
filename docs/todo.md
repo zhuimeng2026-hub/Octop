@@ -150,14 +150,16 @@ Remove-NetFirewallRule -DisplayName 'Chrome CDP 9223'
 | 发布 | `release/1.5.0` 从 `origin/develop`（`969f46bb`）切出 → `main` 上以 merge commit `ee2586ed` 合入（父提交 `89d6fbe8` + `969f46bb`）→ 打 annotated tag **`v1.5.0`**（指向 `ee2586ed`） |
 | 内容差异 | **零**：`ee2586ed` 的文件树与 `develop` tip `969f46bb` 完全相同，本次切换不改变任何运行时代码 |
 | 远端 | `main` / `develop` / `v1.5.0` 三处（GitHub、CNB、Gitee）一致：`main`=`ee2586ed`，`develop`=`ba3ee295`，tag→`ee2586ed` |
-| 生产工作树 | `/opt/Octop` checkout 到 `v1.5.0`（detached HEAD），`git describe --tags` → `v1.5.0`，工作树干净 |
+| 生产工作树 | `/opt/Octop` checkout 到 **`main`** 分支（其 tip 即 `v1.5.1` tag 所在提交），`git describe --tags` → `v1.5.1`，工作树干净 |
 | 进程证据 | `octop.service` 重启后新 PID `1632150`（启动于 13:13:38），启动时刻晚于 checkout；不是只看 checkout |
 | 健康检查 | 本地 `http://127.0.0.1:8088/videogen/api/health` → 200；外部 `https://ocbot.aixifs.com/videogen/api/health` → 200；重启后日志无 `ERROR` |
 | 抽查 | `/api/product-library/{projects,assets,base-library}` → 401（路由在、非 500）；`/api/auth/login` 空体 → 422（校验生效、非 5xx） |
 | 迁移 | `_schema_version` 仍为 **29**（未变） |
-| 回滚 | `git checkout <旧 ref> && systemctl restart octop.service`；旧 ref 的文件树与 `v1.5.0` 相同，回滚同样零行为变化 |
+| 回滚 | `git checkout <旧 ref> && systemctl restart octop.service`；旧 ref 的文件树与 `v1.5.1` 相同，回滚同样零行为变化 |
 
-> 并发事件：执行期间另一台机器向 `origin/develop` 推入了 `e4c7253e`（fix(desktop)，仅动 `desktop/src/*.go` 与文档）。该提交与发布提交在 `969f46bb` 处分叉，已用 merge commit 并入 `develop`（`ba3ee295`），**未改写他人提交**。它不在 `v1.5.0` 内——只影响桌面端源码，不影响后端运行时。
+> 并发事件：执行期间另一台机器向 `origin/develop` 推入了 `e4c7253e`（fix(desktop)，仅动 `desktop/src/*.go` 与文档）。该提交与发布提交在 `969f46bb` 处分叉，已用 merge commit 并入 `develop`（`ba3ee295`），**未改写他人提交**。它当时不在 `v1.5.0` 内——只影响桌面端源码，不影响后端运行时。
+>
+> **后续补发（2026-11-25）**：上一步之后 `main` 一度落后 `develop` 5 个提交（`e4c7253e` + 其合并提交 + 3 个文档回写），且生产工作树停在 detached 的 `v1.5.0` 上——「当前代码不在 `main` 上」。已再发一版把 `develop` 并入 `main`：`release/1.5.1` 从 `develop`（`5e431322`）切出 → `main` 以 merge commit 合入 → 打 tag **`v1.5.1`** → 生产工作树改为 **checkout `main`**（tip == `v1.5.1`）。发布后 `main` 与 `develop` 内容一致，`main` 仍是 `develop` 的祖先。
 
 ### 步骤
 

@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-25
+
+### 修复
+- Windows 客户端：组件安装后自动验证，装完即可用（不再需要手工点验）
+- 面板白屏：前端产物里的资源路径被 Windows Git Bash 的 MSYS 路径改写污染（`BASE_URL=/videogen` → `/C:/Program Files/Git/videogen`），导致 125 处资源引用与 bundle 里的 `BASE_PATH` 全部失效（面板空白且所有 API 请求打错前缀）。生产产物改为相对路径 + `BASE_PATH` 运行时推导；根治方案与判定方法见 `docs/deployment-pitfalls.md` §1.1
+
+### 变更
+- 生产部署来源切到 `main`：此前生产工作树停在 `develop`（规范禁止的部署来源），现按 `release/*` → `main` → `v*` tag 流程发布，线上工作树 checkout 到 `main`
+- 仓库整理：清理已并入 `main` 的 10 条本地分支与 7 条远程分支（GitHub / CNB 同步），保留 `main` / `develop` 两条主干、未合并的待办分支与 CNB 自有的 `ci/reports`
+
 ## [1.5.0] - 2026-11-12
 
 ### 新增

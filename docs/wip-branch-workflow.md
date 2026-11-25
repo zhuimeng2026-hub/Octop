@@ -93,7 +93,9 @@ WIP 分支**可以删除**，当且仅当以下三条全部满足：
 
 **不要**反过来：为了让快照分支「有存在理由」而把生产留在快照版本上。
 
-**当前线上（2026-11-25 核实）**：生产工作树 `/opt/Octop` checkout 到 **`v1.5.0`**（`main` 上的 tag，指向提交 `ee2586ed`），`git describe --tags` → `v1.5.0`；`octop.service` 重启后新 PID `1632150`，`/videogen/api/health` → 200。此前线上停在 `develop`（属本表所列的禁止来源），已按上述处置顺序纠正——过程与证据见 [todo.md T-003](./todo.md)。
+**当前线上（2026-11-25 核实）**：生产工作树 `/opt/Octop` checkout 到 **`main`** 分支，其 tip 即 `v1.5.1` tag 所在提交（`git describe --tags` → `v1.5.1`）；`octop.service` 重启后 `/videogen/api/health` → 200。此前线上停在 `develop`（属本表所列的禁止来源），已按上述处置顺序纠正——过程与证据见 [todo.md T-003](./todo.md)。
+
+> 部署落地方式：先按 `release/*` → `main` → `v*` tag 发布，再让生产 checkout 到 `main`；生产工作树始终停在**带 tag 的 `main` 提交**上。`main` 前进后需重新 checkout + 重启才会切到新提交。
 
 ### 怎么验证「已重放」
 
