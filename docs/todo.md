@@ -1,6 +1,6 @@
 # 项目待办（人工 / 特定环境）
 
-> 状态：**活文档**（最近核实 2026-11-24）
+> 状态：**活文档**（最近核实 2026-11-25）
 > 只收「**需要人 / 特定环境**」的事项：扫码登录、真机验证、真实账号、线下验收，以及需要**生产服务器**或**仓库/平台权限**的运维动作。
 > 落点规则与状态词表见 [docs/README.md §文档维护规范](./README.md) 第 7 条。
 
@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | T-001 | 路线 C 实测：服务器复用桌面 Chrome 登录态操作视频号助手 | Windows 桌面端 | ⏳ 待安排 | [browser-cdp-lan-reuse.md](./browser-cdp-lan-reuse.md) |
 | T-002 | 真实微信扫码→远程回调→桌面会话恢复→授权只读业务 API 复验 | 隔离测试账号 + 可扫码环境 | ⏳ 待安排 | [PRD.md §4.2](./PRD.md#42-桌面端开发模式developer-mode) |
-| T-003 | 生产环境部署来源切到 `develop`（并解决与 §5.1「只跑 v* tag」的口径冲突） | 生产服务器 `ocdev.aixifs.com:13122` | ⏳ 待安排 | [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
+| T-003 | 生产环境部署来源切到 `main` 的 `v*` tag（口径按选项 B 收口） | 生产服务器 `ocdev.aixifs.com:13122` | ✅ 已完成 | [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
 | T-004 | 清理 WIP 分支 `wip/product-library-batch-import`（三处 ref + 文档回写） | 生产服务器 + GitHub/CNB 仓库权限 | ⏳ 待安排 | [wip-branch-workflow.md §5/§7](./wip-branch-workflow.md) |
 | T-005 | 修复 fork 的 Actions「Mirror to CNB」令牌过期，并复核镜像链路 | CNB 访问令牌 + fork 仓库设置权限 | 🚧 进行中（人处理令牌） | [cnb-openapi.md](./cnb-openapi.md) |
 
@@ -101,9 +101,9 @@ Remove-NetFirewallRule -DisplayName 'Chrome CDP 9223'
 
 ---
 
-## T-003 · 生产环境部署来源切到 `develop`
+## T-003 · 生产环境部署来源切到 `main` 的 `v*` tag
 
-**状态**：⏳ 待安排（2026-11-24 登记）
+**状态**：✅ 已完成（2026-11-25 执行；口径按选项 B 拍板，§5.1 无需改写）
 
 ### 要做什么
 
@@ -140,6 +140,24 @@ Remove-NetFirewallRule -DisplayName 'Chrome CDP 9223'
 
 拍板结果写进 §5.1（并在 `AGENTS.md` §10 留同口径指针），再执行切换。
 
+**拍板结果（2026-11-25）**：选**选项 B**——生产部署来源 = `main` 上的 `v*` tag。§5.1 与 `AGENTS.md` §10 现行措辞即该口径，**无需改写**；本条改为走 `release/*` → `main` → 打 tag → 生产 checkout 到该 tag。
+
+### 执行结果（2026-11-25）
+
+| 项 | 结果 |
+|---|---|
+| 发布 | `release/1.5.0` 从 `origin/develop`（`969f46bb`）切出 → `main` 上以 merge commit `ee2586ed` 合入（父提交 `89d6fbe8` + `969f46bb`）→ 打 annotated tag **`v1.5.0`**（指向 `ee2586ed`） |
+| 内容差异 | **零**：`ee2586ed` 的文件树与 `develop` tip `969f46bb` 完全相同，本次切换不改变任何运行时代码 |
+| 远端 | `main` / `develop` / `v1.5.0` 三处（GitHub、CNB、Gitee）一致：`main`=`ee2586ed`，`develop`=`ba3ee295`，tag→`ee2586ed` |
+| 生产工作树 | `/opt/Octop` checkout 到 `v1.5.0`（detached HEAD），`git describe --tags` → `v1.5.0`，工作树干净 |
+| 进程证据 | `octop.service` 重启后新 PID `1632150`（启动于 13:13:38），启动时刻晚于 checkout；不是只看 checkout |
+| 健康检查 | 本地 `http://127.0.0.1:8088/videogen/api/health` → 200；外部 `https://ocbot.aixifs.com/videogen/api/health` → 200；重启后日志无 `ERROR` |
+| 抽查 | `/api/product-library/{projects,assets,base-library}` → 401（路由在、非 500）；`/api/auth/login` 空体 → 422（校验生效、非 5xx） |
+| 迁移 | `_schema_version` 仍为 **29**（未变） |
+| 回滚 | `git checkout <旧 ref> && systemctl restart octop.service`；旧 ref 的文件树与 `v1.5.0` 相同，回滚同样零行为变化 |
+
+> 并发事件：执行期间另一台机器向 `origin/develop` 推入了 `e4c7253e`（fix(desktop)，仅动 `desktop/src/*.go` 与文档）。该提交与发布提交在 `969f46bb` 处分叉，已用 merge commit 并入 `develop`（`ba3ee295`），**未改写他人提交**。它不在 `v1.5.0` 内——只影响桌面端源码，不影响后端运行时。
+
 ### 步骤
 
 ```bash
@@ -155,28 +173,28 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8088/api/health   # �
 
 ### 验收标准
 
-| 项 | 判定 |
-|---|---|
-| 版本 | `git -C /opt/Octop rev-parse HEAD` == `23e398d5`，`git describe --tags` 与之一致 |
-| 进程证据 | 进程确实跑在新代码上（版本响应 / 接口行为），**不能只看 checkout**（[wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 第 2 条） |
-| 健康检查 | `octop.service` active，`127.0.0.1:8088/api/health` 返回 200，外部 `13122` 端口同样可访问 |
-| 抽查 | 素材库相关接口（`/api/product-library/*`）与登录可用，无 500 |
-| 迁移 | `_schema_version` 仍为 29（不应变化） |
+| 项 | 判定 | 实测 |
+|---|---|---|
+| 版本 | `git -C /opt/Octop rev-parse HEAD` == `ee2586ed`（`v1.5.0`），`git describe --tags` → `v1.5.0` | ✅ |
+| 进程证据 | 进程确实跑在新代码上（版本响应 / 接口行为），**不能只看 checkout**（[wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 第 2 条） | ✅ 新 PID `1632150`，启动于 checkout 之后 |
+| 健康检查 | `octop.service` active，`127.0.0.1:8088/videogen/api/health` 返回 200，外部入口同样可访问 | ✅ 本地 200 / 外部 200 |
+| 抽查 | 素材库相关接口（`/api/product-library/*`）与登录可用，无 500 | ✅ 401（路由在）/ 422（非 5xx） |
+| 迁移 | `_schema_version` 仍为 29（不应变化） | ✅ 29 |
 
 ### 回滚
 
 ```bash
 cd /opt/Octop
-git checkout fix/full-test-12-failures
+git checkout <旧 ref>        # 旧 ref 的文件树与 v1.5.0 相同，回滚零行为变化
 systemctl restart octop.service
 ```
 
 ### 完成后回写
 
-- [wip-branch-workflow.md §5.1](./wip-branch-workflow.md)：按拍板结果改口径（选项 A / B），并写明线上实际跑的是哪个 ref
-- [wip-branch-workflow.md §7](./wip-branch-workflow.md)：登记行里「线上仍在跑」的说法按实际进程证据更新
-- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：远程后端实测表的「代码版本」单元格更新为切换后的版本
-- [PRD.md §9](./PRD.md)：版本基线表同步（如口径变了）
+- [x] [wip-branch-workflow.md §5.1](./wip-branch-workflow.md)：口径按选项 B 收口（现行措辞即该口径，无需改写），并写明线上实际跑的是 `v1.5.0`
+- [x] [wip-branch-workflow.md §7](./wip-branch-workflow.md)：登记行里「线上仍在跑」的说法按实际进程证据更新
+- [x] [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：远程后端实测表的「代码版本」单元格更新为切换后的版本
+- [x] [PRD.md §9](./PRD.md)：版本基线表同步（新增生产部署 ref 行）
 
 ### 相关
 

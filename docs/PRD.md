@@ -495,6 +495,7 @@ SHA；仅看到定时器成功、生产 checkout 的 SHA，或临时 `git-sync-l
 | 来源 | 版本 | 说明 |
 |---|---|---|
 | `CHANGELOG.md` / README badge | **1.5.0** | 对外发布版本（2026-11-12） |
+| 生产部署 ref（`git describe --tags`） | `v1.5.0` | `main` 上的 tag，指向提交 `ee2586ed`；2026-11-25 起线上 `/opt/Octop` checkout 到该 tag（见 [wip-branch-workflow.md §5.1](./wip-branch-workflow.md)） |
 | `pyproject.toml` | 1.4.0 | Python 包版本 |
 | 桌面构建脚本 / exe 文件名 | 1.4.0 | 桌面客户端版本号 |
 | `desktop/.../info.json` | 0.9.26 | Windows 文件版本资源（历史遗留） |

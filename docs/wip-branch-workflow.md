@@ -93,6 +93,8 @@ WIP 分支**可以删除**，当且仅当以下三条全部满足：
 
 **不要**反过来：为了让快照分支「有存在理由」而把生产留在快照版本上。
 
+**当前线上（2026-11-25 核实）**：生产工作树 `/opt/Octop` checkout 到 **`v1.5.0`**（`main` 上的 tag，指向提交 `ee2586ed`），`git describe --tags` → `v1.5.0`；`octop.service` 重启后新 PID `1632150`，`/videogen/api/health` → 200。此前线上停在 `develop`（属本表所列的禁止来源），已按上述处置顺序纠正——过程与证据见 [todo.md T-003](./todo.md)。
+
 ### 怎么验证「已重放」
 
 ```bash
@@ -124,7 +126,7 @@ git diff cnb/develop wip/<主题> -- <path>
 
 | 分支 | 快照提交 | 来源 | 状态 | 关联文档 |
 |---|---|---|---|---|
-| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **待处理** —— 内容已逐项重放到 `develop`；“线上仍在跑”仅为登记记录（登记证据日期 2026-11-24），须以实际进程/健康证据复核，不能据此宣称当前线上状态；完成后按 §5 核对实际发布 refs 再清理 | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
+| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **待处理** —— 内容已逐项重放到 `develop`；**线上已于 2026-11-25 切到 `main` 上的 `v1.5.0`**（进程与健康证据见 [todo.md T-003](./todo.md)），本快照已不是线上来源；分支本身的清理见 [todo.md T-004](./todo.md) | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
 
 ---
 
