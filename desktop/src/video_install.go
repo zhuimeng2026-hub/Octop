@@ -238,21 +238,49 @@ func (m *videoManager) runEnvironmentInstall(manifestURLs []string) {
 	}
 	navLogf("video install: all parts are in place under %s", root)
 
-	// Parts are in place. Let the existing checker decide whether the runtime
-	// is ready or still needs a one-off render verification.
-	if _, err := m.startEnvironment("check"); err != nil {
+	// Parts are in place. Verify the freshly installed runtime right now so a
+	// successful install lands directly in "ready" — the user should not have
+	// to click a second "verify" button after the install already finished.
+	// Kept in its own method so the choice of mode can be unit-tested without
+	// downloading a real component bundle.
+	m.runPostInstallVerification()
+}
+
+// runPostInstallVerification kicks off a real render verification of the
+// runtime that was just unpacked. It runs the same "verify" worker used by the
+// manual button, so every state transition and the worker's real stderr go
+// through navLogf (desktop-nav.log): a failed verification stays traceable
+// even though no extra user action is involved.
+//
+// It returns the mode actually started — "verify" normally, "check" only if a
+// render was active and verify was refused as BUSY, or "" if neither started.
+func (m *videoManager) runPostInstallVerification() string {
+	navLogf("video install: parts in place, starting automatic render verification")
+	if _, err := m.startEnvironment("verify"); err == nil {
+		return "verify"
+	} else {
+		// A verify is refused as BUSY only if a render started in the narrow
+		// window after the download. Fall back to a plain check so the UI still
+		// gets an accurate status, and carry ENV_NOT_VERIFIED explicitly so it
+		// does not read as a missing component (RequiresInstall stays false).
+		navLogf("video install: automatic verification could not start (%v); falling back to a component check", err)
+	}
+	if _, checkErr := m.startEnvironment("check"); checkErr != nil {
 		status := VideoEnvironmentStatus{
 			State:     "needs_setup",
 			Stage:     environmentStage("components"),
+			ErrorCode: "ENV_NOT_VERIFIED",
 			CheckedAt: time.Now().Unix(),
 		}
 		m.mu.Lock()
 		m.environment = status
 		m.environmentLogKey = environmentLogKey(status)
 		m.mu.Unlock()
-		navLogf("video install: the post-install check could not start: %v", err)
+		navLogf("video install: the post-install check could not start either: %v", checkErr)
 		logVideoEnvironment(status)
+		return ""
 	}
+	return "check"
 }
 
 func (m *videoManager) setInstallProgress(stage string, progress float64) {

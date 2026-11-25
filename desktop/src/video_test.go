@@ -245,13 +245,22 @@ func TestSafeVideoNameAndSameFileCopy(t *testing.T) {
 
 func TestValidVideoTargetsAndOutputContainment(t *testing.T) {
 	targets := []VideoTargetRequest{{ID: "reel", Profile: "short_vertical", Width: 1080, Height: 1920, FPS: 30, Filename: "reel.mp4"}}
-	if !validVideoTargets(targets) { t.Fatal("valid target was rejected") }
-	if _, ok := expectedTargetOutput(t.TempDir(), targets, "unknown", "/tmp/elsewhere.mp4"); ok { t.Fatal("unknown target output was accepted") }
+	if !validVideoTargets(targets) {
+		t.Fatal("valid target was rejected")
+	}
+	if _, ok := expectedTargetOutput(t.TempDir(), targets, "unknown", "/tmp/elsewhere.mp4"); ok {
+		t.Fatal("unknown target output was accepted")
+	}
 	duplicate := append([]VideoTargetRequest(nil), targets...)
-	duplicate = append(duplicate, VideoTargetRequest{ID:"other", Width:1080, Height:1920, FPS:30, Filename:"REEL.mp4"})
-	if validVideoTargets(duplicate) { t.Fatal("duplicate output filename was accepted") }
-	odd := append([]VideoTargetRequest(nil), targets...); odd[0].Width = 1079
-	if validVideoTargets(odd) { t.Fatal("odd H.264 width was accepted") }
+	duplicate = append(duplicate, VideoTargetRequest{ID: "other", Width: 1080, Height: 1920, FPS: 30, Filename: "REEL.mp4"})
+	if validVideoTargets(duplicate) {
+		t.Fatal("duplicate output filename was accepted")
+	}
+	odd := append([]VideoTargetRequest(nil), targets...)
+	odd[0].Width = 1079
+	if validVideoTargets(odd) {
+		t.Fatal("odd H.264 width was accepted")
+	}
 }
 
 func TestVideoEnvironmentCheckAndVerifyUseTrustedWorker(t *testing.T) {
@@ -488,6 +497,85 @@ func TestVideoEnvironmentInstalledButNotVerifiedDoesNotAskForInstall(t *testing.
 	if status.ErrorCode != "ENV_NOT_VERIFIED" {
 		t.Fatalf("expected ENV_NOT_VERIFIED, got %+v", status)
 	}
+}
+
+// TestPostInstallVerificationStartsVerify records the "installed and ready to
+// use" contract: after the component parts land, the shell must kick off the
+// real render verification (not a plain component check), so the user never
+// has to click a second "verify" button. It also checks the BUSY fallback:
+// if a render grabbed the worker in the narrow window after the download,
+// verification degrades to a check instead of failing the install.
+func TestPostInstallVerificationStartsVerify(t *testing.T) {
+	newManagerWithFakeRuntime := func(t *testing.T) *videoManager {
+		t.Helper()
+		root := t.TempDir()
+		t.Setenv("OCTOP_HOME", root)
+		runtimeDir := filepath.Join(root, "components")
+		if err := os.MkdirAll(runtimeDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(runtimeDir, "runtime.json"), []byte(`{"schema":"octop-desktop-video-runtime/1","templateVersion":1}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(runtimeDir, "desktop-worker.mjs"), []byte("// trusted fixture worker"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		node := "node"
+		if runtime.GOOS == "windows" {
+			node = "node.exe"
+		}
+		exe, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		binary, err := os.ReadFile(exe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(runtimeDir, node), binary, 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("OCTOP_DESKTOP_VIDEO_RUNTIME", runtimeDir)
+		t.Setenv("OCTOP_TEST_VIDEO_ENV_WORKER", "1")
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/auth/me" {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = io.WriteString(w, `{"id":42}`)
+		}))
+		t.Cleanup(server.Close)
+		return newVideoManager(server.URL)
+	}
+
+	t.Run("verify by default", func(t *testing.T) {
+		m := newManagerWithFakeRuntime(t)
+		if mode := m.runPostInstallVerification(); mode != "verify" {
+			t.Fatalf("post-install mode = %q, want verify", mode)
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			status := m.environmentSnapshot()
+			if status.State == "ready" || status.State == "failed" {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		status := m.environmentSnapshot()
+		if status.State != "ready" {
+			t.Fatalf("automatic verification did not reach ready: %+v", status)
+		}
+	})
+
+	t.Run("falls back to check when a render is active", func(t *testing.T) {
+		m := newManagerWithFakeRuntime(t)
+		m.mu.Lock()
+		m.active = "job_busy"
+		m.mu.Unlock()
+		if mode := m.runPostInstallVerification(); mode != "check" {
+			t.Fatalf("post-install mode with active render = %q, want check", mode)
+		}
+	})
 }
 
 // TestVideoEnvironmentErrorCodeKeepsNotVerified makes sure the new code
