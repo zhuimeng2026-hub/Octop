@@ -225,6 +225,49 @@ uv run python tests/evals/validate_tasks.py
 
 ---
 
+### B-005 · 桌面端会话续期：blob / stream / probe 三条路径接上续期
+
+**状态**：待实施（登记日期：2026-11-25）
+**优先级**：P1 重要不紧急
+**跟踪**：未建 issue（本条由 backlog 自身承载；若需要协作跟踪，建 issue 后回填链接）
+**语义来源**：[PRD.md §4 R6](./PRD.md) —— 桌面 local 账号的会话续期必须覆盖全部请求路径；判定口径见 [eval/examples/desktop-shell-session.yaml DSK-001](./eval/examples/desktop-shell-session.yaml)
+**可无人值守执行**：是 —— 但**必须在有前端环境的机器上执行**（Node + 依赖已装，能跑 `npx vitest`）。后端生产机按 [deployment-boundary.md §1 NEVER 行](./deployment-boundary.md) 禁止 npm/npx/vite，在后端环境的夜间集合里本条记 blocked + 原因，不得静默跳过、不得算作通过。
+
+**背景**：`dashboard/src/api/request.ts` 的 `request()` 遇到 401 会走 `retryWithDesktopSession()` —— 只有桌面 local 账号才续期（口令账号落登录页），续期后原地重试一次。`requestBlob` / `requestStream` / `probeAuthResource` 各自复制了一遍认证前置，唯独漏了这段续期，直接 `throwIfUnauthorized`。后果：桌面 local 账号的 token 过期后，走这三条路径（语音 TTS 的 blob/stream、素材库资产下载与工程包打包、工作区打包与文件下载、agent 工作区归档、认证资源探测）会被丢到登录页 —— 桌面端**没有密码可填**，用户只能重启应用。现状已由 `8c44f88f` 用 `it.fails` 钉在仓库里（CI 保持绿），但实现没修：缺口会一直存在，且随时间被人遗忘。
+
+**范围（白名单）**：
+- `dashboard/src/api/request.ts`
+- `dashboard/src/api/request.blobRetry.test.ts`
+- `docs/eval/examples/desktop-shell-session.yaml`（DSK-001 的 `status`）
+- `docs/PRD.md` §4 的 R6 状态行
+
+**不在范围**：不改后端（`src/octop/**`）；不改 `desktop/`（桌面壳与 bridge 契约）；不改 `renewDesktopSession` / `isLocalDesktopUser` 的既有语义（谁有资格续期是产品口径，不在本次范围）；不改另外两条护栏用例的断言；不动认证策略（口令账号仍落登录页）；不构建或部署前端产物（由前端环境的构建流程负责）。
+
+**前置条件**：读 `dashboard/src/api/request.ts` 的 `retryWithDesktopSession`（`:412`）与调用点（`:473`）；读 `dashboard/src/api/request.blobRetry.test.ts` 的 5 条用例（3 条 `it.fails` + 2 条护栏）；读 [eval/README.md §3、§4](./eval/README.md)（任务字段与判定红线）。
+
+**步骤**：
+1. 把 `request()` 里的续期逻辑抽成可复用的公共函数（如 `renewAndRetry`），由 `request()` / `requestBlob` / `requestStream` / `probeAuthResource` 各自调用 —— **不要复制第二份「谁有资格续期」的判断**。
+2. 三条路径补上与 `request()` 现状一致的判定：仅桌面 local 账号续期；口令账号与无 bridge 场景直接落登录页。
+3. 把 `request.blobRetry.test.ts` 里 3 条 `it.fails` 改回普通断言（`it`），2 条护栏用例**保持原样**。
+4. 跑验收命令；全绿后再改状态（本步骤 5）。
+5. `docs/eval/examples/desktop-shell-session.yaml` 的 DSK-001 `status` 改为 `active`；`docs/PRD.md` §4 的 R6 状态改为 `✅ 已实现·已验证` 并附任务 id 与 commit。
+
+**验收命令**：
+```bash
+cd dashboard && npx tsc -b && npx vitest run src/api/request.blobRetry.test.ts && npm run lint
+```
+通过标准：5 条用例全绿，文件中**不再有** `it.fails`；`npx vitest` 输出里必须收集到 5 条目标用例 —— 退出码 0 但零匹配不得判为通过（[eval/README.md §4 第 1 条](./eval/README.md)）。
+
+**停止条件**：
+- 需要改后端或 `desktop/` 的契约才能实现 → 停，报告；
+- 需要改「谁有资格续期」的判定（`isLocalDesktopUser` / `renewDesktopSession` 语义）→ 停，报告 —— 那是产品口径，须走 PRD §8 开放问题；
+- 当前机器没有前端环境 / 目标用例收集不到 → 记 blocked + 原因，**不得**静默跳过，也不得判为通过；
+- 需要动 `src/octop/**` 或改认证策略 → 停，报告（超出白名单）。
+
+**完成后回写**：`docs/eval/examples/desktop-shell-session.yaml` 的 DSK-001 状态；`docs/PRD.md` §4 的 R6 状态行；`docs/eval/README.md` 的任务集计数行；本条目状态。
+
+---
+
 ## 5. 与其它文档的关系
 
 - 需求条目自身待实施 → 该需求文档的「实现状态」+ eval 任务 `status: planned`（见 [eval/README.md §3](./eval/README.md)）

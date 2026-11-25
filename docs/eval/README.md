@@ -206,7 +206,7 @@ YAML 顶层必须是 `domain`、`requirement_doc`、`tasks`；`tasks` 为列表�
 | L1 | ✅ 完整 | `tests/unit/**` |
 | L2 | ✅ 流程已规定 | `AGENTS.md` §1「本地验证是冒烟」 |
 | L3 | ⚠️ 部分 | `tests/integration/**`、浏览器冒烟脚本、桌面桥 Go 测试 |
-| L4 | ⚠️ 规范与三个领域的任务集已存在；**夜间执行器已接入**后端定时任务，CI 门禁仍未启用 | 格式见本文档 §3；任务集 [examples/](./examples/)（PVQ 8 条 / PLB 14 条 / LLW 8 条）；夜间执行器 `scripts/run_eval_nightly.py`（见 [backend-full-test.md](./backend-full-test.md)「L4 评测（夜间集合）」）；校验脚本、PR 门禁与证据归档仍待 B-003 |
+| L4 | ⚠️ 规范与四个领域的任务集已存在；**夜间执行器已接入**后端定时任务，CI 门禁仍未启用 | 格式见本文档 §3；任务集 [examples/](./examples/)（PVQ 8 条 / PLB 14 条 / LLW 8 条 / DSK 2 条）；夜间执行器 `scripts/run_eval_nightly.py`（见 [backend-full-test.md](./backend-full-test.md)「L4 评测（夜间集合）」）；校验脚本、PR 门禁与证据归档仍待 B-003 |
 
 **已知缺口**：
 
