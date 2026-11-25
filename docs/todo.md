@@ -19,6 +19,7 @@
 | T-003 | 生产环境部署来源切到 `main` 的 `v*` tag（口径按选项 B 收口） | 生产服务器 `ocdev.aixifs.com:13122` | ✅ 已完成 | [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
 | T-004 | 清理 WIP 分支 `wip/product-library-batch-import`（三处 ref + 文档回写） | 生产服务器 + GitHub/CNB 仓库权限 | ⏳ 待安排 | [wip-branch-workflow.md §5/§7](./wip-branch-workflow.md) |
 | T-005 | 修复 fork 的 Actions「Mirror to CNB」令牌过期，并复核镜像链路 | CNB 访问令牌 + fork 仓库设置权限 | 🚧 进行中（人处理令牌） | [cnb-openapi.md](./cnb-openapi.md) |
+| T-006 | 前端产物重建：替换线上「手工改前缀」的产物 | 前端构建环境（Windows / Node） | ⏳ 待安排 | [deployment-pitfalls.md §1.1](./deployment-pitfalls.md) |
 
 ---
 
@@ -307,3 +308,62 @@ fork 的 Actions secret `CNB_TOKEN` 最后更新于 **2026-10-27**，已过期�
 
 - [cnb-openapi.md](./cnb-openapi.md)：CNB API / 网页路径 / 踩坑记录
 - [cnb-mirror.md](./cnb-mirror.md)：镜像拓扑与服务器侧 cron
+
+---
+
+## T-006 · 前端产物重建：替换线上「手工改前缀」的产物
+
+**状态**：⏳ 待安排（2026-11-25 登记）
+
+### 要做什么
+
+在**前端构建环境**用正确的前缀重新构建并同步，替换线上那份「手工改过前缀」的前端产物。
+
+### 背景
+
+2026-11-23 23:01 同步上线的产物是在 Windows Git Bash 上构建的，`BASE_URL=/videogen`
+被 MSYS 改写成 `/C:/Program Files/Git/videogen`，125 处资源引用与 bundle 里的
+`BASE_PATH` 全部带坏前缀 → 面板白屏且所有 API 请求打错路径（详见
+[deployment-pitfalls.md §1.1](./deployment-pitfalls.md)）。
+
+2026-11-25 在生产机**手工**把产物改成相对路径、并把 `BASE_PATH` 改为运行时推导，
+面板已恢复（当时线上产物已备份在 `/opt/octop-data/dashboard-backups/20261125-132609-badwin-base`）。
+但**手工改的产物与源码不同源**：下次按源码重建并同步时，这些改写会被覆盖。
+
+### 为什么不能在服务器做
+
+前端构建需要 Node + 依赖安装与打包，服务器是后端环境（无 Node、内存受限），
+按 [deployment-boundary.md](./deployment-boundary.md) 一律不在此构建。
+
+### 步骤
+
+```bash
+# 前端构建环境（Windows：PowerShell，或 Git Bash + MSYS_NO_PATHCONV=1）
+cd dashboard
+MSYS_NO_PATHCONV=1 BASE_URL=/videogen npm run build     # → src/octop/dashboard/
+# 校验产物里没有坏前缀
+grep -rc "C:/Program" src/octop/dashboard | grep -v ":0$"   # 期望无输出
+grep -o 'src="[^"]*"' src/octop/dashboard/index.html        # 期望 src="/videogen/assets/index.<hash>.js"
+# 同步到生产
+bash scripts/deploy-dashboard.sh
+```
+
+### 验收标准
+
+| 项 | 判定 |
+|---|---|
+| 产物前缀 | `index.html` 的 `src` 为 `/videogen/assets/index.<hash>.js`；产物内无 `C:/Program` |
+| 面板 | `https://ocbot.aixifs.com/videogen/` 正常渲染（登录框出现），Network 无 404 |
+| API | 面板发起的请求带 `/videogen` 前缀且返回 200 |
+| 缓存 | 入口文件名与线上现名**不同**（内容哈希变化 → 浏览器自动取新） |
+| 留档 | `src/octop/dashboard/` 不再是手工改写版 |
+
+### 完成后回写
+
+- [deployment-pitfalls.md §1.1](./deployment-pitfalls.md)：把「应急修法」标注为已作废，写明正式产物的前缀形态
+- 本条目状态 → ✅ 已完成（附日期与产物入口文件名）
+
+### 相关
+
+- [deployment-pitfalls.md §1.1](./deployment-pitfalls.md)：本条对应的实录与应急修法
+- [deployment-boundary.md](./deployment-boundary.md)：前端/后端部署边界
