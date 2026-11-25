@@ -23,7 +23,12 @@ tasks:
     judge:
       kind: test
       cwd: dashboard
-      command: npx vitest run src/api/request.blobRetry.test.ts -t "renews the device credential and retries"
+      # 自校验：文件里还有 it.fails 就判失败。it.fails 的用例在 vitest 里算
+      # 「预期失败 = 通过」，不加这道闸门，未修复的实现也会被判成通过。
+      command: >-
+        sh -c '! grep -qF it.fails src/api/request.blobRetry.test.ts &&
+        npx vitest run src/api/request.blobRetry.test.ts
+        -t "renews the device credential and retries"'
       expect: exit_code == 0
     evidence: []
     regression: full
