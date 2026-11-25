@@ -6744,6 +6744,7 @@
     "oidcWith": "使用 {{name}} 继续",
     "noProviderEnabled": "尚未配置任何登录方式，请联系管理员。",
     "oidcStartFailed": "无法启动单点登录",
+    "debugLoginFailed": "调试账号登录失败，请检查本机测试服务和账号配置",
     "ldapHint": "使用{{name}}账号登录",
     "oidcError": {
       "denied": "已取消单点登录。",

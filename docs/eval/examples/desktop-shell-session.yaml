@@ -1,0 +1,66 @@
+# 任务集 —— 桌面壳会话续期（DSK）
+#
+# 格式与字段说明见 ../README.md §3。
+# 需求来源：docs/PRD.md §4 R6 —— 桌面 local 账号的会话续期必须覆盖全部请求路径。
+# 语义与验收口径见 docs/backlog.md B-005。
+#
+# 运行边界：判定命令是 dashboard 的 vitest，属于**前端环境**。后端生产机不得跑
+# npm/npx（docs/deployment-boundary.md §1 NEVER 行、§2 决策表）；在后端环境的
+# 夜间集合里，这些任务按规范 §5 记为 blocked + 原因，不会被静默跳过，也不会被
+# 算作通过。
+
+domain: DSK
+requirement_doc: docs/PRD.md
+
+tasks:
+  - id: DSK-001
+    title: 桌面 local 账号在 blob / stream / probe 三条路径上遇 401 也要续期并重试一次
+    requirement: docs/PRD.md#4-当前迭代需求桌面端直接对话框
+    layer: L4
+    severity: must
+    owner: dashboard/src/api
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      # 自校验：文件里还有 it.fails 就判失败。it.fails 的用例在 vitest 里算
+      # 「预期失败 = 通过」，不加这道闸门，未修复的实现也会被判成通过。
+      command: >-
+        sh -c '! grep -qF it.fails src/api/request.blobRetry.test.ts &&
+        npx vitest run src/api/request.blobRetry.test.ts
+        -t "renews the device credential and retries"'
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    status: planned
+    notes: >
+      缺口：`dashboard/src/api/request.ts` 的 requestBlob / requestStream /
+      probeAuthResource 各自复制了认证前置，唯独漏了 request() 里的
+      retryWithDesktopSession —— 遇 401 直接 throwIfUnauthorized，把桌面 local
+      账号丢到登录页（桌面端没有密码可填，用户只能重启应用）。
+      现状钉在 `dashboard/src/api/request.blobRetry.test.ts`：3 条用 it.fails 记着
+      已知缺口（CI 保持绿）。修复落地时把这 3 条 it.fails 改回普通断言并让实现
+      跟上；在此之前本条不得进入门禁、不得判为通过。
+      执行规格见 docs/backlog.md B-005。
+
+  - id: DSK-002
+    title: 口令账号不得被续期成 desktop 会话；无 bridge 时直接落登录页
+    requirement: docs/PRD.md#4-当前迭代需求桌面端直接对话框
+    layer: L4
+    severity: must
+    owner: dashboard/src/api
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      command: npx vitest run src/api/request.blobRetry.test.ts -t "does not renew"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    status: active
+    notes: >
+      两个护栏用例（普通断言，不在 it.fails 里），防止修复时把续期逻辑写宽：
+      普通口令账号的过期 token 必须落登录页；没有 desktop bridge 时同样直接落
+      登录页。修复 DSK-001 时不得放宽这两条。

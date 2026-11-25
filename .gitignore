@@ -97,6 +97,9 @@ src/octop/dashboard/assets/*
 *.db
 *.db-wal
 *.db-shm
+# The scrubbed sample database IS a fixture: it carries real schema and row
+# counts with every credential replaced. See tests/fixtures/README.md.
+!tests/fixtures/octop-sample.db
 
 # Logs / runtime
 *.log

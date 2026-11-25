@@ -8,6 +8,7 @@
 > 目录批量导入与大图体积处理见 [产品素材库批量导入](../../product-image-batch-import.md)。
 > 兄弟文档：工作台升级规格（引导模式 / 精细工作台 / 多平台输出）见 [PRD.md](./PRD.md)。
 > 素材与数据所有权决策见 [平台 PRD §3.7](../../PRD.md)。
+> 评测任务：[eval/examples/local-library-wizard.yaml](../../eval/examples/local-library-wizard.yaml)（LLW-001…LLW-008；判定规则见 [eval/README.md](../../eval/README.md)）
 
 ## 1. 产品目标与入口
 

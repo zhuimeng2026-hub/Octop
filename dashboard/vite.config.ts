@@ -96,7 +96,85 @@ function normalizeViteBase(raw: string | undefined): string {
   return withLeading.endsWith("/") ? withLeading : `${withLeading}/`;
 }
 
-export default defineConfig(({ mode }) => {
+const devLoginHost = "127.0.0.1";
+const devLoginPort = 5174;
+
+function octopDevLogin(endpointPath: string, loginUrl: string): Plugin {
+  const authority = `${devLoginHost}:${devLoginPort}`;
+  const origin = `http://${authority}`;
+  return {
+    name: "octop-dev-login",
+    apply: "serve",
+    configResolved(config) {
+      if (
+        config.server.host !== devLoginHost ||
+        config.server.port !== devLoginPort ||
+        !config.server.strictPort
+      ) {
+        throw new Error("WeChat login debug mode requires 127.0.0.1:5174 with strictPort");
+      }
+    },
+    configureServer(server) {
+      const username = process.env.OCTOP_DEV_LOGIN_USERNAME?.trim();
+      const password = process.env.OCTOP_DEV_LOGIN_PASSWORD;
+      if (!username || !password) {
+        throw new Error(
+          "OCTOP_DEV_SKIP_WECHAT_LOGIN=1 requires OCTOP_DEV_LOGIN_USERNAME and OCTOP_DEV_LOGIN_PASSWORD",
+        );
+      }
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url !== endpointPath) {
+          next();
+          return;
+        }
+        res.setHeader("Cache-Control", "no-store");
+        if (req.method !== "POST") {
+          res.statusCode = 405;
+          res.setHeader("Allow", "POST");
+          res.end();
+          return;
+        }
+        if (req.headers.origin !== origin || req.headers.host !== authority) {
+          res.statusCode = 403;
+          res.end();
+          return;
+        }
+        try {
+          const response = await fetch(loginUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+            redirect: "error",
+          });
+          const raw = (await response.json()) as {
+            access_token?: unknown;
+            user?: { role?: unknown };
+            mfa_required?: unknown;
+          };
+          if (
+            !response.ok ||
+            typeof raw.access_token !== "string" ||
+            !raw.access_token ||
+            raw.user?.role !== "user" ||
+            raw.mfa_required === true
+          ) {
+            res.statusCode = response.ok ? 403 : response.status;
+            res.end();
+            return;
+          }
+          res.statusCode = response.status;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ access_token: raw.access_token }));
+        } catch {
+          res.statusCode = 503;
+          res.end();
+        }
+      });
+    },
+  };
+}
+
+export default defineConfig(({ mode, command, isPreview }) => {
   const env = loadEnv(mode, process.cwd(), "");
   // Keep BASE_URL path semantics for existing deployments, while also accepting
   // the upstream VITE_BASE_PATH name and an absolute BASE_URL API origin.
@@ -150,6 +228,38 @@ export default defineConfig(({ mode }) => {
   // Dev server defaults to Vite's :5173. Override with VITE_DEV_PORT (e.g. 80
   // for LAN / same-origin setups). Must stay in sync with server.hmr.clientPort.
   const devServerPort = Number(process.env.VITE_DEV_PORT || 5173);
+  const debugLogin =
+    command === "serve" &&
+    !isPreview &&
+    mode === "development" &&
+    process.env.OCTOP_DEV_SKIP_WECHAT_LOGIN === "1";
+  if (debugLogin && devServerPort !== devLoginPort) {
+    throw new Error("WeChat login debug mode requires VITE_DEV_PORT=5174");
+  }
+  if (debugLogin && !remoteTarget) {
+    throw new Error(
+      "WeChat login debug mode requires an explicit loopback VITE_API_TARGET",
+    );
+  }
+  if (debugLogin) {
+    if (apiBaseUrl || viteBase.startsWith("//") || viteBase.includes("\\")) {
+      throw new Error("WeChat login debug mode requires a relative BASE_URL");
+    }
+    const targetUrl = new URL(remoteTarget);
+    if (
+      targetUrl.protocol !== "http:" ||
+      !["127.0.0.1", "localhost", "[::1]"].includes(targetUrl.hostname) ||
+      targetUrl.username ||
+      targetUrl.password ||
+      targetUrl.pathname !== "/" ||
+      targetUrl.search ||
+      targetUrl.hash
+    ) {
+      throw new Error(
+        "WeChat login debug mode requires an http:// loopback VITE_API_TARGET",
+      );
+    }
+  }
 
   // Conditionally load the visualizer plugin (sync require to avoid async issues)
   const extraPlugins: Plugin[] = [];
@@ -259,12 +369,21 @@ export default defineConfig(({ mode }) => {
       BASE_URL: JSON.stringify(normalizedBasePath),
       API_BASE_URL: JSON.stringify(apiBaseUrl),
       MOBILE: false,
+      OCTOP_DEV_SKIP_WECHAT_LOGIN: JSON.stringify(debugLogin),
     },
     plugins: [
       monacoSameOrigin(__dirname),
       suppressViteDisconnectReload(),
       react(),
       rewriteManifestForBase(outDir, normalizedBasePath),
+      ...(debugLogin
+        ? [
+            octopDevLogin(
+              `${normalizedBasePath}/__octop_dev_login`,
+              `${apiTarget}${normalizedBasePath}/api/auth/login`,
+            ),
+          ]
+        : []),
       svgr(),
       VitePWA({
         // fast 模式不生成 Service Worker，省掉 workbox 扫描与打包。
@@ -399,9 +518,10 @@ export default defineConfig(({ mode }) => {
       dedupe: ["react", "react-dom"],
     },
     server: {
-      host: "0.0.0.0",
+      host: debugLogin ? devLoginHost : "0.0.0.0",
       port: devServerPort,
-      allowedHosts: true,
+      strictPort: debugLogin,
+      allowedHosts: debugLogin ? [devLoginHost] : true,
       // NEVER default to `hmr: false` — Vite still injects @vite/client and a
       // failed WS then triggers location.reload() loops. Pin clientPort so
       // Safari on privileged ports (e.g. :80 via VITE_DEV_PORT) does not build

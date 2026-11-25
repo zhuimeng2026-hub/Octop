@@ -1,0 +1,242 @@
+# 首批任务集 —— 目录图片批量识别与归档（PLB）
+#
+# 格式与字段说明见 ../README.md §3。
+# 需求来源：docs/product-image-batch-import.md（§3.1 功能需求 FR-1…FR-8、§11.7 验收标准）
+#
+# 运行边界：这些任务都是后端用例，在后端环境可直接执行（沙箱 OCTOP_HOME）。
+# 需求文档 §11 里属于前端的验收条目（体积提示、压缩副本、动态图提示）依赖
+# 前端工具链，按 docs/deployment-boundary.md §1/§2 在后端环境不执行，
+# 记为 blocked + 原因（见 PLB-010）。
+
+domain: PLB
+requirement_doc: docs/product-image-batch-import.md
+
+tasks:
+  - id: PLB-001
+    title: 目录导入按识别结果分组，确认后落库成产品与素材
+    requirement: docs/product-image-batch-import.md#31-功能需求
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q -k "analyse_groups_images_and_commit_archives"
+      expect: exit_code == 0
+    evidence: []
+    regression: smoke
+    blocking: true
+    notes: 覆盖 FR-1（只处理受支持图片、非图片文件进 skipped）、FR-3（按分组建产品并挂素材）、FR-5（写入发生在 commit 阶段）。FR-5「分析阶段不写库」缺独立断言，见 PLB-009。
+
+  - id: PLB-002
+    title: 视觉识别结果的结构化解析与校验（合法载荷、非法载荷、置信度与长度截断）
+    requirement: docs/product-image-batch-import.md#31-功能需求
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q -k "parse_categorisation_payload"
+      expect: exit_code == 0
+    evidence: []
+    regression: smoke
+    blocking: true
+    notes: 覆盖 FR-2 的输出契约：JSON 解析、字段缺失与类型错误拒绝、confidence 越界钳位、超长截断。
+
+  - id: PLB-003
+    title: 相同字节不重复调用模型、不重复入库
+    requirement: docs/product-image-batch-import.md#31-功能需求
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q -k "duplicate_bytes_reuse_description_and_dedupe_asset"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: true
+    notes: 覆盖 FR-6 幂等与去重：相同 content_hash 复用已识别结果，不产生重复资产。
+
+  - id: PLB-004
+    title: 目录导入按用户隔离：他人 job 不可提交，接口按 owner 收敛
+    requirement: docs/product-image-batch-import.md#31-功能需求
+    layer: L4
+    severity: must
+    owner: src/octop/api/routers/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q -k "other_owner_cannot_commit or router_analyze_and_commit_are_owner_scoped"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: true
+    notes: 覆盖 FR-8 权限隔离（服务层与路由层各一条）。
+
+  - id: PLB-005
+    title: 单张识别失败不阻塞整批，失败项单独返回
+    requirement: docs/product-image-batch-import.md#31-功能需求
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q -k "vision_failure_does_not_block_batch"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: true
+    notes: 覆盖 FR-7 失败可控：模型异常只影响该图，其余图片照常分组。
+
+  - id: PLB-006
+    title: 分组结果可复核：manifest 保留相对路径与识别描述
+    requirement: docs/product-image-batch-import.md#31-功能需求
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q -k "analyse_upload_keeps_relative_path_in_manifest or analyse_upload_without_paths_falls_back_to_basename"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: true
+    notes: 覆盖 FR-4 分组证据：分组依据（相对路径、描述、标签）留在 manifest 里供用户复核。
+
+  - id: PLB-007
+    title: 识别不确定时回退到目录名，识别结果不被目录名覆盖
+    requirement: docs/product-image-batch-import.md#31-功能需求
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q -k "folder_name_wins_when_vision_is_unsure or confident_vision_group_is_not_overridden_by_folder or analyse_placeholder_group_falls_back_to_folder"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖 FR-2/FR-5 的兜底口径：空分组或低置信度回退目录名；高置信度不被目录名覆盖。
+
+  - id: PLB-008
+    title: 上传相对路径清洗：去目录穿越、去盘符、限深限长
+    requirement: docs/product-image-batch-import.md#31-功能需求
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q -k "sanitize_relative_path"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖 FR-1 的路径安全边界（Windows 盘符与 ../ 穿越必须被剥掉）。
+
+  - id: PLB-009
+    title: 提交归档按确认的分组落库，可用名称缺失时报失败
+    requirement: docs/product-image-batch-import.md#31-功能需求
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q -k "commit_placeholder_name_falls_back_to_source_folder or commit_without_any_usable_name_reports_failure"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖 FR-5 提交阶段的错误分支；正向路径见 PLB-001。分析阶段「不写库」缺独立断言，需补一条用例。
+
+  - id: PLB-010
+    title: 原图体积上限与识别载荷上限在后端逐项返回
+    requirement: docs/product-image-batch-import.md#117-验收标准
+    layer: L4
+    severity: must
+    owner: src/octop/infra/product_library
+    type: automated
+    judge:
+      kind: test
+      command: python -m pytest tests/unit/product_library/test_batch_import.py -q
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    status: planned
+    notes: 口径已定（§11.7 第 7/8 条：后端对超限、空文件、格式错误逐项返回，识别载荷不超过 8 MiB），但仓库里没有对应后端回归用例 —— §11.8 验证记录只覆盖前端 vitest。命令暂指向整个用例文件，补断言后收窄到具体用例。
+
+  - id: PLB-011
+    title: 超限文件在导入队列里给出可操作提示且不丢队列
+    requirement: docs/product-image-batch-import.md#117-验收标准
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/ProductLibrary
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      command: npx vitest run src/pages/ProductLibrary/index.test.tsx -t "shows an actionable message for an oversized import and keeps the queue"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖 §11.7 第 2 条（超限列表显示文件名、大小与「压缩副本并加入」入口）。后端环境禁止运行 npm/npx（docs/deployment-boundary.md §1 NEVER 行、§2 决策表），本机夜间集合记为 blocked + 原因；该任务在前端环境执行。
+
+  - id: PLB-012
+    title: 单次队列总量超限在发请求前预检并提示分批
+    requirement: docs/product-image-batch-import.md#117-验收标准
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/ProductLibrary
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      command: npx vitest run src/pages/ProductLibrary/index.test.tsx -t "preflights file and batch limits before analyzing"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖 §11.7 第 6 条（45 MiB 总量上限前端预检，不依赖服务端 413）。后端环境不执行（npm 禁令），需在前端环境跑。
+
+  - id: PLB-013
+    title: 超大文件在浏览器端本地压缩后仅副本进入队列
+    requirement: docs/product-image-batch-import.md#117-验收标准
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/ProductLibrary
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      command: npx vitest run src/pages/ProductLibrary/index.test.tsx -t "compresses an oversized file locally before adding it"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖 §11.7 第 3/5 条（本地压缩副本、透明通道与原文件不被改写）。后端环境不执行（npm 禁令），需在前端环境跑。
+
+  - id: PLB-014
+    title: 导入完成弹窗显示「完成」而不是「取消」
+    requirement: docs/product-image-batch-import.md#117-验收标准
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/ProductLibrary
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      command: npx vitest run src/pages/ProductLibrary/index.test.tsx -t "shows Done instead of Cancel once the directory import has completed"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖 §11.7 第 9 条。后端环境不执行（npm 禁令），需在前端环境跑。

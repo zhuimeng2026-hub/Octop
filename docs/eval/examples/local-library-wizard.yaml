@@ -1,0 +1,153 @@
+# 首批任务集 —— 桌面端本机素材库与分步视频制作（LLW）
+#
+# 格式与字段说明见 ../README.md §3。
+# 需求来源：docs/design/video-production-workbench/local-library-wizard.md §5 验收标准 1–6
+#
+# 运行边界：本任务集的命令分两类 —— 桌面 Go 桥接用例（desktop/src）与前端向导用例
+# （dashboard）。两者都**不在后端生产机上执行**：桌面客户端是独立交付单元，在
+# Windows 出包机上构建与验证（docs/desktop-windows-build.md「面向在 Windows 机器上
+# 出包的机器」；CLAUDE.md「desktop/」条、AGENTS.md §1 本地验证表）；前端禁止在后端
+# 环境运行 npm/npx（docs/deployment-boundary.md §1 NEVER 行、§2 决策表）。在后端环境
+# 的夜间集合里，这些任务会记为 blocked + 原因，不会被静默跳过，也不会被算作通过。
+
+domain: LLW
+requirement_doc: docs/design/video-production-workbench/local-library-wizard.md
+
+tasks:
+  - id: LLW-001
+    title: 桌面端对已保存图片重新分析待识别，单张失败可重试
+    requirement: docs/design/video-production-workbench/local-library-wizard.md#5-验收标准与验证记录
+    layer: L4
+    severity: must
+    owner: desktop/src
+    type: automated
+    judge:
+      kind: test
+      cwd: desktop/src
+      command: go test . -run '^TestLibraryRecognitionRetriesStoredImages$' -count=1
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖验收条目 2、3（重新分析待识别、失败保留在本机并可重试）。桌面端命令，须在桌面开发/出包环境执行；后端生产机不跑桌面侧命令，且本机 Go 1.22 低于 desktop/src/go.mod 要求的 1.25。
+
+  - id: LLW-002
+    title: 本机素材库按用户隔离，归档分组可复核
+    requirement: docs/design/video-production-workbench/local-library-wizard.md#5-验收标准与验证记录
+    layer: L4
+    severity: must
+    owner: desktop/src
+    type: automated
+    judge:
+      kind: test
+      cwd: desktop/src
+      command: go test . -run '^TestLocalLibraryStore(OwnerIsolation|ArchiveGroups)$' -count=1
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖验收条目 2、4（按用户隔离、归档分组）。桌面端命令，须在桌面开发/出包环境执行。
+
+  - id: LLW-003
+    title: 本机素材文件名清洗，路径穿越被挡住
+    requirement: docs/design/video-production-workbench/local-library-wizard.md#5-验收标准与验证记录
+    layer: L4
+    severity: must
+    owner: desktop/src
+    type: automated
+    judge:
+      kind: test
+      cwd: desktop/src
+      command: go test . -run '^TestSafeAssetName$' -count=1
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖验收条目 2 的落盘安全边界（../ 穿越、盘符、空名）。桌面端命令，须在桌面开发/出包环境执行。
+
+  - id: LLW-004
+    title: 识别失败时已导入素材仍可用，且只把选中素材带进向导
+    requirement: docs/design/video-production-workbench/local-library-wizard.md#5-验收标准与验证记录
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/LocalVideoWizard
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      command: npx vitest run src/pages/LocalVideoWizard/index.test.tsx -t "keeps imported photos usable when AI recognition fails and carries only the selected photo into the wizard"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖验收条目 2、4、6（失败素材保留可用、勾选进入向导后保持选中、分镜只取选中素材）。前端命令，须在前端环境执行；后端环境禁止运行 npm/npx。
+
+  - id: LLW-005
+    title: 分镜编辑在侧栏与组件切换间保留，失败后重试仍只提交一次
+    requirement: docs/design/video-production-workbench/local-library-wizard.md#5-验收标准与验证记录
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/LocalVideoWizard
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      command: npx vitest run src/pages/LocalVideoWizard/index.test.tsx -t "keeps storyboard edits across the sidebar and component setup and retries with a single submission"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖验收条目 5（默认参数走完五步、环境检测返回后素材与分镜仍在会话中）。前端命令，须在前端环境执行。
+
+  - id: LLW-006
+    title: 分镜字幕、素材替换与排序编辑在提交时保留
+    requirement: docs/design/video-production-workbench/local-library-wizard.md#5-验收标准与验证记录
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/LocalVideoWizard
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      command: npx vitest run src/pages/LocalVideoWizard/index.test.tsx -t "keeps fine storyboard caption, asset swap, and ordering edits when submitted"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖验收条目 6（确认后用本机素材渲染）。前端命令，须在前端环境执行。
+
+  - id: LLW-007
+    title: 重新分析只重试失败批次目标，并保留上一批次任务
+    requirement: docs/design/video-production-workbench/local-library-wizard.md#5-验收标准与验证记录
+    layer: L4
+    severity: must
+    owner: dashboard/src/pages/LocalVideoWizard
+    type: automated
+    judge:
+      kind: test
+      cwd: dashboard
+      command: npx vitest run src/pages/LocalVideoWizard/index.test.tsx -t "retries only the failed batch target and saves the prior batch job"
+      expect: exit_code == 0
+    evidence: []
+    regression: full
+    blocking: false
+    notes: 覆盖验收条目 3。前端命令，须在前端环境执行。
+
+  - id: LLW-008
+    title: 桌面左栏三个入口可直接打开，并突出当前页面
+    requirement: docs/design/video-production-workbench/local-library-wizard.md#5-验收标准与验证记录
+    layer: L4
+    severity: must
+    owner: desktop/src
+    type: manual
+    judge:
+      kind: steps
+      steps:
+        - 在桌面客户端打开本机素材库入口，确认左栏三个入口（素材库 / 视频向导 / 产品库）都可见
+        - 逐个点击入口，确认当前页面被高亮且可返回
+      evidence_required: [screenshot]
+    evidence: []
+    regression: full
+    blocking: false
+    status: planned
+    notes: "口径已定（验收条目 1），但桌面左栏没有自动化用例，只能人工走查留截图证据；按规范 §3，planned 状态不进夜间集合，也不得被当作已通过。"

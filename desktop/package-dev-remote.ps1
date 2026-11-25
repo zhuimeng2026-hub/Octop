@@ -33,6 +33,23 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$debugLogin = $env:OCTOP_DEV_SKIP_WECHAT_LOGIN -eq "1"
+
+if ($debugLogin) {
+    if ($Direct) { throw "WeChat login debug mode cannot use -Direct." }
+    if (-not $PSBoundParameters.ContainsKey("Remote") -and -not $env:OCTOP_DEV_REMOTE_URL) {
+        throw "WeChat login debug mode requires an explicit -Remote or OCTOP_DEV_REMOTE_URL."
+    }
+    if (-not $PSBoundParameters.ContainsKey("VitePort") -and -not $env:OCTOP_DEV_VITE_PORT) { $VitePort = 5174 }
+    if ($VitePort -ne 5174) { throw "WeChat login debug mode requires port 5174." }
+    $debugUri = [Uri]$Remote
+    if ($debugUri.Scheme -ne "http" -or $debugUri.Host -notin @("127.0.0.1", "localhost", "::1")) {
+        throw "WeChat login debug mode requires an explicit http:// loopback target."
+    }
+    if (-not $env:OCTOP_DEV_LOGIN_USERNAME -or -not $env:OCTOP_DEV_LOGIN_PASSWORD) {
+        throw "WeChat login debug mode requires OCTOP_DEV_LOGIN_USERNAME and OCTOP_DEV_LOGIN_PASSWORD."
+    }
+}
 
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
     throw "go is not installed (need Go 1.25+)."
@@ -60,6 +77,7 @@ if (-not $Direct) {
     $env:BASE_URL = $basePath
     $env:VITE_API_TARGET = $origin
     $env:VITE_DEV_PORT = "$VitePort"
+    $env:OCTOP_DEV_SKIP_WECHAT_LOGIN = $(if ($debugLogin) { "1" } else { "0" })
     $vite = Start-Process -FilePath "npm.cmd" -ArgumentList "run", "dev" -WorkingDirectory $dashboard -PassThru -NoNewWindow
 
     $health = "http://127.0.0.1:$VitePort$basePath/api/health"
@@ -100,6 +118,6 @@ try {
 } finally {
     Pop-Location
     if ($vite -and -not $vite.HasExited) {
-        $vite.Kill()
+        & taskkill.exe /PID $vite.Id /T /F 2>$null
     }
 }

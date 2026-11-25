@@ -48,6 +48,35 @@ fi
 
 cd "$REPO_DIR" || { log "无法进入仓库目录 $REPO_DIR"; exit 2; }
 
+# ---------- 0. 凭据隔离 ----------
+# ~/.git-credentials 是【多项目共享】的文件。git 的 credential-store 在认证成功后
+# 会把规范化 URL 写回 store；若这次查找走的是 host 级匹配（useHttpPath=false），
+# 同 host 同 username 的 path 级条目会被一起折叠掉
+# （restore-git-creds.sh 文件头「坑 1」，2026-11-21 实测 11 条 → 9 条）。
+#
+# 隔离三件套（与 cnb_branch_analysis.py、check_git_credentials.sh 同一套）：
+#   1) 空的 credential.helper=            清空整条 helper 链 —— 全局那个无参数的
+#                                          store 指向真实文件，不清链它照样会被写
+#   2) credential.helper=store --file=…   只读写这份临时副本
+#   3) credential.useHttpPath=true        按 path 级匹配，写回带 path，不牵连兄弟条目
+#
+# 读的是哪一条凭据不变：仓库级 .git/config 本来就是 useHttpPath=true，
+# 变的只是【写回落到哪里】——从真实 store 换成临时副本。
+# 第 3 条同时兜住 REPO_DIR 被指向别的仓库的情形（那时仓库级配置不存在）。
+#
+# 只有 CNB 侧需要凭据（https）；origin 是 SSH，全程不碰凭据。
+CRED_STORE="$(mktemp -t gitsyncstore.XXXXXX)"
+chmod 600 "$CRED_STORE"
+[ -f "${HOME}/.git-credentials" ] && cp "${HOME}/.git-credentials" "$CRED_STORE"
+trap 'rm -f "$CRED_STORE"' EXIT
+
+git_cnb() {
+    git -c credential.helper= \
+        -c "credential.helper=store --file=$CRED_STORE" \
+        -c credential.useHttpPath=true \
+        "$@"
+}
+
 TS="$(date '+%Y%m%d-%H%M%S')"
 ANOMALY_FILE="$ANOMALY_DIR/$TS.md"
 : >"$ANOMALY_FILE"
@@ -92,7 +121,7 @@ if [ "$FETCH_OK" = "1" ]; then
             anomaly "分支 $branch 的提交 $sha 本地不存在（可能刚被创建），本次跳过，下轮重试"
             continue
         fi
-        if OUT="$(git push "$CNB_REMOTE" "$sha:refs/heads/$branch" 2>&1)"; then
+        if OUT="$(git_cnb push "$CNB_REMOTE" "$sha:refs/heads/$branch" 2>&1)"; then
             log "  ✓ $branch"
         else
             log "  ✗ $branch"
@@ -119,7 +148,7 @@ if [ "$FETCH_OK" = "1" ]; then
             anomaly "标签 $tag 的对象 $sha 本地不存在（可能刚被创建），本次跳过，下轮重试"
             continue
         fi
-        if ! TAG_OUT="$(git push "$CNB_REMOTE" "$sha:refs/tags/$tag" 2>&1)"; then
+        if ! TAG_OUT="$(git_cnb push "$CNB_REMOTE" "$sha:refs/tags/$tag" 2>&1)"; then
             anomaly "标签 $tag 推送失败：$(tr '\n' ' ' <<<"$TAG_OUT" | tail -c 400)"
         fi
     done <<<"$(git ls-remote --tags "$ORIGIN_REMOTE" 2>/dev/null)"
@@ -134,7 +163,7 @@ ORIGIN_REFS=""
 CNB_REFS=""
 if [ "$FETCH_OK" = "1" ]; then
     ORIGIN_REFS="$(git ls-remote --heads --tags "$ORIGIN_REMOTE" 2>/dev/null)"
-    CNB_REFS="$(git ls-remote --heads --tags "$CNB_REMOTE" 2>/dev/null)"
+    CNB_REFS="$(git_cnb ls-remote --heads --tags "$CNB_REMOTE" 2>/dev/null)"
     if [ -z "$ORIGIN_REFS" ]; then
         anomaly "无法读取 $ORIGIN_REMOTE 的远端引用（凭据或网络问题），本次未做任何校验"
     fi
@@ -183,10 +212,10 @@ if [ "$FETCH_OK" = "1" ] && [ -n "$CNB_ONLY" ]; then
     ORIGIN_MAIN_SHA="$(awk '$2 == "refs/heads/main" {print $1}' <<<"$ORIGIN_REFS")"
     ORIGIN_DEVELOP_SHA="$(awk '$2 == "refs/heads/develop" {print $1}' <<<"$ORIGIN_REFS")"
     for branch in $CNB_ONLY; do
-        cnb_sha="$(git ls-remote --heads "$CNB_REMOTE" "refs/heads/$branch" 2>/dev/null | awk '{print $1}')"
+        cnb_sha="$(git_cnb ls-remote --heads "$CNB_REMOTE" "refs/heads/$branch" 2>/dev/null | awk '{print $1}')"
         [ -z "$cnb_sha" ] && continue
         if ! git cat-file -e "$cnb_sha^{commit}" 2>/dev/null; then
-            git fetch --no-tags "$CNB_REMOTE" \
+            git_cnb fetch --no-tags "$CNB_REMOTE" \
                 "+refs/heads/$branch:refs/remotes/$CNB_REMOTE/$branch" >/dev/null 2>&1 || true
         fi
         if ! git cat-file -e "$cnb_sha^{commit}" 2>/dev/null; then
@@ -225,7 +254,7 @@ if [ "$FETCH_OK" = "1" ] && [ -n "$CNB_ONLY" ]; then
             continue
         fi
         if [ "$merged" = "1" ]; then
-            if git push "$CNB_REMOTE" --delete "$branch" >/dev/null 2>&1; then
+            if git_cnb push "$CNB_REMOTE" --delete "$branch" >/dev/null 2>&1; then
                 DELETED_BRANCHES="${DELETED_BRANCHES}${branch} "
                 log "  - 已删除陈旧分支 $branch（内容已并入主线）"
             else
@@ -299,7 +328,10 @@ if [ ${#ANOMALIES[@]} -gt 0 ]; then
         echo "排查方向（只读命令，人工执行）："
         echo
         echo '```'
-        echo "git -C $REPO_DIR ls-remote $CNB_REMOTE                 # CNB 端现有引用"
+        echo "# 跑 git 前先隔离凭据：认证成功时 git 会把规范化 URL 写回 store，"
+        echo "# 不隔离就会动到多项目共享的 ~/.git-credentials（折叠 path 级条目）。"
+        echo "git -C $REPO_DIR -c credential.helper= -c 'credential.helper=store --file=/tmp/iso-cred' \\"
+        echo "        -c credential.useHttpPath=true ls-remote $CNB_REMOTE   # CNB 端现有引用"
         echo "git -C $REPO_DIR log --oneline $ORIGIN_REMOTE..$CNB_REMOTE  # CNB 端多出来的提交"
         echo "git -C $REPO_DIR log --oneline $CNB_REMOTE..$ORIGIN_REMOTE  # origin 端多出来的提交"
         echo '```'

@@ -206,7 +206,7 @@ YAML 顶层必须是 `domain`、`requirement_doc`、`tasks`；`tasks` 为列表�
 | L1 | ✅ 完整 | `tests/unit/**` |
 | L2 | ✅ 流程已规定 | `AGENTS.md` §1「本地验证是冒烟」 |
 | L3 | ⚠️ 部分 | `tests/integration/**`、浏览器冒烟脚本、桌面桥 Go 测试 |
-| L4 | ⚠️ 规范与 PVQ 样板已存在，执行器/CI 接入未启用 | 格式见本文档 §3；样板任务集 [examples/product-video-multi-category.yaml](./examples/product-video-multi-category.yaml)（PVQ 8 条）；校验、执行器、门禁与证据归档仍待 B-002/B-003 |
+| L4 | ⚠️ 规范与四个领域的任务集已存在；**夜间执行器已接入**后端定时任务，CI 门禁仍未启用 | 格式见本文档 §3；任务集 [examples/](./examples/)（PVQ 8 条 / PLB 14 条 / LLW 8 条 / DSK 2 条）；夜间执行器 `scripts/run_eval_nightly.py`（见 [backend-full-test.md](./backend-full-test.md)「L4 评测（夜间集合）」）；校验脚本、PR 门禁与证据归档仍待 B-003 |
 
 **已知缺口**：
 
@@ -222,7 +222,7 @@ YAML 顶层必须是 `domain`、`requirement_doc`、`tasks`；`tasks` 为列表�
 | 步骤 | 交付物 | 完成判据 | 待办条目 | 状态 |
 |---|---|---|---|---|
 | **E1 骨架**（本次） | 本规范 + 目录约定 + 样板任务集 | 规范登记进 `docs/README.md`；样板任务集能被人工照着写新任务 | — | ✅ 已完成（2026-11-24） |
-| **E2 首批任务集** | 2–3 个领域的 L4 任务（建议 `PVQ` / `PLB` / `LLW`） | 每个领域的 `must` 需求条目至少映射一条任务 | B-002 | ⏳ 待实施 |
+| **E2 首批任务集** | 2–3 个领域的 L4 任务（建议 `PVQ` / `PLB` / `LLW`） | 每个领域的 `must` 需求条目至少映射一条任务 | B-002 | ✅ 已完成（2026-11-24：PVQ 8 条 + PLB 14 条 + LLW 8 条） |
 | **E3 校验与 CI** | 任务集格式校验脚本 + PR 门禁按 `owner` 选任务 | 故意写错的字段能被拦下；PR 上能看到受影响任务集 | B-003 | ⏳ 待实施 |
 | **E4 rubric 与 live** | 首个 rubric 量表 + `live` 任务的配额口径 | rubric 判定在两次评测间稳定；live 任务不进 PR 门禁 | B-004 | ⏳ 待实施 |
 

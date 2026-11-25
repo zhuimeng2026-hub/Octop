@@ -61,11 +61,16 @@
 
 ### B-001 · 停用素材的整单失败口径落地（第 25 条实现）
 
-**状态**：待实施（登记日期：2026-11-24；代码与现有用例复核于 2026-11-24）
+**状态**：进行中（登记日期：2026-11-24；后端已实现 2026-11-24，commit `5a3ccce5`）
 **优先级**：P1 重要不紧急（适合夜间无人值守）
 **跟踪**：CNB issue [#24](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/24)
 **语义来源**：[product-video-multi-category-materials.md A8.1](./product-video-multi-category-materials.md) —— **行为契约只以 A8.1 为准，本条目不得另立口径**
 **可无人值守执行**：是
+
+**剩余工作**：后端部分（错误码、409、`details.assets`、不写库、文案、OpenAPI 描述、
+后端用例）已随 `5a3ccce5` 落地；**前端「显示具体提示而非通用失败」的回归用例尚未补**
+（`dashboard/src/pages/ProductVideoWizard/index.test.tsx` 目前只断言通用的
+`videoWizard.generateFailed`），步骤 7 的前端半条仍未完成。
 
 **背景**：验收条目 A7.3 第 25 条已定口径「整单失败并提示」，但 `snapshot_project()` 仍静默跳过 `active = 0` 的素材，该条目前不通过。不做的后果是：用户以为素材已入选，快照里却没有，规格与实现长期背离。
 
@@ -118,11 +123,18 @@ cd dashboard && npx tsc -b --pretty false
 
 ### B-002 · 评测首批任务集补齐（E2：PLB 与 LLW 两个领域）
 
-**状态**：待实施（登记日期：2026-11-24）
+**状态**：已完成（登记日期：2026-11-24；完成日期：2026-11-24）
 **优先级**：P1 重要不紧急
 **跟踪**：CNB issue [#29](https://cnb.cool/mengxa.com/-/repos/Octop/-/issues/29)
 **语义来源**：[eval/README.md §8.2 迁移计划](./eval/README.md) —— 步骤 E2；格式与判定规则见同文档 §2–§6
 **可无人值守执行**：是
+
+**实际产出**：`docs/eval/examples/product-image-batch-import.yaml`（PLB 14 条）与
+`docs/eval/examples/local-library-wizard.yaml`（LLW 8 条）；两条任务集已接入夜间
+执行器 `scripts/run_eval_nightly.py`（见 [backend-full-test.md](./backend-full-test.md)
+「L4 评测（夜间集合）」）。PLB 是后端任务，夜间可直接产出结论；LLW 是桌面/前端
+命令，在后端生产机上按边界闸门记为 blocked + 原因（规范 §5 的诚实要求），
+需在桌面 / 前端环境执行。回链已写入两份需求文档。
 
 **背景**：评测体系目前只有 `PVQ` 一个领域的样板（[examples/product-video-multi-category.yaml](./eval/examples/product-video-multi-category.yaml)）。规范已立但覆盖面不足，`PLB`（批量导入）与 `LLW`（桌面本机素材库）两个领域的 `must` 需求条目还没有对应的可执行任务，不做的后果是这两块需求永远只能靠人读文档验收。
 
@@ -210,6 +222,125 @@ uv run python tests/evals/validate_tasks.py
 **停止条件**：需要真实调用模型才能定稿 → 停下并请求一次明确授权。
 
 **完成后回写**：`docs/eval/README.md` §8.2 的 E4 行；本条目状态。
+
+---
+
+### B-005 · 桌面端会话续期：blob / stream / probe 三条路径接上续期
+
+**状态**：待实施（登记日期：2026-11-25）
+**优先级**：P1 重要不紧急
+**跟踪**：未建 issue（本条由 backlog 自身承载；若需要协作跟踪，建 issue 后回填链接）
+**语义来源**：[PRD.md §4 R6](./PRD.md) —— 桌面 local 账号的会话续期必须覆盖全部请求路径；判定口径见 [eval/examples/desktop-shell-session.yaml DSK-001](./eval/examples/desktop-shell-session.yaml)
+**可无人值守执行**：是 —— 但**必须在有前端环境的机器上执行**（Node + 依赖已装，能跑 `npx vitest`）。后端生产机按 [deployment-boundary.md §1 NEVER 行](./deployment-boundary.md) 禁止 npm/npx/vite，在后端环境的夜间集合里本条记 blocked + 原因，不得静默跳过、不得算作通过。
+
+**背景**：`dashboard/src/api/request.ts` 的 `request()` 遇到 401 会走 `retryWithDesktopSession()` —— 只有桌面 local 账号才续期（口令账号落登录页），续期后原地重试一次。`requestBlob` / `requestStream` / `probeAuthResource` 各自复制了一遍认证前置，唯独漏了这段续期，直接 `throwIfUnauthorized`。后果：桌面 local 账号的 token 过期后，走这三条路径（语音 TTS 的 blob/stream、素材库资产下载与工程包打包、工作区打包与文件下载、agent 工作区归档、认证资源探测）会被丢到登录页 —— 桌面端**没有密码可填**，用户只能重启应用。现状已由 `8c44f88f` 用 `it.fails` 钉在仓库里（CI 保持绿），但实现没修：缺口会一直存在，且随时间被人遗忘。
+
+**范围（白名单）**：
+- `dashboard/src/api/request.ts`
+- `dashboard/src/api/request.blobRetry.test.ts`
+- `docs/eval/examples/desktop-shell-session.yaml`（DSK-001 的 `status`）
+- `docs/PRD.md` §4 的 R6 状态行
+
+**不在范围**：不改后端（`src/octop/**`）；不改 `desktop/`（桌面壳与 bridge 契约）；不改 `renewDesktopSession` / `isLocalDesktopUser` 的既有语义（谁有资格续期是产品口径，不在本次范围）；不改另外两条护栏用例的断言；不动认证策略（口令账号仍落登录页）；不构建或部署前端产物（由前端环境的构建流程负责）。
+
+**前置条件**：读 `dashboard/src/api/request.ts` 的 `retryWithDesktopSession`（`:412`）与调用点（`:473`）；读 `dashboard/src/api/request.blobRetry.test.ts` 的 5 条用例（3 条 `it.fails` + 2 条护栏）；读 [eval/README.md §3、§4](./eval/README.md)（任务字段与判定红线）。
+
+**步骤**：
+1. 把 `request()` 里的续期逻辑抽成可复用的公共函数（如 `renewAndRetry`），由 `request()` / `requestBlob` / `requestStream` / `probeAuthResource` 各自调用 —— **不要复制第二份「谁有资格续期」的判断**。
+2. 三条路径补上与 `request()` 现状一致的判定：仅桌面 local 账号续期；口令账号与无 bridge 场景直接落登录页。
+3. 把 `request.blobRetry.test.ts` 里 3 条 `it.fails` 改回普通断言（`it`），2 条护栏用例**保持原样**。
+4. 跑验收命令；全绿后再改状态（本步骤 5）。
+5. `docs/eval/examples/desktop-shell-session.yaml` 的 DSK-001 `status` 改为 `active`；`docs/PRD.md` §4 的 R6 状态改为 `✅ 已实现·已验证` 并附任务 id 与 commit。
+
+**验收命令**：
+```bash
+cd dashboard && npx tsc -b && npx vitest run src/api/request.blobRetry.test.ts && npm run lint
+```
+通过标准：5 条用例全绿，文件中**不再有** `it.fails`；`npx vitest` 输出里必须收集到 5 条目标用例 —— 退出码 0 但零匹配不得判为通过（[eval/README.md §4 第 1 条](./eval/README.md)）。
+
+**停止条件**：
+- 需要改后端或 `desktop/` 的契约才能实现 → 停，报告；
+- 需要改「谁有资格续期」的判定（`isLocalDesktopUser` / `renewDesktopSession` 语义）→ 停，报告 —— 那是产品口径，须走 PRD §8 开放问题；
+- 当前机器没有前端环境 / 目标用例收集不到 → 记 blocked + 原因，**不得**静默跳过，也不得判为通过；
+- 需要动 `src/octop/**` 或改认证策略 → 停，报告（超出白名单）。
+
+**完成后回写**：`docs/eval/examples/desktop-shell-session.yaml` 的 DSK-001 状态；`docs/PRD.md` §4 的 R6 状态行；`docs/eval/README.md` 的任务集计数行；本条目状态。
+
+---
+
+### B-006 · 夜间候选分支自动合并到 develop（阶段 2）与主干口径（阶段 3）
+
+**状态**：待实施（登记日期：2026-11-25；阶段 1 已于同日落地，见下「已完成的部分」）
+**优先级**：P1 重要不紧急
+**跟踪**：未建 issue（需要协作跟踪时建 issue 并回填链接）
+**语义来源**：[backend-nightly-repair.md §7 接入授权](./backend-nightly-repair.md) 与 [AGENTS.md §10 分支与发布规则](../AGENTS.md)；本条目只写执行规格，行为口径仍以上述两处为准
+**可无人值守执行**：否 —— 阶段 2 需要人提供**能建 PR 的凭据**并拍板门禁范围；阶段 3 是产品/运维口径决策，不可由智能体自行决定
+
+**已完成的部分（阶段 1，2026-11-25）**：夜间任务已获授权在候选分支命名空间
+（`codex/nightly-backend-<run_id>` / `nightly/<run_id>`）内提交并推送，推送经受限脚本
+`/usr/local/sbin/octop-nightly-push.sh`（三道硬约束：候选命名空间白名单、拒绝
+`main`/`develop`/`release/*`/`hotfix/*`、必须在夜间隔离 workspace 内；默认
+`~/.gitconfig` 仍保留 `pushInsteadOf` 封禁）。推送目标为 GitHub 与 CNB 两个仓库。
+**合并仍然由人完成** —— 本条目处理的是「把人工合并这一步也自动化」。
+
+**背景**：要把「夜间自动修复」真正闭环到主干，还差四段链路：
+1. **建不了 PR** —— GitHub 的 fine-grained PAT 有 admin 无 PR 写权限，开 PR 返回 403；
+   CNB 的合并请求不会回流 GitHub，而 GitHub 才是权威源；
+2. **没有 PR 就没有门禁** —— `.github/workflows/ci.yml` 的触发条件是 `on: pull_request`
+   （无 push 分支），且本仓是 fork，push 事件不触发 workflow。当前团队实际是
+   「本地提交 → 双推 → 直接快进推 develop」，这条路**没有任何 CI 门禁**；
+3. **PR 作者白名单 + 分支保护** —— `restrict-pr-authors.yml` 会关闭不在
+   `PR_AUTHOR_ALLOWLIST` 里的作者开的 PR；同一 workflow 规定「main 只接受
+   `release/*` 与 `hotfix/*` 的 PR」；
+4. **eval 门禁未接** —— B-003（任务集校验脚本 + PR 按 `owner` 选任务）仍未实施。
+
+阶段 3 还叠一个未决口径：`docs/todo.md` T-003「生产部署来源切到 `develop`」与
+`docs/wip-branch-workflow.md` §5.1「生产该跑 `v*` tag」冲突未拍板 —— 「主干是哪个
+ref」本身还没定论，此时谈「自动合并到主干」是空谈。
+
+**范围（白名单）**：
+- `.github/workflows/` 下的门禁工作流（仅在阶段 2 明确选定改动范围后）
+- `docs/eval/` 下的任务集校验脚本与 PR 任务选择（与 B-003 同一范围，二者择一推进，避免重复）
+- 服务账号的凭据配置（`/var/lib/octop-nightly/` 下的 git 配置与凭据）
+- 本条目与 `docs/backend-nightly-repair.md` §7 的状态回写
+
+**不在范围**：不改 `src/octop/**` 与 `dashboard/**` 的产品逻辑；不改 AGENTS.md §10 的分支模型（`develop` → `release/*` → `main` → `v*` tag）；不打 `v*` tag；不部署；不改生产 checkout、生产数据与生产服务配置；不动 nightly 之外的定时任务。
+
+**前置条件**：
+- 阶段 1 已落地（候选分支推送能力可用）；
+- 人提供**能建 PR 的凭据**（GitHub fine-grained PAT 增补 PR 写权限，或等价的机器账号），并把服务账号加入 PR 作者白名单；
+- 人拍板阶段 3 的「主干」口径（T-003）；
+- 读 `AGENTS.md` §10、[docs/backend-nightly-repair.md](./backend-nightly-repair.md) §7 与本文件 §2/§3。
+
+**步骤**（分阶段，每阶段单独可交付、可验收）：
+1. **阶段 2a · 恢复门禁链路**：确认候选分支能在 GitHub 上开出 PR 且 `ci.yml` 的
+   `dashboard` / `quality` / `helm` / `test-windows` 四个 job 能在该 PR 上跑起来；
+   门禁未绿时禁止任何自动合并。
+2. **阶段 2b · 自动合并到 develop**：在 develop 上配置「PR + 必需检查全绿 → 自动合并」，
+   目标分支**只限 develop**，且 MUST NOT 合并到 `main`。
+3. **阶段 2c · 评测门禁接入**：按 B-003 实施任务集校验与按 `owner` 选任务，使夜间候选
+   也受同一门禁约束（B-003 若已完成则本步只补夜间任务集的注册）。
+4. **阶段 3 · 主干口径与合并策略**：先由人拍板 T-003（生产跟 `develop` 还是跟 `v*` tag），
+   再把自动合并的边界写进本条目 —— 建议**自动到 develop 为止**，`release/*`、tag 与
+   部署保留人工；若确要全自动到 `main`，必须先补齐该口径与保护规则。
+
+**验收命令**：
+```bash
+# 阶段 2a/2b：候选分支的 PR 上，四个必需检查都必须真实跑起来（不是 skipped）
+gh pr checks <PR 号> --required
+# 阶段 2b：合并目标分支必须是 develop，且合并后 main 与 release/* 未被触碰
+git ls-remote origin refs/heads/main refs/heads/develop refs/heads/release/
+```
+通过标准：PR 的四个 job 全部 `pass`（不得是 `skipped` 或「零匹配」）；自动合并只落在
+`develop`；`main` 与 `release/*` 的 SHA 在合并前后不变。
+
+**停止条件**：
+- 需要改动 `main` 的分支保护规则，或需要新开一条定时任务 → 停，报告；
+- PR 门禁在 fork 上无法按预期触发（push 不触发 workflow）→ 停，报告，不要用「本地跑过了」冒充门禁已启用；
+- 需要动产品逻辑或部署 → 停，报告；
+- 阶段 3 的「主干」口径未拍板 → 停，报告，**不得**默认按 `develop` 处理。
+
+**完成后回写**：`docs/backend-nightly-repair.md` §7 的接入授权行与 §7.2 的推送目标行；本条目状态；`docs/todo.md` T-003（若阶段 3 已拍板）。
 
 ---
 

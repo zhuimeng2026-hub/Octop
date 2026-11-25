@@ -26,7 +26,11 @@ from octop_harness.backends.bwrap_shell import (
     can_use_bubbled_shell,
 )
 
-from tests.support.bwrap_marks import linux_bwrap_only, posix_shell_only
+from tests.support.bwrap_marks import (
+    bwrap_runnable_only,
+    linux_bwrap_only,
+    posix_shell_only,
+)
 
 _BWRAP = "/usr/bin/bwrap"
 
@@ -190,7 +194,7 @@ def test_live_resolve_uses_bubbled_when_host_has_bwrap(tmp_path: Path) -> None:
     assert backend._bwrap_path
 
 
-@linux_bwrap_only
+@bwrap_runnable_only
 def test_write_file_then_execute_cat_same_virtual_path(tmp_path: Path) -> None:
     spec, scoped, workspace = _scoped_spec(tmp_path)
     backend = resolve_backend(spec, workspace_dir=workspace)
@@ -205,7 +209,7 @@ def test_write_file_then_execute_cat_same_virtual_path(tmp_path: Path) -> None:
     assert "hello-jail" in result.output
 
 
-@linux_bwrap_only
+@bwrap_runnable_only
 def test_jail_hides_host_home_paths(tmp_path: Path) -> None:
     secret = Path.home() / f".octop_bwrap_test_{uuid.uuid4().hex}"
     secret.mkdir(parents=True)
@@ -220,7 +224,7 @@ def test_jail_hides_host_home_paths(tmp_path: Path) -> None:
         shutil.rmtree(secret, ignore_errors=True)
 
 
-@linux_bwrap_only
+@bwrap_runnable_only
 def test_skill_dir_bind_when_workspace_differs_from_root(tmp_path: Path) -> None:
     scoped = tmp_path / "scoped_root"
     workspace = tmp_path / "agent_ws"
@@ -242,7 +246,7 @@ def test_skill_dir_bind_when_workspace_differs_from_root(tmp_path: Path) -> None
     assert "skill-content" in result.output
 
 
-@linux_bwrap_only
+@bwrap_runnable_only
 def test_subprocess_run_invokes_real_bwrap(tmp_path: Path) -> None:
     """Smoke-test that system ``bwrap`` can bind a temp dir at ``/``."""
     import subprocess
