@@ -268,6 +268,82 @@ cd dashboard && npx tsc -b && npx vitest run src/api/request.blobRetry.test.ts &
 
 ---
 
+### B-006 · 夜间候选分支自动合并到 develop（阶段 2）与主干口径（阶段 3）
+
+**状态**：待实施（登记日期：2026-11-25；阶段 1 已于同日落地，见下「已完成的部分」）
+**优先级**：P1 重要不紧急
+**跟踪**：未建 issue（需要协作跟踪时建 issue 并回填链接）
+**语义来源**：[backend-nightly-repair.md §7 接入授权](./backend-nightly-repair.md) 与 [AGENTS.md §10 分支与发布规则](../AGENTS.md)；本条目只写执行规格，行为口径仍以上述两处为准
+**可无人值守执行**：否 —— 阶段 2 需要人提供**能建 PR 的凭据**并拍板门禁范围；阶段 3 是产品/运维口径决策，不可由智能体自行决定
+
+**已完成的部分（阶段 1，2026-11-25）**：夜间任务已获授权在候选分支命名空间
+（`codex/nightly-backend-<run_id>` / `nightly/<run_id>`）内提交并推送，推送经受限脚本
+`/usr/local/sbin/octop-nightly-push.sh`（三道硬约束：候选命名空间白名单、拒绝
+`main`/`develop`/`release/*`/`hotfix/*`、必须在夜间隔离 workspace 内；默认
+`~/.gitconfig` 仍保留 `pushInsteadOf` 封禁）。推送目标为 GitHub 与 CNB 两个仓库。
+**合并仍然由人完成** —— 本条目处理的是「把人工合并这一步也自动化」。
+
+**背景**：要把「夜间自动修复」真正闭环到主干，还差四段链路：
+1. **建不了 PR** —— GitHub 的 fine-grained PAT 有 admin 无 PR 写权限，开 PR 返回 403；
+   CNB 的合并请求不会回流 GitHub，而 GitHub 才是权威源；
+2. **没有 PR 就没有门禁** —— `.github/workflows/ci.yml` 的触发条件是 `on: pull_request`
+   （无 push 分支），且本仓是 fork，push 事件不触发 workflow。当前团队实际是
+   「本地提交 → 双推 → 直接快进推 develop」，这条路**没有任何 CI 门禁**；
+3. **PR 作者白名单 + 分支保护** —— `restrict-pr-authors.yml` 会关闭不在
+   `PR_AUTHOR_ALLOWLIST` 里的作者开的 PR；同一 workflow 规定「main 只接受
+   `release/*` 与 `hotfix/*` 的 PR」；
+4. **eval 门禁未接** —— B-003（任务集校验脚本 + PR 按 `owner` 选任务）仍未实施。
+
+阶段 3 还叠一个未决口径：`docs/todo.md` T-003「生产部署来源切到 `develop`」与
+`docs/wip-branch-workflow.md` §5.1「生产该跑 `v*` tag」冲突未拍板 —— 「主干是哪个
+ref」本身还没定论，此时谈「自动合并到主干」是空谈。
+
+**范围（白名单）**：
+- `.github/workflows/` 下的门禁工作流（仅在阶段 2 明确选定改动范围后）
+- `docs/eval/` 下的任务集校验脚本与 PR 任务选择（与 B-003 同一范围，二者择一推进，避免重复）
+- 服务账号的凭据配置（`/var/lib/octop-nightly/` 下的 git 配置与凭据）
+- 本条目与 `docs/backend-nightly-repair.md` §7 的状态回写
+
+**不在范围**：不改 `src/octop/**` 与 `dashboard/**` 的产品逻辑；不改 AGENTS.md §10 的分支模型（`develop` → `release/*` → `main` → `v*` tag）；不打 `v*` tag；不部署；不改生产 checkout、生产数据与生产服务配置；不动 nightly 之外的定时任务。
+
+**前置条件**：
+- 阶段 1 已落地（候选分支推送能力可用）；
+- 人提供**能建 PR 的凭据**（GitHub fine-grained PAT 增补 PR 写权限，或等价的机器账号），并把服务账号加入 PR 作者白名单；
+- 人拍板阶段 3 的「主干」口径（T-003）；
+- 读 `AGENTS.md` §10、[docs/backend-nightly-repair.md](./backend-nightly-repair.md) §7 与本文件 §2/§3。
+
+**步骤**（分阶段，每阶段单独可交付、可验收）：
+1. **阶段 2a · 恢复门禁链路**：确认候选分支能在 GitHub 上开出 PR 且 `ci.yml` 的
+   `dashboard` / `quality` / `helm` / `test-windows` 四个 job 能在该 PR 上跑起来；
+   门禁未绿时禁止任何自动合并。
+2. **阶段 2b · 自动合并到 develop**：在 develop 上配置「PR + 必需检查全绿 → 自动合并」，
+   目标分支**只限 develop**，且 MUST NOT 合并到 `main`。
+3. **阶段 2c · 评测门禁接入**：按 B-003 实施任务集校验与按 `owner` 选任务，使夜间候选
+   也受同一门禁约束（B-003 若已完成则本步只补夜间任务集的注册）。
+4. **阶段 3 · 主干口径与合并策略**：先由人拍板 T-003（生产跟 `develop` 还是跟 `v*` tag），
+   再把自动合并的边界写进本条目 —— 建议**自动到 develop 为止**，`release/*`、tag 与
+   部署保留人工；若确要全自动到 `main`，必须先补齐该口径与保护规则。
+
+**验收命令**：
+```bash
+# 阶段 2a/2b：候选分支的 PR 上，四个必需检查都必须真实跑起来（不是 skipped）
+gh pr checks <PR 号> --required
+# 阶段 2b：合并目标分支必须是 develop，且合并后 main 与 release/* 未被触碰
+git ls-remote origin refs/heads/main refs/heads/develop refs/heads/release/
+```
+通过标准：PR 的四个 job 全部 `pass`（不得是 `skipped` 或「零匹配」）；自动合并只落在
+`develop`；`main` 与 `release/*` 的 SHA 在合并前后不变。
+
+**停止条件**：
+- 需要改动 `main` 的分支保护规则，或需要新开一条定时任务 → 停，报告；
+- PR 门禁在 fork 上无法按预期触发（push 不触发 workflow）→ 停，报告，不要用「本地跑过了」冒充门禁已启用；
+- 需要动产品逻辑或部署 → 停，报告；
+- 阶段 3 的「主干」口径未拍板 → 停，报告，**不得**默认按 `develop` 处理。
+
+**完成后回写**：`docs/backend-nightly-repair.md` §7 的接入授权行与 §7.2 的推送目标行；本条目状态；`docs/todo.md` T-003（若阶段 3 已拍板）。
+
+---
+
 ## 5. 与其它文档的关系
 
 - 需求条目自身待实施 → 该需求文档的「实现状态」+ eval 任务 `status: planned`（见 [eval/README.md §3](./eval/README.md)）

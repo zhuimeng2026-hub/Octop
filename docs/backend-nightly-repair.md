@@ -36,6 +36,14 @@ uv run --locked --no-sync pytest -m 'not live' -q
 | 既有入口 | 现有 `octop-backend-full-test.timer`/service 的管理员入口；只调整这一条既有计划 |
 | 接入授权 | 明确允许调整既有任务、允许在候选分支产生本地 diff；未授权提交、推送、建远程 PR、合并、删分支均不得做 |
 
+> **2026-11-25 增补的接入授权（阶段 1）**：允许 worker 在**候选分支命名空间**
+> （`codex/nightly-backend-<run_id>` / `nightly/<run_id>`）内**提交并推送**，推送目标限定
+> GitHub 与 CNB 两个仓库，且 MUST 经受限推送脚本 `/usr/local/sbin/octop-nightly-push.sh`
+> 执行（脚本内含三道硬约束：候选命名空间白名单、拒绝 `main`/`develop`/`release/*`/`hotfix/*`、
+> 必须在夜间隔离 workspace 内）。**合并仍然由人完成** —— 本增补不授权建远程 PR、不授权
+> 合并任何分支、不授权删分支、打 tag 或部署。默认的 `~/.gitconfig` 仍保留
+> `pushInsteadOf` 封禁，任何未经脚本的 `git push` 依旧推不出去。
+
 用户 MUST NOT 为本文新建第二条定时器；同一 `run_id`/同一夜间任务 MUST 互斥，不得并行启动第二个全量。建议最迟在 07:30（Asia/Shanghai，或用户配置的截止窗口）停止启动新的全量验证并保留现场；这是可调整的运行建议，不是无条件中止正在运行的进程。若剩余窗口不足以完成下一轮，worker MUST 停止发起新验证并报告 `blocked` 或未完成，不压缩步骤换取绿色。
 
 ## 3. 不变量与证据规则
@@ -77,6 +85,8 @@ worker MUST 先按 pytest nodeid 和失败原因归组，再决定是否可动�
 仅从已记录的 baseline 创建专用候选分支，例如 `codex/nightly-backend-<run_id>`，并使用独立工作树。候选初始状态和 diff MUST 在最终全量前保存。候选必须在同一数据隔离和依赖条件下执行一轮完整全量。
 
 若未获提交授权，worker MUST 留可审 Git diff/二进制 patch，不提交、不推送、不建远程 PR；新增文件 MUST 被纳入 patch（例如在候选树使用 `git add -N -- <new-file>` 后生成 `git diff --binary HEAD`，或生成等价包含新增文件的补丁）。报告 MUST 保存精确 baseline SHA、候选版本、patch SHA256、全量前后快照及其路径。若获明确授权，也只能提交到自己的候选分支，最终合并仍由人完成。
+
+**已获「阶段 1」增补授权时的推送口径（2026-11-25）**：worker MAY 在候选分支命名空间内提交，并 MAY 用 `/usr/local/sbin/octop-nightly-push.sh <checkout> <branch>` 把该分支推到 GitHub 与 CNB。约束：MUST NOT 推 `main` / `develop` / `release/*` / `hotfix/*` 或任何非候选命名空间的分支；MUST NOT 建远程 PR；MUST NOT 合并、删分支、打 tag 或部署；MUST NOT 使用 `--force`。推送结果（每个目标的成败与分支名）MUST 写进报告与结果卡；GitHub 侧缺凭据时如实记「GitHub 未推送」，不得静默跳过。
 
 最终全量后任何文件变更都会使结果失效，必须重新验证。若夜间 `cnb/develop` 已前进，报告状态写 `blocked`，原因写明“基线已过时，需 integrate/revalidate”；不得用旧 SHA 的报告宣称新提交通过。剩余窗口允许重取新基线并重新走本流程，但不得盲目合并。
 
@@ -190,7 +200,7 @@ worker MUST 先按 pytest nodeid 和失败原因归组，再决定是否可动�
 | repo 源 | `https://cnb.cool/mengxa.com/Octop.git` 的 `develop` 分支，只读克隆（`--depth 1`，取分支尖端作为本轮真实完整 SHA）；凭据为镜像 token 的一份拷贝（`0600`，仅 Octop 一条） |
 | 权限 | 账号可读仓库与 lockfile、可写自己的报告/临时/checkout 目录；**不可写**生产 checkout、生产数据与生产服务配置（均为 root 属主） |
 | 既有入口 | 仍是既有 `octop-backend-full-test.timer`（每天 02:10，Asia/Shanghai），**未新建第二条定时器** |
-| 接入授权 | 允许调整既有任务与在候选分支产生本地 diff；**未授权**提交、推送、建远程 PR、合并、删分支、部署 |
+| 接入授权 | 允许调整既有任务与在候选分支产生本地 diff；**未授权**提交、推送、建远程 PR、合并、删分支、部署（2026-11-25 阶段 1 增补：候选命名空间内的提交与推送已授权，见 §2 增补框） |
 
 ### 7.2 单元与入口
 
@@ -201,6 +211,8 @@ worker MUST 先按 pytest nodeid 和失败原因归组，再决定是否可动�
 | 入口 | `/usr/local/sbin/octop-nightly-repair.sh` → `claude -p <引导指令>` |
 | 引导指令 | `/var/lib/octop-nightly/bootstrap-prompt.md`（指向本文 §5 模板与仓库副本 `scripts/nightly-backend-repair-prompt.md`） |
 | 基线轮工具 | `scripts/run_backend_nightly_repair.py`（仓库内）：克隆、`uv sync --locked`、`uv run --locked --no-sync pytest`、证据绑定 |
+| 受限推送 | `/usr/local/sbin/octop-nightly-push.sh <checkout> <branch>`：候选命名空间白名单 + 拒绝受保护分支 + 必须在隔离 workspace 内；放行用 config `/var/lib/octop-nightly/.gitconfig-push`（默认 `~/.gitconfig` 仍封禁 push） |
+| 推送目标 | GitHub（权威源，`git@github.com:zhuimeng2026-hub/Octop.git`）与 CNB（`https://cnb.cool/mengxa.com/Octop.git`）—— 两个都要推，否则两个远端会分叉（镜像方向是 GitHub→CNB 单向，CNB 侧独有的分支不会回流） |
 | 日志 | `/var/lib/octop-nightly/nightly.log`；报告 `/var/lib/octop-nightly/reports/<run_id>/` |
 
 旧的两个 drop-in（`20-sandbox.conf` 沙箱闸门、`30-git-sync.conf` git 同步）已停用并
@@ -215,6 +227,10 @@ worker MUST 先按 pytest nodeid 和失败原因归组，再决定是否可动�
    `.gitconfig` 里 `url.https://push-blocked.invalid/.pushInsteadOf=https://cnb.cool/`，
    对该镜像的 push 会被改写到不可达主机；提示词也禁止推送。**更彻底的做法是换成
    只读 token 或只读 deploy key**（需用户创建），本轮未做。
+   （2026-11-25 阶段 1 增补：候选命名空间内的提交与推送已授权，经受限脚本放行；
+   默认封禁仍在，见 §2 增补框与 §7.2「受限推送」行。**GitHub 侧仍缺夜间账号凭据**
+   —— 当前只推得动 CNB，脚本会如实记「GitHub 未推送」；补 deploy key 或带 PR 写权限的
+   PAT 后才能两个远端都推。）
 2. **智能体 CLI 用的是系统级 `/usr/local/bin/claude`**（2.1.225，模型经
    `aikey4k.mengxa.com:8443` 网关，opus→`MiniMax-M3.1-Flash-Preview`）。已实测可用
    （2026-11-24 23:5x 一次最小调用返回正常）。`uv` 原为 `/root/.local/bin` 的软链、
