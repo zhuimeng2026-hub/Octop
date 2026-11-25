@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { clearAuthToken, getAuthToken } from "../api/request";
+import { useTranslation } from "react-i18next";
+import { clearAuthToken, getAuthToken, setAuthToken } from "../api/request";
 import { authApi, type OctopUser } from "../api/modules/auth";
 import { applyUserLocale } from "../utils/locale";
 import { isNetworkFetchError } from "../utils/networkError";
@@ -8,6 +9,11 @@ import { CurrentUserProvider } from "../hooks/useCurrentUser";
 import { useTheme } from "../context/ThemeContext";
 import BootOfflinePanel from "./BootOfflinePanel";
 import BrandLoading from "./BrandLoading";
+
+declare const OCTOP_DEV_SKIP_WECHAT_LOGIN: boolean;
+const devLoginEnabled =
+  typeof OCTOP_DEV_SKIP_WECHAT_LOGIN === "boolean" &&
+  OCTOP_DEV_SKIP_WECHAT_LOGIN;
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -37,6 +43,7 @@ interface AuthGuardProps {
  */
 export default function AuthGuard({ children }: AuthGuardProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
 
@@ -50,6 +57,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   }, [user?.id, bindUser]);
   const [offline, setOffline] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [debugLoginFailed, setDebugLoginFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,17 +71,33 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         // previous install so background prefetch cannot stampede lockdown.
         if (status.setup_required) {
           clearAuthToken();
-          if (!cancelled) navigateRef.current("/setup", { replace: true });
+          if (!cancelled) {
+            if (devLoginEnabled) {
+              setDebugLoginFailed(true);
+            } else {
+              navigateRef.current("/setup", { replace: true });
+            }
+          }
           return;
         }
 
+        if (devLoginEnabled && !cancelled && !getAuthToken()) {
+          try {
+            const { devLogin } = await import("../api/devLogin");
+            const token = await devLogin();
+            if (cancelled) return;
+            setAuthToken(token, false);
+          } catch {
+            if (!cancelled) setDebugLoginFailed(true);
+            return;
+          }
+        }
+
         // Setup done. Need a token.
-        const token = getAuthToken();
-        if (!token) {
+        if (!getAuthToken()) {
           if (!cancelled) {
             setAuthed(false);
-            // Stay on the spinner until navigation away completes — do not
-            // flip ``checking`` off or children would mount and 401→/login.
+            // Stay on the spinner until navigation away completes.
             navigateRef.current("/login", { replace: true });
           }
           return;
@@ -129,6 +153,14 @@ export default function AuthGuard({ children }: AuthGuardProps) {
           setRetryKey((k) => k + 1);
         }}
       />
+    );
+  }
+
+  if (debugLoginFailed) {
+    return (
+      <div role="alert" style={{ padding: 32, textAlign: "center" }}>
+        {t("login.debugLoginFailed")}
+      </div>
     );
   }
 

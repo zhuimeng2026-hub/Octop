@@ -1,0 +1,83 @@
+domain: DSK
+requirement_doc: docs/PRD.md
+
+tasks:
+  - id: DSK-003
+    title: 调试模式通过普通账号认证后直接进入桌面界面
+    requirement: docs/PRD.md#43-微信登录调试开关d7
+    layer: L3
+    severity: must
+    owner: desktop/
+    type: manual
+    judge:
+      kind: steps
+      steps:
+        - 用独立本机测试实例、普通账号和空会话分别运行 PowerShell 和 Bash 开发脚本，开启调试开关。
+        - 确认直接进入应用，身份接口返回普通测试账号，授权只读接口返回 200，请求记录中没有微信授权请求。
+      evidence_required: [log]
+    evidence: [脱敏启动及请求日志]
+    notes: "Loopback Vite-to-backend probe passed for ordinary user, /api/auth/me, and read-only /api/agents. Actual Wails window and both full launchers remain to be witnessed."
+    regression: smoke
+    blocking: true
+    status: active
+
+  - id: DSK-004
+    title: 调试登录拒绝无效启动和无效凭据
+    requirement: docs/PRD.md#43-微信登录调试开关d7
+    layer: L3
+    severity: must
+    owner: dashboard/
+    type: manual
+    judge:
+      kind: steps
+      steps:
+        - 开启开关，对非回环目标和直接打开远程界面的模式分别尝试启动，确认均被拒绝。
+        - 对本机调试登录接口发送来自不同来源的请求，确认被拒绝。
+        - 正常启动本机调试界面，使用错误凭据，确认没有 JWT 且看不到保护页面。
+        - 使用无令牌请求访问同一测试实例的受保护 API，确认返回 401。
+      evidence_required: [log]
+    evidence: [脱敏错误及请求日志]
+    notes: "Cross-origin 403, anonymous protected API 401, direct/non-loopback launcher rejection, and debug Vite host override rejection were observed. Wrong-credential browser walk-through remains pending."
+    regression: smoke
+    blocking: true
+    status: active
+
+  - id: DSK-005
+    title: 关闭调试开关后恢复微信登录入口
+    requirement: docs/PRD.md#43-微信登录调试开关d7
+    layer: L3
+    severity: must
+    owner: desktop/
+    type: manual
+    judge:
+      kind: steps
+      steps:
+        - 完成 DSK-003 后退出窗口，设开关为 0 后启动常规开发模式。
+        - 确认微信登录入口可用，调试会话未恢复，常规模式未注册调试登录接口。
+        - 清除开关并重复上述检查。
+      evidence_required: [log]
+    evidence: [脱敏启动及请求日志]
+    notes: "Production build and normal-mode Vite configuration do not register the debug middleware; actual browser WeChat-provider discovery remains pending."
+    regression: smoke
+    blocking: true
+    status: active
+
+  - id: DSK-006
+    title: 发布候选不含调试登录入口且通过真实微信登录
+    requirement: docs/PRD.md#43-微信登录调试开关d7
+    layer: L3
+    severity: must
+    owner: desktop/
+    type: manual
+    judge:
+      kind: steps
+      steps:
+        - 对发布候选进行生产构建和预览检查，确认调试入口未打包，加载正式桌面包时强制传入开关也无法启用入口。
+        - 使用隔离测试账号完成真实微信扫码、回调和桌面会话恢复，确认授权只读 API 返回 200。
+      evidence_required: [log]
+    evidence: [候选版本完整 SHA、脱敏构建及登录日志]
+    regression: full
+    blocking: true
+    status: active
+    live: true
+    notes: "N/A for this develop-only feature branch; required before release candidate and must include real WeChat SSO/T-002 evidence."
