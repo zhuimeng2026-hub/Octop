@@ -16,7 +16,7 @@ tasks:
         - 确认直接进入应用，身份接口返回普通测试账号，授权只读接口返回 200，请求记录中没有微信授权请求。
       evidence_required: [log]
     evidence: [脱敏启动及请求日志]
-    notes: "PowerShell launcher built and launched Wails/WebView2 against the isolated backend; Vite bound 127.0.0.1:5174, native navigation reached the dashboard, and same-origin debug login returned 200/no-store. Git Bash launcher remains to be witnessed."
+    notes: "PowerShell and Git Bash launchers built and launched Wails/WebView2 against the isolated backend; Vite bound 127.0.0.1:5174, native navigation reached the dashboard, same-origin debug login returned 200/no-store, and /api/auth/me plus /api/agents returned 200."
     regression: smoke
     blocking: true
     status: active
