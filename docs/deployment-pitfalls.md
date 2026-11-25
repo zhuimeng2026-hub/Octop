@@ -86,6 +86,15 @@ curl -s https://host/videogen/ | grep -c 'C:/Program'
 `C:/Program Files/Git/videogen`（本节上面已写）。那次构建机没带
 `MSYS_NO_PATHCONV=1`，产物在 2026-11-23 23:01 同步上线，**面板白屏两天**。
 
+> **✅ 应急修法已作废（2026-11-25，T-006 完成）**：线上产物已由 main 源码在前端环境
+> 用 `MSYS_NO_PATHCONV=1 BASE_URL=/videogen npm run build` 重新构建并同步，入口
+> `assets/index.EI87YVH7.js`（前缀为正规的 `/videogen/...`，无手工改写），
+> 下方手工修前缀的步骤**仅作历史留档，不要再执行**——产物即源码构建结果。
+> 手工改动会在下次正规构建同步时被覆盖；如遇同类问题，走前端环境重建（见 T-006）。
+
+<details>
+<summary>历史：应急修法（生产机不能构建前端时，改已部署的产物）—— 已作废</summary>
+
 **应急修法**（生产机不能构建前端时，改已部署的产物）：
 
 1. 先备份产物：`cp -a src/octop/dashboard /opt/octop-data/dashboard-backups/<ts>-badwin-base`
@@ -114,6 +123,8 @@ curl -s https://host/videogen/ | grep -c 'C:/Program'
 
 **根治**：在前端构建环境用 `MSYS_NO_PATHCONV=1 BASE_URL=/videogen npm run build`
 （或 PowerShell）重新构建并同步，本节的应急改写随之作废（下次同步会被覆盖）。
+
+</details>
 
 ---
 

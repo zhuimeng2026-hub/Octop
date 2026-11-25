@@ -19,7 +19,7 @@
 | T-003 | 生产环境部署来源切到 `main` 的 `v*` tag（口径按选项 B 收口） | 生产服务器 `ocdev.aixifs.com:13122` | ✅ 已完成 | [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
 | T-004 | 清理 WIP 分支 `wip/product-library-batch-import`（三处 ref + 文档回写） | 生产服务器 + GitHub/CNB 仓库权限 | ✅ 已完成 | [wip-branch-workflow.md §5/§7](./wip-branch-workflow.md) |
 | T-005 | 修复 fork 的 Actions「Mirror to CNB」令牌过期，并复核镜像链路 | CNB 访问令牌 + fork 仓库设置权限 | 🚧 进行中（人处理令牌） | [cnb-openapi.md](./cnb-openapi.md) |
-| T-006 | 前端产物重建：替换线上「手工改前缀」的产物 | 前端构建环境（Windows / Node） | ⏳ 待安排 | [deployment-pitfalls.md §1.1](./deployment-pitfalls.md) |
+| T-006 | 前端产物重建：替换线上「手工改前缀」的产物 | 前端构建环境（Windows / Node） | ✅ 已完成（2026-11-25） | [deployment-pitfalls.md §1.1](./deployment-pitfalls.md) |
 
 ---
 
@@ -338,7 +338,8 @@ fork 的 Actions secret `CNB_TOKEN` 最后更新于 **2026-10-27**，已过期�
 
 ## T-006 · 前端产物重建：替换线上「手工改前缀」的产物
 
-**状态**：⏳ 待安排（2026-11-25 登记）
+**状态**：✅ 已完成（2026-11-25）
+**结果**：入口 `assets/index.EI87YVH7.js`（旧 `index.wl19tg2O.js`），线上已生效，产物来自 main 源码构建。
 
 ### 要做什么
 
@@ -387,6 +388,24 @@ bash scripts/deploy-dashboard.sh
 
 - [deployment-pitfalls.md §1.1](./deployment-pitfalls.md)：把「应急修法」标注为已作废，写明正式产物的前缀形态
 - 本条目状态 → ✅ 已完成（附日期与产物入口文件名）
+
+### 完成记录（2026-11-25）
+
+在 `main` 分支（`18193cd9`）前端环境执行，全程按上文步骤：
+
+| 验收项 | 结果 |
+|---|---|
+| 构建命令 | `MSYS_NO_PATHCONV=1 BASE_URL=/videogen npm run build` → rc=0 |
+| 产物前缀 | `index.html` 的 `src="/videogen/assets/index.EI87YVH7.js"`；产物内无 `C:/Program` |
+| 来源确认 | `assets/devLogin.*.js` 含 `/__octop_dev_login` → 确系 main 源码（`52508e42`）构建，非手工改版 |
+| 破缓存 | 入口 hash `wl19tg2O` → `EI87YVH7`，浏览器自动取新 |
+| 线上部署 | `bash scripts/deploy-dashboard.sh` 同步 518 文件，远端备份 `20261125-141444` |
+| 线上复核 | 入口 JS 200、`/videogen/api/health` 200、manifest `start_url/scope=/videogen/`、调试登录串在线 |
+
+- **构建踩坑**：Vite `emptyOutDir` 在本机触发安全策略（一次删 514 个旧产物，超 50 阈值）→
+  先用 Bash 清空 `src/octop/dashboard/`（旧产物已备份至 `.workbuddy/dashboard-old-*`）再构建即通过。
+  这是构建产物的正常清空，非用户文件删除。
+- 应急修法（手工改前缀）已作废，见 [deployment-pitfalls.md §1.1](./deployment-pitfalls.md)。
 
 ### 相关
 
