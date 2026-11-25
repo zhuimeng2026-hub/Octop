@@ -65,7 +65,10 @@ func TestVideoInstallEndToEndFromLocalComponents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if status.State == "needs_setup" || status.State == "failed" || status.State == "ready" {
+		// Installation now ends with an automatic render verification, so the
+		// terminal state must be ready — not needs_setup. Keep waiting through
+		// installing -> verifying -> ready.
+		if status.State == "failed" || status.State == "ready" {
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -73,8 +76,8 @@ func TestVideoInstallEndToEndFromLocalComponents(t *testing.T) {
 	if status.State == "failed" {
 		t.Fatalf("the install failed: %+v", status)
 	}
-	if status.State == "installing" {
-		t.Fatal("the install did not finish within the deadline")
+	if status.State == "installing" || status.State == "verifying" {
+		t.Fatalf("the install and automatic verification did not finish within the deadline: %+v", status)
 	}
 
 	// The parts must be on disk and usable.
@@ -88,35 +91,19 @@ func TestVideoInstallEndToEndFromLocalComponents(t *testing.T) {
 	}
 
 	// The whole point: an installed runtime must never ask to be installed
-	// again. It may ask for a verification, but with requiresInstall=false.
+	// again, and the post-install verification must have made it ready so the
+	// user can generate a video without clicking anything else.
 	if status.RequiresInstall {
 		t.Fatalf("an installed runtime must not require an install: %+v", status)
 	}
 	if status.ErrorCode == "RUNTIME_MISSING" || status.ErrorCode == "BROWSER_MISSING" {
 		t.Fatalf("an installed runtime reported a missing component: %+v", status)
 	}
-	if status.ErrorCode != "ENV_NOT_VERIFIED" {
-		t.Fatalf("expected ENV_NOT_VERIFIED, got %+v", status)
+	if status.State != "ready" {
+		t.Fatalf("a freshly installed runtime must auto-verify to ready, got %+v", status)
 	}
 
-	// The verification must turn the environment ready.
-	if _, err := m.environmentAction("secret", "environment_verify"); err != nil {
-		t.Fatalf("start the verification: %v", err)
-	}
-	deadline = time.Now().Add(20 * time.Minute)
-	for time.Now().Before(deadline) {
-		status, err = m.environmentAction("secret", "environment_status")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if status.State == "ready" || status.State == "failed" {
-			break
-		}
-		time.Sleep(time.Second)
-	}
-	if status.State != "ready" {
-		t.Fatalf("the verification did not reach the ready state: %+v", status)
-	}
+	// A ready environment must survive a re-check.
 
 	// A ready environment must survive a re-check.
 	if _, err := m.environmentAction("secret", "environment_check"); err != nil {
