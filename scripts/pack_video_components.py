@@ -231,12 +231,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--connections",
         type=int,
-        default=1,
+        default=4,
         help=(
             "Parallel range requests the client uses per part. The origin "
             "throttles one connection to a few hundred KB/s while its nodes "
             "are independent machines, so 4 turns a 110 MB part into a "
-            "couple of minutes. Zero means one connection."
+            "couple of minutes. Zero means one connection. Keep this in "
+            "sync with the client's videoComponentConnections (currently 4) "
+            "and release-video-components.sh's OCTOP_VC_CONNECTIONS default."
         ),
     )
     args = parser.parse_args(argv)
