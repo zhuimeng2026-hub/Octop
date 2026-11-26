@@ -42,7 +42,7 @@ SOURCE_REF="origin/main"
 VERSION=""
 TAG=""
 SERVER_URL="https://ocbot.aixifs.com/videogen"
-COMPONENTS_URL="https://dw.mengxa.com/video-components/1.4.0/win-x64/manifest.json,http://dw.mengxa.com/video-components/1.4.0/win-x64/manifest.json"
+COMPONENTS_URL="https://dw.mengxa.com/video-components/1.4.4/win-x64/manifest.json,http://dw.mengxa.com/video-components/1.4.4/win-x64/manifest.json"
 DRY_RUN=0
 
 usage() {
