@@ -396,6 +396,7 @@ bash scripts/gitee/publish_from_github.sh \
 | slim 客户端首启 404 | 运行时 URL 指向的 zip 还没发布 | 先传 zip 再分发客户端；URL 是编译期写死的，改地址要重打 |
 | slim 客户端连了远程服务、没下载运行时 | 构建时没清掉 `DEFAULT_SERVER_URL` | 传 `PORTABLE_RUNTIME_URL` 时打包任务会自动置空远程地址；确认用的是 `package:slim` |
 | **客户端只能出一个视频，选不了多平台** | **staged runtime / CDN 上的 `core.zip` 是旧的** | `runtime.json` 缺 `outputBatchVersion: 1` → 壳侧 `batchSupported` 恒 false → 多平台面板整体不渲染。详见 §7.1 |
+| **下载的 exe 与 zip 里的 exe 功能不一样**（一边有多平台、一边没有） | **两个下载入口 + 旧 tag 产物混用**：裸 exe 与 zip 内 exe 同名，用户比对的是不同批次的构建 | 现在只发 zip（单一入口），发版统一走 `scripts/gitee/release_client.sh`。详见 §7.2 |
 
 ### 7.1 多平台输出被静默关掉：`runtime.json` 缺 `outputBatchVersion`
 
@@ -475,6 +476,50 @@ cd desktop/src/video-runtime && ./node.exe desktop-worker.mjs --verify \
 > 客户端装完组件后只有单视频输出**。修复必须发一个**新的组件版本目录**（如 `1.4.4`），
 > 并把客户端 exe 里烘焙的 `defaultVideoComponentsURL` 指到新目录——旧目录里的文件被
 > 原地覆盖会让已装组件的客户端走缓存、拿不到新包。
+
+### 7.2 同一个版本，裸 exe 有多平台、zip 里的没有
+
+**现象**：从 Release 页直接下载 `Octop.exe`，客户端有多平台批量输出；从同一个
+Release 下载 `Octop-green-*.zip` 解压，却只有单视频输出。两者看着是"同一版本的两个入口"。
+
+**根因是两层叠加，都不是打包把 exe 改坏了**：
+
+1. **两个下载入口 + 同名文件**。`publish_release.sh` 会把 `--assets-dir` 里所有文件都上传，
+   而脚本又额外 `cp` 了一份裸 `$EXE`，于是 Release 同时挂了裸 `Octop.exe` 和 zip；
+   zip 里那个文件**也叫** `Octop.exe`。用户比对"我下载的 exe"和"zip 里的 exe"时，
+   实际上是两个不同批次的构建，很容易把**更早 tag 的旧 zip**（本地存了几天的那种）
+   当成当前版本，于是"同一版本功能不一样"。
+2. **壳能力只由壳决定**。多平台面板的闸门是 `supportsLocalRenderTargets()`
+   → `window.octopDesktopLibrary.renderTargetsVersion === 1`，这个对象由壳注入。
+   **壳里没有 `library_bridge.go` 就什么都没有**（`v1.4.1-gitee.9` 的旧壳就是这样，
+   连"本机素材库仅在桌面客户端可用"都能在桌面客户端里出现）。
+
+**判据**（拿两个文件对照，不要凭大小/日期猜）：
+
+```bash
+# 1) 两个文件的 sha256 是否相同 —— 不同就是两个批次，不用再往下看功能
+sha256sum Octop.exe unzipped/Octop.exe
+
+# 2) 壳里到底有没有桥接（0 = 缺，禁止发布）
+strings -n 8 Octop.exe | grep -Fc octopDesktopLibrary        # 期望 >= 1
+strings -n 8 Octop.exe | grep -Fc 'renderTargetsVersion'     # 期望 >= 1
+strings -n 8 Octop.exe | grep -Fc 'ocbot.aixifs.com/videogen' # 期望 >= 1
+```
+
+另注：同一份源码在**不同目录**重新 `go build`，sha256 会有差别，但只差 PE 头的
+Go build ID（约 40 字节，`-trimpath` 下前两段 nonce/路径哈希变、第三段内容哈希不变）。
+**功能字符串计数一致就是同一个功能**；发布脚本产出的 sha256 与本地原地构建不同，属正常。
+
+**处理**（已固化，别再手工发版）：
+
+- **只发一个产物：绿色 zip**。`release_client.sh` 不再 `cp` 裸 exe，校验也要求
+  Release 里除 zip 与 Gitee 自动附带的源码归档外**没有多余附件**。
+- **发版必须走脚本**：`bash scripts/gitee/release_client.sh`。它强制从 `origin/main`
+  的最新提交建干净 worktree 重建、对产物做桥接字符串闸门、tag 自动递增。
+  **不要**"复用上次 release 的 exe"——纯前端改动才可能不用重打壳，本机素材库、
+  文件对话框、本地渲染这类能力都在壳里。
+- Release 正文里**不能**再写"前端远程加载，无需重打 exe"这种话，除非已确认本次改动
+  完全在 `dashboard/` 内且不依赖新的壳侧 IPC。
 
 ---
 
