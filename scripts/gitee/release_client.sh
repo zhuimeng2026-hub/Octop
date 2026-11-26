@@ -23,7 +23,16 @@
 #
 # Publication order (verified on gitee.3 ... gitee.9):
 #   render README on master (push_readme.py -> sha) -> create release with that
-#   sha as target (publish_release.sh) -> upload zip + exe.
+#   sha as target (publish_release.sh) -> upload the green zip.
+#
+# One artifact only
+# -----------------
+# Up to gitee.10 the release carried both Octop.exe and the green zip. Both
+# entries share the filename Octop.exe inside the archive, so users comparing
+# "the exe I downloaded" with "the exe inside the zip" ended up comparing two
+# different builds (one of them a stale pack) and reported a phantom feature
+# difference. The green zip already contains Octop.exe + README.txt, so the
+# standalone exe is pure redundancy: it is no longer packed nor uploaded.
 set -euo pipefail
 
 API_BASE="${GITEE_API_BASE:-https://gitee.com/api/v5}"
@@ -37,7 +46,7 @@ COMPONENTS_URL="https://dw.mengxa.com/video-components/1.4.0/win-x64/manifest.js
 DRY_RUN=0
 
 usage() {
-  sed -n '2,26p' "$0"
+  sed -n '2,35p' "$0"
   exit 2
 }
 
@@ -211,15 +220,12 @@ info "Packing green client"
   "$PY" scripts/pack_green_client.py --exe "$EXE" --out-dir "$ASSETS_DIR" \
     --version "$VERSION" --no-7z
 ) || die "pack_green_client.py failed"
-cp "$EXE" "$ASSETS_DIR/Octop.exe"
 
 ZIP="$ASSETS_DIR/Octop-green-windows-amd64-${VERSION}.zip"
 [[ -f "$ZIP" ]] || die "green zip was not produced"
 ZIP_SHA256="$(sha256sum "$ZIP" | cut -d' ' -f1 | tr -d '\\')"
-for f in "$ZIP" "$ASSETS_DIR/Octop.exe"; do
-  size="$(wc -c < "$f")"
-  [[ "$size" -lt 100000000 ]] || die "attachment too large for Gitee: $(basename "$f")"
-done
+zip_size="$(wc -c < "$ZIP")"
+[[ "$zip_size" -lt 100000000 ]] || die "attachment too large for Gitee: $(basename "$ZIP")"
 info "Assets ready: $(ls -1 "$ASSETS_DIR" | tr '\n' ' ')"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -267,14 +273,14 @@ cat > "$BODY_FILE" <<EOF
 
 | 文件 | 说明 | 大小 |
 |---|---|---|
-| \`Octop-green-windows-amd64-${VERSION}.zip\` | 绿色版压缩包（推荐） | 5.3 MB |
-| \`Octop.exe\` | 单独的可执行文件 | 12.5 MB |
+| \`Octop-green-windows-amd64-${VERSION}.zip\` | 绿色版压缩包（解压即用） | 5.3 MB |
+
+压缩包内含 \`Octop.exe\`（主程序）与 \`README.txt\`（使用说明），**本轮不再单独提供裸 exe**。
 
 ### SHA-256
 
 \`\`\`
 ${ZIP_SHA256}  Octop-green-windows-amd64-${VERSION}.zip
-${EXE_SHA256}  Octop.exe
 \`\`\`
 
 ### 使用说明
@@ -314,11 +320,14 @@ printf '%s' "$release_json" | "$PY" -c '
 import json,sys
 d=json.load(sys.stdin) or []
 names={a.get("name") for a in (d.get("assets") or [])}
-want={"Octop.exe"}
+want={sys.argv[1]}
 missing=sorted(w for w in want if w not in names)
+extra=sorted(n for n in names if n not in want)
 if missing:
     print("missing assets:", missing, file=sys.stderr); sys.exit(1)
+if extra:
+    print("unexpected assets (release should carry the zip only):", extra, file=sys.stderr); sys.exit(1)
 print("release id:", d.get("id"), "assets:", sorted(names))
-' || die "release verification failed"
+' "Octop-green-windows-amd64-${VERSION}.zip" || die "release verification failed"
 
 info "Published: https://gitee.com/${OWNER}/${REPO}/releases/tag/${TAG}"

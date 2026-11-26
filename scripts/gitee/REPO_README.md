@@ -25,8 +25,8 @@ Octop 是一个开源自托管的 AI 助手平台：多用户、多智能体，�
 
 解压后目录里是两个文件：`Octop.exe`（主程序）和 `README.txt`。
 
-> 只要主程序的话，也可以直接下 [Octop.exe]({{GITEE_WEB}}/{{OWNER}}/{{REPO}}/releases/download/{{TAG}}/Octop.exe)（12.5 MB），
-> 但没有随附的使用说明。
+> 本仓库只提供这一个压缩包：包内的 `Octop.exe` 就是最新构建，不再单独提供裸 exe，
+> 避免两个下载入口混用不同版本的产物。
 
 全部发行版本见 [Releases]({{GITEE_WEB}}/{{OWNER}}/{{REPO}}/releases)。
 
