@@ -1,15 +1,18 @@
 ---
-标题: Octop 飞书通俗版发布规则
+标题: Octop 飞书通俗版改写规则
 类型: 规则
 状态: 使用中
 创建日期: 2026-11-26
 ---
 
-# Octop 飞书通俗版发布规则
+# Octop 飞书通俗版改写规则
 
-> 本文是 **Octop 项目专属**的通俗版口径，接在通用规则
-> （`/opt/ob-vault/docs/feishu-publish-rules.md`）后面，一起喂给写稿模型。
+> 本文是 **Octop 项目专属**的改写口径，接在通用规则
+> （`/opt/ob-vault/docs/feishu-rewrite-rules.md`）后面，一起喂给写稿模型。
 > 两者冲突时，**本文件优先**。
+>
+> 管的是改写那一步：把 `/opt/Octop/docs/PRD.md` 改写成 `PRD.飞书版.md`。
+> 改写完由人确认内容，再在面板上点「发布到飞书」发出去——发布不归这份规则管。
 
 ## 一、这篇文档写什么
 
@@ -86,5 +89,5 @@
 ## 七、相关
 
 - 源文件：`/opt/Octop/docs/PRD.md`（唯一真源）
-- 通用规则：`/opt/ob-vault/docs/feishu-publish-rules.md`
+- 通用规则：`/opt/ob-vault/docs/feishu-rewrite-rules.md`
 - 项目约束：`/opt/Octop/AGENTS.md`（§8 禁止在发行材料里出现后端服务地址）
