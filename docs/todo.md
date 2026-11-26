@@ -1,6 +1,6 @@
 # 项目待办（人工 / 特定环境）
 
-> 状态：**活文档**（最近核实 2026-11-24）
+> 状态：**活文档**（最近核实 2026-11-26）
 > 只收「**需要人 / 特定环境**」的事项：扫码登录、真机验证、真实账号、线下验收，以及需要**生产服务器**或**仓库/平台权限**的运维动作。
 > 落点规则与状态词表见 [docs/README.md §文档维护规范](./README.md) 第 7 条。
 
@@ -101,9 +101,65 @@ Remove-NetFirewallRule -DisplayName 'Chrome CDP 9223'
 
 ---
 
+## T-002 · 真实微信扫码 → 远程回调 → 桌面会话恢复 → 只读业务 API 复验
+
+**状态**：⏳ 待安排（2026-11-24 登记）
+**跟踪**：无需 issue（本条由 todo.md 自身承载）
+
+### 要做什么
+
+用**隔离测试账号**完成一次真实的微信开放平台扫码登录，验证整条链路：
+
+1. 桌面端发起扫码 → 微信开放平台网站应用回调到远程 Octop 后端；
+2. 后端换取会话并下发桌面可用的凭据；
+3. 桌面壳恢复会话（不重新扫码）并进入已登录状态；
+4. 用该会话调用**授权的只读业务 API**（如 `/api/product-library/products`）确认可读。
+
+### 需要的环境
+
+- 一个**隔离测试账号**（微信开放平台侧已登记为网站应用的可扫码用户）；
+- 一台能实际扫码的机器（有微信客户端的 Windows 桌面端最佳）；
+- 生产/远程 Octop 服务可达（本条走远程回调，不在服务器本机扫码）。
+
+### 为什么不能在服务器上做
+
+扫码必须在有微信客户端的真实设备上完成；服务器无 GUI、无微信客户端，也没有人工账号。
+能放在服务器上做的只有「回调地址可达性」与「服务端日志核对」，那部分已在 2026-11-24 的远程探活中覆盖。
+
+### 已完成到哪一步
+
+- 2026-11-23：开发模式启动、构建与 Go 侧检查已记录（见 [PRD.md §4.2](./PRD.md#42-桌面端开发模式developer-mode)）；
+- 2026-11-24：远程探活与 React 小组件热更新已记录；**扫码 → 回调 → 会话恢复 → 只读 API 这一段仍待真人复验**；
+- 此前记录中的模拟扫码（回调参数构造、JWT 签发）**不等于**真人扫码验收。
+
+### 验收标准
+
+| 项 | 判定 |
+|---|---|
+| 扫码 | 桌面端扫码界面可用，扫码后进入应用，无「登录方式不可用」提示 |
+| 回调 | 远程后端收到回调并成功换取会话（服务端日志有对应记录） |
+| 会话恢复 | 关闭桌面壳后重新打开，**不重新扫码**即回到已登录状态 |
+| 只读 API | 用该会话调用至少一个授权只读业务接口返回 200 且数据属当前账号 |
+| 隔离性 | 全程只使用隔离测试账号与隔离数据，不触碰真实用户数据 |
+
+### 完成后回写
+
+- [PRD.md §4.2](./PRD.md#42-桌面端开发模式developer-mode) 的「当前验收口径」段落：把「待真人复验」改为已复验并附日期与结论；
+- 本条目状态 → ✅ 已完成（附日期）；
+- 若复验发现缺陷 → 登记为新条目（bugfix 进 [backlog.md](./backlog.md)，环境问题留本文件），**不得**在本条里顺手改代码。
+
+### 相关
+
+- [微信开放平台登录](./wechat-open-login.md)
+- [PRD.md §4.2](./PRD.md#42-桌面端开发模式developer-mode)
+- [desktop-windows-build.md](./desktop-windows-build.md)
+
+---
+
 ## T-003 · 生产环境部署来源切到 `develop`
 
 **状态**：⏳ 待安排（2026-11-24 登记）
+**跟踪**：无需 issue（本条由 todo.md 自身承载）
 
 ### 要做什么
 
@@ -132,6 +188,9 @@ Remove-NetFirewallRule -DisplayName 'Chrome CDP 9223'
 **仍有行为差异**（不是纯 no-op）：`develop` 相对 `fix/full-test-12-failures` 有 69 个文件差异（+8413 / −1639），多出 `src/octop/infra/product_library/{recognition,base_library,image_quality}.py` 与对应测试；`git cherry` 显示 3 个提交补丁不同 → 切换后服务行为会变，**必须重启并验证**，不能只看 checkout 结果。
 
 ### 需要先拍板（口径冲突，别跳过）
+
+> **本条不自行决策**：选项 A / B 的取舍必须先落到 [PRD.md §8 开放问题](./PRD.md)，
+> 拍板结论再写进 §5.1 与 `AGENTS.md` §10。下文只是候选方案，不是未决状态的替代品。
 
 当前规范写的是「生产只跑 `main` 上的 `v*` tag，禁止直接跑 `develop`」——见 [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 与 `AGENTS.md` §10；而本条的目标是让生产跑 `develop`。二者必须先收口成唯一口径：
 
@@ -175,8 +234,8 @@ systemctl restart octop.service
 
 - [wip-branch-workflow.md §5.1](./wip-branch-workflow.md)：按拍板结果改口径（选项 A / B），并写明线上实际跑的是哪个 ref
 - [wip-branch-workflow.md §7](./wip-branch-workflow.md)：登记行里「线上仍在跑」的说法按实际进程证据更新
-- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：远程后端实测表的「代码版本」单元格更新为切换后的版本
-- [PRD.md §9](./PRD.md)：版本基线表同步（如口径变了）
+- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：远程后端实测表的「代码版本」单元格更新为切换后的版本（**本条独占该单元格**，T-004 只处理同节的 WIP 分支引用行）
+- [RELEASE-MATRIX.md §4](./RELEASE-MATRIX.md)：版本基线表同步（如口径变了）
 
 ### 相关
 
@@ -189,6 +248,7 @@ systemctl restart octop.service
 ## T-004 · 清理 WIP 分支 `wip/product-library-batch-import`
 
 **状态**：⏳ 待安排（2026-11-24 登记）
+**跟踪**：无需 issue（本条由 todo.md 自身承载）
 
 ### 要做什么
 
@@ -235,7 +295,7 @@ systemctl restart octop.service
 ### 完成后回写
 
 - [wip-branch-workflow.md §7](./wip-branch-workflow.md)：登记行状态 → 已清理（保留 SHA 与历史链接）
-- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：实测记录改为当前正式版本
+- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：删除该节中指向 `wip/product-library-batch-import` / `ea0c24c5` 的引用，改为指向当前正式版本（**「代码版本」单元格由 T-003 写，本条不重复写**）
 - 本条目状态 → ✅ 已完成（附日期与 commit）
 
 ---
@@ -243,6 +303,7 @@ systemctl restart octop.service
 ## T-005 · 修复 fork 的 Actions「Mirror to CNB」令牌过期
 
 **状态**：🚧 进行中（令牌由人更换，2026-11-24 登记）
+**跟踪**：无需 issue（本条由 todo.md 自身承载）
 
 ### 现象
 

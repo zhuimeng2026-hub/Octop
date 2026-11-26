@@ -1,6 +1,14 @@
 # 产品视频制作向导：界面与交互规范
 
-日期：2026-10-24。用户已选择 **A：横向五步向导**。本次仅实现现有 Dashboard 前端，不新增后台、在线渲染器或多轨编辑器。
+> 类型：设计（活文档）
+> 状态：活文档（Web 路径仍有效；后续升级见工作台 PRD）
+> 最新核实：2026-11-26
+> 日期：2026-10-24。用户已选择 **A：横向五步向导**。本次仅实现现有 Dashboard 前端，不新增后台、在线渲染器或多轨编辑器。
+>
+> **本文的权威范围**：Web 路径五步的**界面与交互规范**。
+> 步骤的**阶段划分**以 [视频生产工作台 PRD §2](../video-production-workbench/PRD.md) 的四阶段为准
+> （五步是四阶段在 Web 界面上的投影）；多平台输出规格见该文 §4；
+> 桌面本机路径见 [本机素材库与分步视频制作](../video-production-workbench/local-library-wizard.md)。
 
 ## 设计依据与方案比较
 
@@ -18,7 +26,7 @@
 
 - 复用现有 Dashboard 的登录、`PageShell`、侧边栏、Ant Design 组件、Lucide 图标和 i18next。新页面挂在产品素材库下，侧栏仍选中产品素材库。
 - 主页面入口：`/product-library/video-wizard`。已有项目可从产品库继续进入，项目 ID 用于读取服务端草稿，权限由已有登录接口校验。
-- 五步为「选择产品 → 制作要求 → AI 视频方案 → 确认调整 → 下载制作」。已完成步骤可返回，后续步骤受有效数据约束，操作中不允许跨步骤产生竞态。
+- 五步为「选择产品 → 制作要求 → AI 视频方案 → 确认调整 → 下载制作」，对应四阶段的 1 → 2 → 3 → 3 → 4（见 [工作台 PRD §2.1](../video-production-workbench/PRD.md#21-两套历史步骤名是实现别名不是另一套流程)）。已完成步骤可返回，后续步骤受有效数据约束，操作中不允许跨步骤产生竞态。
 - 使用主题变量 `--fn-*`，继承浅色、深色及调色板。主色默认玫瑰色；标题、正文、边框与背景跟随现有主题，不硬编码一套独立配色。
 - 桌面镜头卡片三列，中等窗口两列，小窗口一列；步骤横向保持清晰或可横向滚动，表单与操作栏允许换行，不产生页面级横向溢出。
 - 每一步只有一个显著主操作。次要操作采用普通按钮或文字链接；输入须有可读标签、键盘焦点和清晰禁用状态。
@@ -85,9 +93,23 @@
 | 读取草稿         | `GET /projects/{project_id}/storyboard`                       |
 | 保存/确认草稿    | `PUT /projects/{project_id}/storyboard`，`confirmed` 表达确认 |
 | 下载已确认方案   | `GET /projects/{project_id}/storyboard-package`               |
+| 配音选项         | `GET /narration-options`（免费档本机 SAPI / 付费档服务端）    |
+| 配乐选项与试听   | `GET /bgm-options`、`GET /bgm/{track_id}/stream`             |
+| 准备渲染         | `POST /projects/{project_id}/prepare-render`                   |
+| 本机分镜规划     | `POST /projects/{project_id}/video-plan`                       |
+| 规划包下载       | `GET /projects/{project_id}/planned-package`                   |
+| 制作包下载       | `GET /projects/{project_id}/package`                           |
+| 本机识别与分组   | `POST /recognize`、`POST /plan-local`、`POST /group-plan`      |
+
+> 本机路径（桌面端）的对应实现走桌面桥，不经上表的服务端接口——
+> 见 [桌面视频桥接契约](../desktop-video-bridge-contract.md)。
 
 ## 验收与边界
 
 按本次任务约定，仅运行前端 TypeScript、生产构建及相关组件基础测试；不运行 `make all` 或后端全量测试。浏览器截图需注明是否采用模拟 API 数据，不将模拟请求结果当作真实 LLM、权限隔离或 MP4 渲染验收。
 
 本次不新增后端接口，不变更认证/SSO，不实现在线 Remotion Player、多轨剪辑、自动配音、自动发布或桌面 M1 集成。真实模型可用性、服务端权限与本机完整渲染仍需在部署环境单独验收。
+
+> **范围澄清（2026-11-26）**：上面「不实现在线自动配音」指的是**本次前端任务的范围**，
+> 不是产品能力口径。配音/配乐已是专用应用能力（PRD §3.2），已接入 Web 向导与桌面本机渲染路径；
+> 桌面本机向导（`LocalVideoWizard`）暂未接入，见 [PRD §8 Q5](../../PRD.md) 与 backlog B-006。

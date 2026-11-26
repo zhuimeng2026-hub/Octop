@@ -1,7 +1,11 @@
 # 产品素材库「目录导入」AI 识别架构（结论固化）
 
-> 状态：**已固化**，最后核实 2026-11-19。
-> 背景：此架构被反复问及、反复澄清过多次。本文是**唯一权威结论**，后续直接引用本文，不再重复口头解释。
+> 类型：需求
+> 状态：**已固化**（最后核实 2026-11-26）
+> 权威范围：**AI 识别/推理职责边界**的唯一权威（服务端调远程多模态模型，客户端不跑模型）。
+> **素材字节与分类结果的落点不在本文范围**——见 [PRD.md §3.7](./PRD.md)（2026-11-22 起：
+> 桌面端素材本体与分类结果归客户端本机，服务端仅在识别那一刻临时持有字节）。
+> 背景：此架构被反复问及、反复澄清过多次，后续直接引用本文，不再重复口头解释。
 
 ---
 
@@ -9,7 +13,7 @@
 
 **目录导入的图片 AI 识别，由「服务端」执行、调用「远程多模态模型」完成并回传识别数据；客户端（桌面壳/浏览器）只负责上传图片和接收分组结果，本机/客户端不运行任何模型。**
 
-- 这里的「服务端」= Octop 后端进程（`octop run` 起的 FastAPI 服务）。桌面端连的是**远程自建 Octop 后端**（`ocdev.aixifs.com:13122`），不是用户本机。
+- 这里的「服务端」= Octop 后端进程（`octop run` 起的 FastAPI 服务）。桌面端连的是**远程自建 Octop 后端**（当前发行形态固定为 `https://ocbot.aixifs.com/videogen`，见 [PRD.md §4.1 S2](./PRD.md)），不是用户本机。
 - 「远程多模态模型」= 服务端 provider 配置里 `base_url` 指向的云端 LLM（如 `newapi` → `https://aikey4k.mengxa.com:8443/v1`）。
 
 ---
@@ -52,7 +56,7 @@
 
 | 文件 | 关键函数 / 行 |
 |---|---|
-| `src/octop/api/routers/product_library.py` | `/imports/analyze`(395) `/imports/commit`(428) |
+| `src/octop/api/routers/product_library.py` | `/imports/analyze`(457) `/imports/commit`(616) `/recognize`(655) `/plan-local`(710) `/group-plan`(745) |
 | `src/octop/infra/product_library/batch_import.py` | `analyse_upload` / `commit_import`，`resolve_vision_model` 调用在 135 行 |
 | `src/octop/infra/product_library/vision.py` | `resolve_vision_model`(64) `categorise_image`(146) `parse_categorisation_payload` |
 | `src/octop/infra/agents/providers/probe.py` | `build_probe_chat_model`(43) |
@@ -116,12 +120,15 @@ A：两者是**串联**的两层，不冲突：
 A：不是。本机恰好被当成服务端，而本机 providers 表为空，才走 per-image 降级。真实桌面端连远程后端（已配 vision 模型）不会这样。
 
 **Q5：当前版本的目录导入做到什么程度？**
-A：M1（Web 选目录 → 识别分组 → 复核 → 入库）已实现并可用。M2（任务持久化/进度/断点续传）、M3（桌面端原生目录对话框）按 `docs/product-image-batch-import.md` 标注**尚未实现**。
+A：M1（Web 选目录 → 识别分组 → 复核 → 入库）已实现并可用。M3（桌面端原生目录对话框）**已实现**
+（`desktop/src/library_bridge.go` 的 `pickDirectory` / `ingest` / `recognizeExisting`）。
+M2（任务持久化/进度/断点续传）**尚未实现**，见 `docs/product-image-batch-import.md`。
 
 ---
 
 ## 6. 相关文档
 
 - `docs/product-image-batch-import.md` —— 目录导入功能规划（M1/M2/M3）
-- `docs/product-material-library.md` —— 产品素材库整体规划
+- `docs/product-material-library.md` —— 产品素材库（Web 路径）功能总览
+- `docs/PRD.md` §3.7 —— 素材与数据所有权（落点与推理位置的分工）
 - `docs/archive/product-library-mvp.md` —— 素材库 MVP 设计（历史归档，仅作背景参考）

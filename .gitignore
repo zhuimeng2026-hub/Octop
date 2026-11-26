@@ -154,3 +154,7 @@ docs/cnb-branch-analysis/
 # 桌面壳构建产物与本地 preview 运行数据（原 Octop-fdf worktree 里的未跟踪内容）
 /out/
 /.octop-preview/
+
+# 飞书通俗版：面板「生成飞书版」的构建产物，下次重新生成就被覆盖，不入库
+docs/*.飞书版.md
+docs/*.飞书版.meta.json

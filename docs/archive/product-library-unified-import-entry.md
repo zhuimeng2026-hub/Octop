@@ -1,5 +1,9 @@
 # 素材库统一导入入口（图片 + 文件夹混选）设计与实现
 
+> **状态：已归档（2026-11-26）。** 本文原记「设计已确认，代码待实现」，对应能力**已实现**
+> （`src/octop/infra/product_library/batch_import.py`、`dashboard/src/pages/ProductLibrary/importFiles.ts`）。
+> 现行口径见 [素材导入与 AI 识别架构](../product-library-import-architecture.md) 与 [目录图片批量识别与归档](../product-image-batch-import.md)。
+
 - 状态：**设计已确认，代码待实现**（路线 B：合并入口 + 保留目录结构）
 - 影响模块：`dashboard/src/pages/ProductLibrary`、`octop/api/routers/product_library.py`、`octop/infra/product_library/batch_import.py`、`octop/infra/product_library/vision.py`
 - 数据库迁移：**无**（导入任务的中间状态存在 `manifest.json`，不落表）
@@ -388,5 +392,5 @@ hint = (
 
 ## 8. 关联文档
 
-- [素材库导入架构](./product-library-import-architecture.md) —— AI 识别职责边界（服务端调远程多模态模型，客户端不跑模型）
-- [PRD §3.6](./PRD.md) —— 本地质检基础图库、隔离区与批量出片入口
+- [素材库导入架构](../product-library-import-architecture.md) —— AI 识别职责边界（服务端调远程多模态模型，客户端不跑模型）
+- [PRD §3.6](../PRD.md) —— 本地质检基础图库、隔离区与批量出片入口

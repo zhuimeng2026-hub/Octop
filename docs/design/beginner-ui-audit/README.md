@@ -1,6 +1,13 @@
 # Octop 新手界面复核与修改建议
 
-日期：2026-11-24 · 状态：待批准 · 仓库：Octop，`feat/video-production-workbench`，本地工作树（HEAD `cfcb0d19`）
+日期：2026-11-24 · 状态：**部分已实施**（A / B / C 已落地；D / E 未实施）· 仓库：Octop，`feat/video-production-workbench`，本地工作树（HEAD `cfcb0d19`）
+
+> 类型：设计
+> 最新核实：2026-11-26
+> 实施状态：A（突出「导入图片」与已选数量）、B（区分导入与识别失败的合并提示）、C（组件安装主按钮 / 重新生成视频 / 下载 MP4 主按钮）
+> 已进入 `dashboard/src/locales/zh.json` 与 `en.json`；D（简化默认生成与检查页汇总）与 E（登录阻塞对比度与无障碍）
+> **尚未实施**，仍保留在本表作为待办。落地锚点：本地素材库 `dashboard/src/pages/LocalLibrary/`、
+> 本地视频向导 `dashboard/src/pages/LocalVideoWizard/`、视频组件页 `dashboard/src/pages/VideoEnvironment/`。
 
 ## 审查范围
 
@@ -21,7 +28,7 @@
 
 ## 建议与验收
 
-优先级按首次做成视频的影响排序。建议首批批准 A–C，D–E 可单独批准。
+优先级按首次做成视频的影响排序。**A–C 已实施**（2026-11-26 核实）；D–E 未实施，需要时可单独批准。
 
 | 项目 | 建议 | 修改原因 | 可复验的结果 |
 | --- | --- | --- | --- |
@@ -33,7 +40,7 @@
 
 ## 实施交接与验证
 
-- 5.6 Luna 在获批后接手。主要落点为 [本机素材库](../../../dashboard/src/pages/LocalLibrary/index.tsx)、[本地视频向导](../../../dashboard/src/pages/LocalVideoWizard/index.tsx)、[视频组件页面](../../../dashboard/src/pages/VideoEnvironment/index.tsx) 和 [中](../../../dashboard/src/locales/zh.json)／[英文案](../../../dashboard/src/locales/en.json)。只有 E 获批时才涉及 [登录页](../../../dashboard/src/pages/Login/index.tsx)。复用当前的组件、路由和 API。
+- A–C 已由前端落点实现。主要落点为 [本机素材库](../../../dashboard/src/pages/LocalLibrary/index.tsx)、[本地视频向导](../../../dashboard/src/pages/LocalVideoWizard/index.tsx)、[视频组件页面](../../../dashboard/src/pages/VideoEnvironment/index.tsx) 和 [中](../../../dashboard/src/locales/zh.json)／[英文案](../../../dashboard/src/locales/en.json)。只有 E 获批时才涉及 [登录页](../../../dashboard/src/pages/Login/index.tsx)。复用当前的组件、路由和 API。
 - 保留绿色版启动后立即可打开并登录、依赖按需安装、素材本机持有。把新手指引放在当前业务步骤内，沿用 [现有产品约束](../../PRD.md) 和 [工作台设计](../video-production-workbench/PRD.md)。
 - 实施后从前端开发环境运行 `npx tsc -b`，并用上表用例做定向走查。用两个实机条件验证 C：首次缺组件，以及组件已就绪。查看真实 MP4 的保存和播放，再补键盘、读屏和窗口缩放的验证。按仓库规则将全套测试留给 CI。
 

@@ -1,7 +1,11 @@
 # 后端全量测试（定时）
 
+> **状态：已归档（2026-11-26）。** 夜间全量测试的**执行口径**以
+> [backend-nightly-repair.md](../backend-nightly-repair.md)（唯一运行手册）为准；
+> 本文件仅保留旧脚本的历史背景与证据。
+
 > **本文件是旧脚本的历史背景与证据口径。** 夜间任务的执行口径以
-> [backend-nightly-repair.md](./backend-nightly-repair.md)（唯一运行手册）为准：
+> [backend-nightly-repair.md](../backend-nightly-repair.md)（唯一运行手册）为准：
 > 隔离 checkout、`cnb/develop` 真实 SHA 基线、`uv run --locked --no-sync`、
 > 失败归因与最小修复、候选快照与结果卡交接。本文件里的旧生产 `OCTOP_HOME`、
 > JWT/模型分析与 pre-hook 假设**不得**当作新工作流的实现方案。
@@ -11,7 +15,7 @@
 > 产出可读的失败归因报告。
 
 只做后端事务：不碰 `dashboard/`、不构建前端（边界见
-[deployment-boundary.md](./deployment-boundary.md)）。
+[deployment-boundary.md](../deployment-boundary.md)）。
 
 ## 组成
 
@@ -27,7 +31,7 @@
 
 > ⚠️ **已过期**：这是新工作流接入**前**的旧单元配置（root / `/opt/Octop` /
 > 会切生产工作树的 pre-hook）。接入后的实际配置见
-> [backend-nightly-repair.md §7](./backend-nightly-repair.md#7-服务器接入记录2026-11-24)。
+> [backend-nightly-repair.md §7](../backend-nightly-repair.md#7-服务器接入记录2026-11-24)。
 
 现有计划只有一条：`octop-backend-full-test.timer` 每天 **02:10（Asia/Shanghai）**
 触发服务；当前服务实测为：
@@ -47,7 +51,7 @@
 ### develop 验收计划（沿用 02:10）
 
 夜间失败归因、最小修复、候选快照与报告交接 MUST 按唯一运行手册
-[backend-nightly-repair.md](./backend-nightly-repair.md) 执行；本文件以下内容保留为旧脚本的历史背景和沙箱证据，不得据此推断已完成新流程接入。
+[backend-nightly-repair.md](../backend-nightly-repair.md) 执行；本文件以下内容保留为旧脚本的历史背景和沙箱证据，不得据此推断已完成新流程接入。
 
 服务端后续只调整这条既有 timer 所调用的测试服务：将实际测试根目录/入口改为独立的
 `develop` checkout，并保持生产 `/opt/Octop` 与生产数据目录不被测试切换或清理。不能只在
@@ -126,7 +130,7 @@ exit "$rc"
    - 跑完了但有失败用例 → 这是**结论**，不重试，直接进分析；
    - 跑不起来（解释器缺失、依赖缺失、收集阶段崩溃、进程被杀、**日志被删**）→
      **不可跳过的异常**，重试，累计 3 次仍失败就终止。
-3. **L4 评测（夜间集合）** —— 按 [eval/README.md](./eval/README.md) §5 跑需求
+3. **L4 评测（夜间集合）** —— 按 [eval/README.md](../eval/README.md) §5 跑需求
    条目级的任务集，逐条判定 pass / fail / 跳过 / 受阻，结论并进同一份报告。
    失败让本轮结论为 fail；评测自身异常不推翻 pytest 的结论。见下节。
 4. **子代理分析** —— 一个 Octop 子代理（`task_type=agent`，模型
@@ -145,7 +149,7 @@ exit "$rc"
 
 ## L4 评测（夜间集合）
 
-[eval/README.md](./eval/README.md) §5 规定：夜间集合 = 全量任务（含 `live` 与
+[eval/README.md](../eval/README.md) §5 规定：夜间集合 = 全量任务（含 `live` 与
 L4 任务），「没有配置就不能宣称已跑夜间」。本机（后端生产机）的夜间配置是：
 
 | 项 | 值 |
@@ -173,8 +177,8 @@ L4 任务），「没有配置就不能宣称已跑夜间」。本机（后端�
 
 | 任务范围 | 依据 |
 |---|---|
-| 前端命令（`dashboard/`、npm/npx/vite） | [deployment-boundary.md](./deployment-boundary.md) §1 NEVER 行、§2 决策表；`CLAUDE.md` §Commands |
-| 桌面命令（`desktop/`、go 工具链） | 桌面客户端是独立交付单元，在 Windows 出包机上构建验证（[desktop-windows-build.md](./desktop-windows-build.md)）；`CLAUDE.md`「desktop/」条、`AGENTS.md` §1 本地验证表 |
+| 前端命令（`dashboard/`、npm/npx/vite） | [deployment-boundary.md](../deployment-boundary.md) §1 NEVER 行、§2 决策表；`CLAUDE.md` §Commands |
+| 桌面命令（`desktop/`、go 工具链） | 桌面客户端是独立交付单元，在 Windows 出包机上构建验证（[desktop-windows-build.md](../desktop-windows-build.md)）；`CLAUDE.md`「desktop/」条、`AGENTS.md` §1 本地验证表 |
 
 即：**夜间集合里能真正产出结论的是后端任务**（PLB、PVQ-005、PVQ-008 等）；
 前端与桌面任务在本机永远记受阻，需要在前端 / 桌面环境执行。

@@ -1,5 +1,8 @@
 # 产品素材库第一批 MVP：详细设计与实施约定
 
+> **状态：已归档（2026-11-26）。** 被 [素材导入与 AI 识别架构](../product-library-import-architecture.md)
+> 与 [目录图片批量识别与归档](../product-image-batch-import.md) 取代。
+
 日期：2026-10-29。目标分支：`fix/backend-mvp-v01-integration`。
 代码核对基线：`d16bd0243edab026cadab0fc2cfc583a0c7b7719`。
 

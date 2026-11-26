@@ -6,7 +6,7 @@
 
 本文是夜间智能体执行后端全量测试、归因和最小修复的唯一运行手册。旧的脚本说明、工具日志、PR 文本和历史报告都是输入证据，不能替代本文的边界、判定或验收口径。产品验收仍以 [PRD §6](./PRD.md#6-非功能需求) 为准；旧分支上的三项运维/生产验收不与本修复工作流混为一谈。
 
-> **相关文档**：旧脚本与证据背景见 [backend-full-test.md](./backend-full-test.md)（历史背景，
+> **相关文档**：旧脚本与证据背景见 [backend-full-test.md](./archive/backend-full-test.md)（历史背景，
 > 其生产 `OCTOP_HOME` / JWT / pre-hook 假设不是本工作流的实现方案）；需求条目级评测
 > 见 [eval/README.md](./eval/README.md)（L4 任务集，独立于夜间全量，本工作流不依赖它）。
 
@@ -172,7 +172,7 @@ worker MUST 先按 pytest nodeid 和失败原因归组，再决定是否可动�
 
 ## 6. 既有手册与产品验收的关系
 
-旧手册 [backend-full-test.md](./backend-full-test.md) 保留历史脚本、沙箱和证据背景；其旧的生产 `OCTOP_HOME`、JWT/模型分析及 pre-hook 假设不得作为本文新工作流的实现方案。该文档的 02:10 段只负责链接到本手册；本文是夜间修复的执行口径。
+旧手册 [backend-full-test.md](./archive/backend-full-test.md) 保留历史脚本、沙箱和证据背景；其旧的生产 `OCTOP_HOME`、JWT/模型分析及 pre-hook 假设不得作为本文新工作流的实现方案。该文档的 02:10 段只负责链接到本手册；本文是夜间修复的执行口径。
 
 生产三项运维/生产验收、正式 `main` `v*` tag、健康检查、微信链路和发布安全检查仍按 [PRD §6](./PRD.md#6-非功能需求) 判定，不因夜间候选通过而自动通过。
 

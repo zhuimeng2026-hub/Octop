@@ -1,12 +1,21 @@
 # Product material library
 
+> Type: Reference
+> Status: Living document (Web path) — verified 2026-11-26
+> Scope: the **Web path** of the product library (entities, storage, snapshots, endpoints).
+> The desktop-local path (assets and classification results owned by the client machine) is
+> governed by [PRD.md §3.7](./PRD.md) and implemented in
+> [local-library-wizard.md](./design/video-production-workbench/local-library-wizard.md).
+> The AI-recognition responsibility boundary is owned by
+> [product-library-import-architecture.md](./product-library-import-architecture.md).
+
 The dashboard's **Products** page (`/product-library`) is a per-user product and asset library. It stores product name, model, category, confirmed selling points, parameters, expression limits, and uploaded files. Product metadata is in SQLite or PostgreSQL; file bytes are stored under `~/.octop/product-library/<user_id>/` and are not inserted into the database. All API reads and writes are scoped to the authenticated user.
 
 Back up the local `~/.octop/product-library/` files together with the Octop database; the database stores the metadata and paths, not file contents.
 
 ## Guided product video creation
 
-Choose **Make a product video** on the Products page to open `/product-library/video-wizard`. The five steps select an owned product and scene assets, collect business requirements, generate an AI storyboard, edit and confirm scene cards, and download the confirmed ZIP for local Studio preview and MP4 rendering. Existing projects offer **Continue video** to restore their saved storyboard. The page reuses Dashboard authentication, themes and translations; it does not require a running agent.
+Choose **Make a product video** on the Products page to open `/product-library/video-wizard`. The five steps (选择产品 → 制作要求 → AI 视频方案 → 确认调整 → 下载制作) select an owned product and scene assets, collect business requirements, generate an AI storyboard, edit and confirm scene cards, and download the confirmed ZIP for local Studio preview and MP4 rendering. The canonical phase model behind these five steps is the four phases in [design/video-production-workbench/PRD.md §2](./design/video-production-workbench/PRD.md); the step-by-step interface contract is in [design/product-video-wizard/README.md](./design/product-video-wizard/README.md). Existing projects offer **Continue video** to restore their saved storyboard. The page reuses Dashboard authentication, themes and translations; it does not require a running agent.
 
 Generation uses the existing backend LLM planner. If that service is unavailable, the wizard retains the project and requirements for an explicit retry. It does not substitute the deterministic template for a successful AI response. Text, media and duration edits must be saved and confirmed before the storyboard-specific package can be downloaded; editing a confirmed plan requires confirmation again. Product snapshots remain immutable, so additional media requires a new project.
 
@@ -23,6 +32,8 @@ Creating a video project stores an immutable snapshot of the selected product fi
 ## Preparing an existing Remotion job
 
 Choose one of your own running agents on the project and select **Prepare render job**. Octop verifies agent ownership, then writes assets and finally `script.json` through `BackendWorkspace` to `render-jobs/<project_id>/`. The job is marked prepared only after those writes succeed; this step does not render a video.
+
+Additional capabilities now available on this path: narration options (free tier: local Windows SAPI; paid tier: server-side MiniMax), BGM options with preview streaming, the local quality-check **base library** (`/base-library/*`, deterministic pixel checks — no model calls), and the recognition/planning endpoints `/recognize`, `/plan-local`, `/group-plan`. The desktop-local equivalents run through the desktop bridge instead of these server endpoints (see [desktop-video-bridge-contract.md](./design/desktop-video-bridge-contract.md)).
 
 The existing local synchronizer can then poll the selected agent workspace and render it:
 

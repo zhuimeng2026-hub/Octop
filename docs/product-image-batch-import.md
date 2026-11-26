@@ -1,7 +1,10 @@
 # 产品素材库：目录图片批量识别与归档
 
+> 类型：需求
 > 状态：**M1 已实现**（Web 目录导入 + 视觉分类 + 人工确认归档）；
+> **M3（桌面端原生目录对话框）已实现**（`desktop/src/library_bridge.go` 的 `pickDirectory` / `ingest` / `recognizeExisting`）；
 > **大图体积处理已实现**（2026-11-23，见 §11：客户端本地压缩 + 识别载荷拆分）
+> 最新核实：2026-11-26
 > 目标读者：后端 / 前端 / 测试
 > 关联功能：产品素材库 `/product-library`（见 [product-material-library.md](product-material-library.md)）
 > 关联需求：跨产品分类选材见 [product-video-multi-category-materials.md](product-video-multi-category-materials.md)
@@ -21,7 +24,8 @@
 > - `src/octop/infra/product_library/batch_import.py` — `MAX_ORIGINAL_BYTES` 20 MiB 原图上限
 > - `src/octop/infra/product_library/vision.py` / `image_quality.py` — `MAX_IMAGE_BYTES` 8 MiB 识别载荷上限
 >
-> M2（任务持久化/进度）与 M3（桌面端目录对话框）尚未实现。
+> M2（任务持久化/进度/断点续传）尚未实现。M3（桌面端目录对话框）已实现，桌面本机路径的落点见
+> [本机素材库与分步视频制作](./design/video-production-workbench/local-library-wizard.md)。
 
 ## 1. 背景与问题
 
@@ -234,7 +238,7 @@ commitImport: (body: ImportCommit) => Promise<ImportResult>
 |---|---|---|
 | **M1（本提案 MVP）** | Web 目录选择器 + 批量上传 + 结构化识别 + 分组预览 + 人工确认归档 + 去重 + 失败提示 | 后端 `vision.categorise_image` + `imports/analyze` / `commit` 两接口 + 前端三步向导；无需新迁移（复用 v28 描述表），无需队列 |
 | **M2** | 近似分组合并、任务持久化与断点续传、进度条、取消 | `imports/<job_id>.json` 状态文件 + 轮询接口 |
-| **M3（桌面端）** | Wails Go 侧目录对话框，直接把目录内文件流送给后端识别，免去浏览器上传体积限制 | 桌面专用入口，需评估桌面↔后端文件通道 |
+| **M3（桌面端）** ✅ 已实现 | Wails Go 侧目录对话框 + 本机素材库导入 | 落点：`desktop/src/library_bridge.go`（`pickDirectory` / `ingest` / `recognizeExisting`）、`dashboard/src/pages/LocalLibrary/`；产品侧见 [本机素材库与分步视频制作](./design/video-production-workbench/local-library-wizard.md) |
 
 ## 8. 测试计划
 
@@ -262,7 +266,7 @@ commitImport: (body: ImportCommit) => Promise<ImportResult>
 ## 10. 与其他文档的关系
 
 - 现有素材库能力见 [product-material-library.md](product-material-library.md)。
-- 视频分镜/制作包链路见 [backend-ai-storyboard-mvp.md](backend-ai-storyboard-mvp.md)、[local-studio-package.md](local-studio-package.md)。
+- 视频分镜/制作包链路见 [archive/backend-ai-storyboard-mvp.md](archive/backend-ai-storyboard-mvp.md)、[local-studio-package.md](local-studio-package.md)。
 - 本功能是**新增**能力，不改变现有「手动上传 + 单张/批量识别 + 视频向导」流程；两者并列，用户按需选用。
 - 跨产品分类选材的工程侧需求与验收见 [product-video-multi-category-materials.md](product-video-multi-category-materials.md) 第二部分。
 

@@ -1,9 +1,10 @@
 # 工程待办登记（Backlog）
 
-> 状态：**活文档**（最近核实 2026-11-24）
+> 状态：**活文档**（最近核实 2026-11-26）
 > 文档类型：**规范性文档** —— 规定「工程待办」的登记格式与落点规则。
-> 适用范围：**不属于任何单一需求、但需要实施**的工作（规范建设、工具、评测体系、跨模块改造）。
-> 不适用范围：需求条目自身的实现 → 见该需求文档的「实现状态」；需要人工/特定环境的 → 见 [todo.md](./todo.md)；未决的决策 → 见 [PRD.md §8 开放问题](./PRD.md)。
+> 适用范围：**跨条目或跨模块、需要实施**的工程工作（规范建设、工具、评测体系、跨模块改造）。
+> 单一需求的实现 → 落在该需求文档的「实现状态」表 + eval 任务 `status: planned`；
+> 需要人工/特定环境的 → 见 [todo.md](./todo.md)；未决的决策 → 见 [PRD.md §8 开放问题](./PRD.md)。
 > 单一权威：每条待办的**行为语义**写在它引用的权威文档里，本文件只写**执行规格**（范围、步骤、验收、停止条件），不复述口径。
 > 落点规则见 [docs/README.md §文档维护规范](./README.md)。
 
@@ -131,7 +132,7 @@ cd dashboard && npx tsc -b --pretty false
 
 **实际产出**：`docs/eval/examples/product-image-batch-import.yaml`（PLB 14 条）与
 `docs/eval/examples/local-library-wizard.yaml`（LLW 8 条）；两条任务集已接入夜间
-执行器 `scripts/run_eval_nightly.py`（见 [backend-full-test.md](./backend-full-test.md)
+执行器 `scripts/run_eval_nightly.py`（见 [backend-full-test.md](./archive/backend-full-test.md)
 「L4 评测（夜间集合）」）。PLB 是后端任务，夜间可直接产出结论；LLW 是桌面/前端
 命令，在后端生产机上按边界闸门记为 blocked + 原因（规范 §5 的诚实要求），
 需在桌面 / 前端环境执行。回链已写入两份需求文档。
@@ -265,6 +266,53 @@ cd dashboard && npx tsc -b && npx vitest run src/api/request.blobRetry.test.ts &
 - 需要动 `src/octop/**` 或改认证策略 → 停，报告（超出白名单）。
 
 **完成后回写**：`docs/eval/examples/desktop-shell-session.yaml` 的 DSK-001 状态；`docs/PRD.md` §4 的 R6 状态行；`docs/eval/README.md` 的任务集计数行；本条目状态。
+
+---
+
+### B-006 · 视频生产工作台剩余项（本机向导配音配乐 / 多语言与授权 / VPW 评测任务集）
+
+**状态**：待实施（登记日期：2026-11-26）
+**优先级**：P1 重要不紧急
+**跟踪**：未建 issue（本条由 backlog 自身承载；若需要协作跟踪，建 issue 后回填链接）
+**语义来源**：[design/video-production-workbench/PRD.md §6](./design/video-production-workbench/PRD.md) 与该文 §2（四阶段步骤模型）、§4（多平台输出规格）、§7（验收判据）；能力口径见 [PRD.md §3.2](./PRD.md)
+**可无人值守执行**：部分——「VPW 评测任务集」可无人值守；「本机向导配音配乐接入」需要前端环境；「多语言 TTS 与配乐授权」涉及授权口径，**未收口前不得开工**。
+
+**背景**：视频生产工作台的 P0A/P0B/P0C 已随 `3edfe70d` / `02a64452` 落地，多平台逐 target 真实尺寸渲染也已实现（`remotion/desktop-worker.mjs` 批量分支）。但三件事没做完，导致文档与实现长期带缺口：(1) 桌面本机向导（`LocalVideoWizard`）没接配音配乐，与 Web 路径能力不一致（PRD §8 Q5 已关闭，口径写在 PRD §3.2）；(2) 多语言 TTS 与配乐授权未覆盖，`OutputTarget.language` 也不在桥接载荷里；(3) `VPW` 评测域在 [eval/README.md](./eval/README.md) 已登记但**没有任务集**，该域的需求条目缺少可自动判定的证据。缺口不补，文档会再次漂移。
+
+**范围（白名单）**：
+- `dashboard/src/pages/LocalVideoWizard/**`
+- `dashboard/src/api/localLibrary.ts`（仅新增配音/配乐选项的请求封装）
+- `desktop/src/video.go`（仅在桥接载荷需要 `language` 时扩展 `VideoTargetRequest`）
+- `docs/eval/examples/video-production-workbench.yaml`（新建 VPW 任务集）
+- `docs/eval/README.md`（VPW 任务集登记与计数行）
+- `docs/design/video-production-workbench/PRD.md`（状态回写）
+
+**不在范围**：不改 `src/octop/**`（服务端配音/配乐接口已实现，不在本次范围）；不新增曲库、不改曲库授权结论（属 [PRD.md §8 Q4](./PRD.md) 待决）；不改四阶段步骤模型与不变量；不引入在线渲染服务；不构建或部署前端产物（由前端环境的构建流程负责）。
+
+**前置条件**：读 [design/video-production-workbench/PRD.md](./design/video-production-workbench/PRD.md) 全文（尤其 §2 步骤模型与 §0.1 不变量）；读 [PRD.md §3.2](./PRD.md) 的配音配乐路径口径；读 [eval/README.md §3、§4、§6](./eval/README.md)（任务字段、判定红线、领域前缀表）；读 `dashboard/src/pages/ProductVideoWizard/PlanStage.tsx`（Web 路径已有的配音/配乐选项实现，作为本机路径的实现参照）。
+
+**步骤**：
+1. **VPW 评测任务集（可先行，无阻塞）**：新建 `docs/eval/examples/video-production-workbench.yaml`，覆盖工作台 PRD §7 的 8 条验收条目，每条至少一条任务；按 [eval/README.md §6](./eval/README.md) 的 `VPW` 前缀命名；字段与判定红线照 `docs/eval/examples/local-library-wizard.yaml` 的既有格式。
+2. 在 [eval/README.md](./eval/README.md) 的领域前缀表与任务集计数行登记 VPW，并把「任务集尚未建立」的说明改成实际条数。
+3. **本机向导配音配乐接入**（需前端环境）：把 Web 路径 `PlanStage.tsx` 的配音/配乐选项按同一语义接到 `LocalVideoWizard`——免费档走本机 SAPI，付费档走服务端 MiniMax，失败按免费档降级；**不得**在客户端引入新的模型调用或新的授权结论。
+4. **多语言与授权**：**在 [PRD.md §8 Q4](./PRD.md) 收口前不得开工**。收口后再决定 `language` 是否进入 `VideoTargetRequest`；若进入，桥接变更必须同步 [design/desktop-video-bridge-contract.md](./design/desktop-video-bridge-contract.md) 的动作表与 `VideoTargetRequest` 定义。
+
+**验收命令**：
+```bash
+cd dashboard && npx tsc -b && npx vitest run src/pages/LocalVideoWizard
+uv run pytest tests/unit/i18n -q
+```
+评测任务的判定命令按 [eval/README.md §3](./eval/README.md) 的格式写在任务 yaml 内，由夜间执行器 `scripts/run_eval_nightly.py` 运行。
+通过标准：类型检查与定向用例全绿；VPW 任务集可被校验脚本识别（**退出码 0 但零匹配不得判为通过**，见 [eval/README.md §4 第 1 条](./eval/README.md)）。
+
+**停止条件**：
+- 需要改 `src/octop/**` 或新增服务端接口才能实现 → 停，报告；
+- 触及配乐授权结论或曲库分发 → 停，报告（须走 PRD §8 Q4）；
+- 需要改动四阶段步骤模型或 §0.1 不变量 → 停，报告（须产品负责人批准并更新工作台 PRD §0.1 变更记录）；
+- 当前机器没有前端环境 → 该子项记 blocked + 原因，**不得**静默跳过，也不得判为通过（VPW 任务集子项不受此限）；
+- 需要动 `desktop/` 的桥接动作集合（新增 action）而非扩展既有载荷 → 停，报告（契约变更须同步桥接契约文档）。
+
+**完成后回写**：`docs/design/video-production-workbench/PRD.md` §6 与 §7 的状态；`docs/eval/README.md` 的 VPW 登记与计数行；`docs/PRD.md` §3.2 的配音配乐路径限制（若本机向导已接入）；本条目状态。
 
 ---
 

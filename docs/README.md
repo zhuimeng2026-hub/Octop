@@ -31,7 +31,7 @@
 | [personas.md](./personas.md) | 用户画像与人格模板 |
 | [expert-teams.md](./expert-teams.md) | 专家团队模式（AgentTeams）的设计与决策 |
 | [projects.md](./projects.md) | 项目模式设计（设计态，尚未实现） |
-| [desktop-direct-chat-panel.md](./desktop-direct-chat-panel.md) | 当前迭代需求：桌面端「直接对话框」R1–R5 |
+| [desktop-direct-chat-panel.md](./desktop-direct-chat-panel.md) | 当前迭代需求：桌面端「直接对话框」R1–R6 |
 
 ## 2. 架构与决策记录（ADR）
 
@@ -86,19 +86,18 @@
 
 | 文档 | 说明 |
 |---|---|
-| [product-material-library.md](./product-material-library.md) | 产品素材库整体规划（活文档） |
-| [product-video-multi-category-materials.md](./product-video-multi-category-materials.md) | 跨产品分类选素材：使用说明（第一部分，面向创作者）+ 工程侧需求与验收（第二部分，**权威依据**） |
-| [product-library-import-architecture.md](./product-library-import-architecture.md) | 目录导入 AI 识别架构（**唯一权威结论**：服务端调远程模型，客户端不跑模型） |
-| [product-image-batch-import.md](./product-image-batch-import.md) | 目录图片批量识别与归档（M1 已实现，M2/M3 规划）+ 大图体积处理（§11 已实现） |
-| [backend-ai-storyboard-mvp.md](./backend-ai-storyboard-mvp.md) | 服务端 LLM 分镜规划（当前实现） |
-| [backend-mvp-v01-deployment.md](./backend-mvp-v01-deployment.md) | 后端 MVP v0.1 部署记录（历史实现记录，保留测试证据） |
-| [remotion-video-pipeline.md](./remotion-video-pipeline.md) | 服务端产出脚本 → 本机 Remotion 渲染流水线 |
+| [product-material-library.md](./product-material-library.md) | 产品素材库（**Web 路径**）功能总览：实体、存储位置、快照语义；桌面本机路径见 [PRD.md §3.7](./PRD.md) 与 [本机素材库](./design/video-production-workbench/local-library-wizard.md) |
+| [product-library-import-architecture.md](./product-library-import-architecture.md) | 素材导入与 AI 识别架构：**推理职责边界的唯一权威**（服务端调远程多模态模型，客户端不跑模型）；素材字节落点见 [PRD.md §3.7](./PRD.md) |
+| [product-image-batch-import.md](./product-image-batch-import.md) | 目录图片批量识别与归档（M1 已实现、M3 桌面端目录对话框已实现，M2 任务持久化未实现）+ 大图体积处理（§11 已实现） |
+| [product-video-multi-category-materials.md](./product-video-multi-category-materials.md) | 跨产品分类选素材：使用说明（第一部分，面向创作者）+ 工程侧需求与验收（第二部分，**该主题需求与验收的唯一权威**） |
+| [design/product-video-wizard/README.md](./design/product-video-wizard/README.md) | Web 五步视频向导的界面与交互规范（**Web 路径步骤名的唯一落点**） |
+| [design/video-production-workbench/PRD.md](./design/video-production-workbench/PRD.md) | 视频生产工作台升级规格：**四阶段步骤模型的唯一权威**、引导模式 + 精细工作台 + 多平台输出（含防回退不变量） |
+| [design/video-production-workbench/local-library-wizard.md](./design/video-production-workbench/local-library-wizard.md) | 桌面端本机素材库与本机视频向导（已实现；桌面本机路径的步骤与实现落点） |
+| [design/desktop-video-bridge-contract.md](./design/desktop-video-bridge-contract.md) | 桌面视频桥接现行契约：全部桥接动作、状态机、错误码与 ZIP 安全不变量 |
+| [design/beginner-ui-audit/README.md](./design/beginner-ui-audit/README.md) | 新手界面审计（桌面首启、视频向导、本机素材库的空态与引导问题；A/B/C 已实施，D/E 未实施） |
+| [remotion-video-pipeline.md](./remotion-video-pipeline.md) | 服务端产出脚本 → 本机 Remotion 渲染流水线（**agent 对话式**路径；产品向导式路径见上表两篇向导文档） |
 | [local-studio-package.md](./local-studio-package.md) | 本机 Remotion 制作包结构合同 |
-| [design/product-video-wizard/README.md](./design/product-video-wizard/README.md) | 五步视频制作向导的界面与交互规范（含 [设计问答](./design/product-video-wizard/design-qa.md)） |
-| [design/video-production-workbench/PRD.md](./design/video-production-workbench/PRD.md) | 视频生产工作台升级规格：引导模式 + 精细工作台 + 多平台输出（含防回退不变量） |
-| [design/video-production-workbench/local-library-wizard.md](./design/video-production-workbench/local-library-wizard.md) | 桌面端本机素材库与分步视频制作（已实现；平台 PRD §3.7 的桌面端落点） |
-| [design/beginner-ui-audit/README.md](./design/beginner-ui-audit/README.md) | 新手界面审计（桌面首启、视频向导、本机素材库的空态与引导问题） |
-| [design/desktop-auto-video/README.md](./design/desktop-auto-video/README.md) | 桌面端自动视频设计入口，子文档：[验收标准](./design/desktop-auto-video/acceptance.md)、[桥接协议](./design/desktop-auto-video/contract.md)、[环境验收](./design/desktop-auto-video/environment-acceptance.md)、[环境合同](./design/desktop-auto-video/environment-contract.md)、[环境设计问答](./design/desktop-auto-video/environment-design-qa.md)、[手动安装组件](./design/desktop-auto-video/manual-components.md) |
+| [backend-mvp-v01-deployment.md](./backend-mvp-v01-deployment.md) | 后端 MVP v0.1 部署记录（历史实现记录，保留测试证据） |
 
 ## 7. 桌面客户端
 
@@ -118,6 +117,7 @@
 | 文档 | 说明 |
 |---|---|
 | [deployment-pitfalls.md](./deployment-pitfalls.md) | 部署踩坑清单（路径前缀、代理、agent-running 等） |
+| [deployment-boundary.md](./deployment-boundary.md) | 前后端部署边界契约（**唯一权威**：后端环境永不构建前端，`src/octop/dashboard/` 是唯一交接物） |
 | [base-path-deployment.md](./base-path-deployment.md) | 子路径部署（`base_path` / `base_url`） |
 | [windows-deploy-script.md](./windows-deploy-script.md) | Windows 一键部署前端产物（PowerShell） |
 | [cluster_CN.md](./cluster_CN.md) | 多副本 / Helm 部署（中文） |
@@ -125,6 +125,8 @@
 | [cnb-openapi.md](./cnb-openapi.md) | CNB Open API 调用方法与踩坑 |
 | [cnb-branch-analysis.md](./cnb-branch-analysis.md) | CNB 分支情况每日分析机制（每日 01:30 自动出带日期的快照，活文档） |
 | [gitee-release.md](./gitee-release.md) | Gitee 发布通道 |
+| [git-credentials.md](./git-credentials.md) | 多远端与共享 credential store 的凭据管理 |
+| [upstream-sync.md](./upstream-sync.md) | 与上游 TencentCloud/Octop 同步的基线、冲突面与固定流程 |
 | [memory-slim.md](./memory-slim.md) | 手动在线整理 `memory.sqlite` |
 | [superagent-remote.md](./superagent-remote.md) | superagent（dsh-superagent）远程 systemd 部署 |
 | [backend-nightly-repair.md](./backend-nightly-repair.md) | 后端 02:10 全量测试的隔离、失败归因、候选修复与报告交接（规范性；唯一运行手册） |
@@ -134,9 +136,10 @@
 | 文档 | 说明 |
 |---|---|
 | [eval/README.md](./eval/README.md) | 评测规范（**规范性**）：L0–L4 分层、任务集格式、判定规则、集合划分与 CI 接入；样板见 [eval/examples/](./eval/examples/product-video-multi-category.yaml) |
-| [backlog.md](./backlog.md) | 工程待办登记（**规范性**）：条目格式、优先级语义、可无人值守执行的规格要求；当前条目 B-001…B-005 |
+| [backlog.md](./backlog.md) | 工程待办登记（**规范性**）：条目格式、优先级语义、可无人值守执行的规格要求；当前条目 B-001…B-006 |
 | [todo.md](./todo.md) | 需要人 / 特定环境的待办（扫码、真机、真实账号）；与 backlog 的分流见 §文档维护规范第 7 条 |
 | [wip-branch-workflow.md](./wip-branch-workflow.md) | WIP 分支工作流（**规范性**）：未提交工作树的快照、重放规则、保留与清理判据、与镜像链路的关系 |
+| [feishu-rewrite-rules.md](./feishu-rewrite-rules.md) | 飞书通俗版改写规则（**发布口径，非产品需求**）：把 PRD.md 改写成人话版的范围、术语与事实边界 |
 | [../AGENTS.md §12](../AGENTS.md) | 需求措辞（RFC 2119 关键词）、Definition of Ready / Done、评测义务与规范文档地图 |
 
 ## 10. 历史归档
@@ -146,6 +149,12 @@
 | 文档 | 说明 |
 |---|---|
 | [archive/product-library-mvp.md](./archive/product-library-mvp.md) | 素材库第一批 MVP 的历史设计与实施约定（已被 [导入架构](./product-library-import-architecture.md) 与 [批量导入](./product-image-batch-import.md) 取代） |
+| [archive/backend-full-test.md](./archive/backend-full-test.md) | 旧后端全量测试脚本的历史背景与证据口径（执行口径以 [backend-nightly-repair.md](./backend-nightly-repair.md) 为准） |
+| [archive/backend-ai-storyboard-mvp.md](./archive/backend-ai-storyboard-mvp.md) | 服务端 LLM 分镜 MVP 快照（已被 [api.md](./api.md) 与 [工作台 PRD](./design/video-production-workbench/PRD.md) 取代） |
+| [archive/product-library-unified-import-entry.md](./archive/product-library-unified-import-entry.md) | 素材库统一导入入口的早期设计与实施约定（已实现，被 [导入架构](./product-library-import-architecture.md) 取代） |
+| [archive/product-library-agent-scope-fix.md](./archive/product-library-agent-scope-fix.md) | 产品库页 agent 下拉 403 的一次性修复说明（已修复） |
+| [archive/design-qa-2026-10.md](./archive/design-qa-2026-10.md) | Web 五步向导 2026-10 的一次性设计验收记录（该主题验收见 [跨产品分类选材](./product-video-multi-category-materials.md)） |
+| [archive/desktop-auto-video-2026-10/](./archive/desktop-auto-video-2026-10/) | 2026-10 桌面端自动制作视频方案（分发方式与桥接动作均已被代码推翻；现行契约见 [桌面视频桥接契约](./design/desktop-video-bridge-contract.md)） |
 
 ---
 
@@ -178,3 +187,24 @@
    - **`CHANGELOG.md`** 遵循 Keep a Changelog：发版前必须把 `[Unreleased]` 段灌满（新增/变更/修复），发版时清空并落版本号。
    - **协作跟踪**：需要靠 issue 跟踪的条目，**必须**把 issue 链接回填到对应的文档条目（需求文档的开放问题表 / `backlog.md` 条目 / `todo.md` 条目），保持文档 ↔ issue 双向可追溯。issue 正文写决策与执行上下文，**行为口径仍以文档为准**，不得在 issue 里另立结论。
    - `todo.md` 只收「需要人 / 特定环境」的事项。智能体侧能完成的活儿要么**直接做掉**，要么登记进 `backlog.md`（P1 条目可夜间无人值守执行），要么作为某条需求的实现登记在该需求文档的「实现状态」表——一条待办**只能有一个落点**，**不得**同时出现在两处。
+8. **文档元数据模板**：`docs/` 下的文档页首必须声明下列字段，缺一项即视为未登记完成：
+
+   ```markdown
+   > 类型：需求 | 规范 | 参考 | 设计 | 历史
+   > 状态：活文档 | 设计态 | 口径已定·实现待做 | 已实现 | 已归档
+   > 最新核实：YYYY-MM-DD
+   > 取代关系：（可选；被取代时写明取代它的那篇）
+   ```
+
+   样板：活文档见 [architecture.md](./architecture.md)；需求文档见 [PRD.md](./PRD.md)；设计稿见 [design/video-production-workbench/PRD.md](./design/video-production-workbench/PRD.md)；归档件见 [archive/product-library-mvp.md](./archive/product-library-mvp.md)。允许 YAML front-matter 或引用块两种写法，但**字段名与语义必须一致**。
+9. **目录语义**：
+
+   | 目录 | 语义 | 硬要求 |
+   |---|---|---|
+   | `docs/` 根 | 活文档与规范性文档 | 声明状态与核实日期；随代码演进 |
+   | `docs/design/` | 专题设计稿与规格 | **必须自声明状态**；内容被后续文档继承时，页首写明「继承者」；被继承后原文档转入 `archive/` |
+   | `docs/archive/` | 历史件，**不得作为实现依据** | 迁入时首行标注取代它的那篇（见第 2、10 条） |
+
+10. **归档判据**：满足下列任一条即应归档——（a）内容已被另一篇文档明确取代；（b）文档自述「已被取代 / 以 X 为准」；（c）一次性验收或交付记录，且其验收对象已被后续方案推翻；（d）对应能力已实现，设计价值已被代码与现行文档吸收。
+
+    归档动作：`git mv` 到 `docs/archive/`（整目录归档时目录名带日期，如 `desktop-auto-video-2026-10/`）→ 页首加状态横幅并写明取代者 → 本索引 §10 加一行 → 全局检查断链。**自认已被取代却仍留在 `docs/` 根目录的文档，必须限期迁走。**

@@ -49,7 +49,7 @@ Wails requires native packaging, so all six variants are produced by the CI
 matrix on macOS, Linux, and Windows runners rather than cross-compiled locally.
 Windows packaging also needs [NSIS](https://nsis.sourceforge.io/) (`makensis`)
 so the `.exe` is an installer rather than a portable single-file binary.
-Remote Windows releases use a thin client: no embedded Python backend and no video runtime. Video creation uses a separate, manually installed **Octop 视频制作组件** package under `%LOCALAPPDATA%\Octop\video-runtime`; users do not install Node or run npm individually. The client detects missing components and provides installation guidance and a local render verification. See [manual component setup](../docs/design/desktop-auto-video/manual-components.md). Existing full local builds remain available with an empty remote server URL.
+Remote Windows releases use a thin client: no embedded Python backend and no video runtime. Video creation uses a separate, manually installed **Octop 视频制作组件** package under `%LOCALAPPDATA%\Octop\video-runtime`; users do not install Node or run npm individually. The client detects missing components and provides installation guidance and a local render verification. See [manual component setup](../docs/archive/desktop-auto-video-2026-10/manual-components.md). Existing full local builds remain available with an empty remote server URL.
 
 Build the separate Windows video component installer from a Windows host with:
 

@@ -469,6 +469,22 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 4. **Verify** — follow [§1 local verification](#local-verification-is-a-smoke-test-not-the-full-suite). For `dashboard/` changes, choose one relevant smoke check (`cd dashboard && npx tsc -b`, a focused build, or one test file); do not imply all three ran. After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. CI runs the full release gate, including cross-platform coverage described in [§7](#7-key-patterns).
 5. **Wrap up** — remove orphan symbols introduced in this change; do not commit or push unless asked.
 
+**Touching the video production workbench** (`docs/design/video-production-workbench/PRD.md`)? Its §0.1
+holds **product** invariants (dual-layer operation, defaults-as-entry, recoverability, real multi-platform
+specs) — removing one of those requires the product owner's approval **and** an update to that
+PRD's §0.1 change log; do not treat it as a UI cleanup. The **engineering** constraints for the same
+area live here:
+
+- The four phases (产品与素材 / 营销方案 / 分镜生产 / 输出交付) are the canonical step model;
+  the Web five steps and the desktop five steps are **implementation aliases** — do not invent a
+  fifth naming, and do not change the phase model to fix a UI problem.
+- Desktop bridge actions, states, error codes and the ZIP safety invariants are defined in
+  `docs/design/desktop-video-bridge-contract.md`; read it before touching `desktop/src/video.go`
+  or the frontend bridge calls. Changing an action set means updating that contract in the same change.
+- Engineering slices for this area are **not** in the PRD — they live in `docs/backlog.md` B-006.
+- Local vs remote frontend/backend build boundaries are governed by `docs/deployment-boundary.md`
+  (§2 decision table) — a frontend change is a NO-OP + report in a backend environment.
+
 ### Branching & release
 
 ```
@@ -553,6 +569,11 @@ A requirement is Ready only when all of the following hold; otherwise it stays a
 10. Open questions closed — no undecided binary choices left in the text. Anything still open is
     registered in the owning doc's 开放问题 table (or `docs/PRD.md` §8) with status 待决 and a
     destination for the decision.
+11. The owning requirement doc carries an **实现状态 table** — one row per requirement entry, with the
+    status word from `docs/README.md` §文档维护规范 rule 7 (口径已定·实现待做 / 已实现·已验证).
+    A requirement whose 实现状态 table does not exist is a draft, not Ready: the table is where
+    「口径已定、代码未实施」 items live, so it cannot be omitted without losing the item's only
+    landing point.
 
 ### 12.3 Definition of Done (DoD) — before merge
 
@@ -602,6 +623,9 @@ Which document governs what, and what wins when two disagree.
 | HTTP contract | generated `/api/openapi.json` + `docs/api.md` | generated schema wins on shape |
 | Database schema | `src/octop/infra/db/migrations/` | pairs are canonical; see §7 |
 | Product requirements (PRD) | `docs/PRD.md` + the per-topic requirement docs indexed in `docs/README.md` | one topic, one document |
+| Product steps / phases model | `docs/design/video-production-workbench/PRD.md` §2 | the four phases are canonical; Web / desktop step names are implementation aliases |
+| Desktop bridge actions, states, error codes, ZIP safety invariants | `docs/design/desktop-video-bridge-contract.md` | current contract; the 2026-10 design under `docs/archive/` is superseded |
+| Document directories (`docs/` root vs `docs/design/` vs `docs/archive/`) | `docs/README.md` §文档维护规范 rules 9–10 | `design/` = 专题设计稿 (must self-declare status); `archive/` = history, never an implementation basis |
 | Branching & release | [§10](#10-change-workflow) + `CONTRIBUTING.md` | — |
 | Security policy | `SECURITY.md` | — |
 | Ownership / mandatory review | `.github/CODEOWNERS` | — |

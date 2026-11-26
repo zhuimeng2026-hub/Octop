@@ -1,5 +1,13 @@
 # 视频生成流水线（Octop + Remotion）
 
+> 类型：设计（活文档）
+> 状态：活文档（最近核实 2026-11-26）
+> 权威范围：`remotion/sync.mjs` 同步器驱动的**本机渲染流水线**。
+> 步骤模型见 [视频生产工作台 PRD §2](./design/video-production-workbench/PRD.md)（四阶段），
+> 桌面本机路径的步骤与落点见 [本机素材库与分步视频制作](./design/video-production-workbench/local-library-wizard.md)，
+> 桥接动作与错误码见 [桌面视频桥接契约](./design/desktop-video-bridge-contract.md)。
+> 多平台逐 target 渲染的现状（每个 target 用自身尺寸建 Composition）见工作台 PRD §4。
+
 服务器上的 Octop 负责**理解需求、产出视频脚本**；本机负责**渲染成片**。
 本机不需要被外网访问——同步器只做出站请求。
 

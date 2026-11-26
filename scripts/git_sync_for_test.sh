@@ -1,6 +1,6 @@
 #!/bin/bash
 # 全量测试前的 git 同步 —— 把被测仓库与外部 git（origin）对齐。
-# 设计说明见 docs/backend-full-test.md「测试前的 git 同步」一节。
+# 设计说明见 docs/archive/backend-full-test.md「测试前的 git 同步」一节。
 #
 # 政策（同步尽力而为，绝不弄丢本地工作）：
 #   1. git fetch origin 永远先做（只读，超时 300s）；

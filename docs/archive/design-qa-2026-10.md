@@ -1,5 +1,8 @@
 # Product Video Wizard — Design QA
 
+> **状态：已归档（2026-11-26）。** 本文是 2026-10 的一次性设计验收记录，无长期职责。
+> 该主题的现行需求与验收见 [跨产品分类选材](../product-video-multi-category-materials.md)（第二部分为需求与验收权威）。
+
 final result: passed
 
 ## Visual target and evidence

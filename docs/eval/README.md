@@ -168,7 +168,7 @@ YAML 顶层必须是 `domain`、`requirement_doc`、`tasks`；`tasks` 为列表�
 |---|---|---|
 | `PLB` | 产品素材库（导入 / 归档 / 批量） | `docs/product-image-batch-import.md` |
 | `PVQ` | 产品视频向导与素材选择 | `docs/product-video-multi-category-materials.md` |
-| `VPW` | 视频生产工作台（多平台 / 精细调整） | `docs/design/video-production-workbench/PRD.md` |
+| `VPW` | 视频生产工作台（多平台 / 精细调整）——**任务集尚未建立** | `docs/design/video-production-workbench/PRD.md` |
 | `LLW` | 桌面本机素材库与本机向导 | `docs/design/video-production-workbench/local-library-wizard.md` |
 | `DSK` | 桌面壳（启动 / 登录 / 绿色版） | `docs/PRD.md` §4.1 |
 | `API` | HTTP 接口契约与鉴权 | `docs/api.md` |
@@ -206,7 +206,7 @@ YAML 顶层必须是 `domain`、`requirement_doc`、`tasks`；`tasks` 为列表�
 | L1 | ✅ 完整 | `tests/unit/**` |
 | L2 | ✅ 流程已规定 | `AGENTS.md` §1「本地验证是冒烟」 |
 | L3 | ⚠️ 部分 | `tests/integration/**`、浏览器冒烟脚本、桌面桥 Go 测试 |
-| L4 | ⚠️ 规范与四个领域的任务集已存在；**夜间执行器已接入**后端定时任务，CI 门禁仍未启用 | 格式见本文档 §3；任务集 [examples/](./examples/)（PVQ 8 条 / PLB 14 条 / LLW 8 条 / DSK 2 条）；夜间执行器 `scripts/run_eval_nightly.py`（见 [backend-full-test.md](./backend-full-test.md)「L4 评测（夜间集合）」）；校验脚本、PR 门禁与证据归档仍待 B-003 |
+| L4 | ⚠️ 规范与四个领域的任务集已存在；**夜间执行器已接入**后端定时任务，CI 门禁仍未启用 | 格式见本文档 §3；任务集 [examples/](./examples/)（PVQ 8 条 / PLB 14 条 / LLW 8 条 / DSK 2 条）；夜间执行器 `scripts/run_eval_nightly.py`（见 [backend-nightly-repair.md](../backend-nightly-repair.md)「L4 评测（夜间集合）」）；校验脚本、PR 门禁与证据归档仍待 B-003 |
 
 **已知缺口**：
 

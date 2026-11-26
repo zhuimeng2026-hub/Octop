@@ -1,5 +1,8 @@
 # Manual rendering components — final shared contract
 
+> **状态：已归档（2026-11-26）。** 本文主张「客户端不自动下载安装」，已被代码推翻（`environment_install` 一键安装已实现）。
+> 现行口径见 [桌面视频桥接契约](../../design/desktop-video-bridge-contract.md)。
+
 User decision: keep the main client very small. Start the remote client first; missing rendering prerequisites lead to manual installation of a separate **Octop 视频制作组件** package. No automatic runtime installation or download by the client. Do not put Node/Remotion/Chromium or Python portable backend into the remote thin installer.
 
 Current branch: fix/backend-mvp-v01-integration. Cheap-model implementation, focused tests/build only; independent M1 checkout untouched. d7a2916a navigation logging and 216742ad login redirect are already ancestors of current HEAD; preserve both.

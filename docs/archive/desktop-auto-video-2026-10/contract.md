@@ -1,5 +1,8 @@
 # Desktop automatic video MVP — shared implementation contract
 
+> **状态：已归档（2026-11-26）。** 本文记录的是已被代码推翻的旧桥接契约（动作集缺 `start_variants` / `save_batch` / `environment_install`）。
+> 现行契约见 [桌面视频桥接契约](../../design/desktop-video-bridge-contract.md)；本文 §「ZIP 只读」「完成判定」两条安全不变量已迁入该文 §5。
+
 Selected visual: `selected-concept.png` (安心制作页). Preserve the current A wizard first four steps; desktop fifth step is 制作视频. No code changes to the independent M1 checkout. Original implementation branch was `codex/desktop-auto-video-render`, pushed to `fix/backend-mvp-v01-integration`. Later lightweight distribution and manual component setup are defined in `environment-contract.md`, which supersedes the original bundled-runtime packaging below.
 
 ## Native bridge

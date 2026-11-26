@@ -1,5 +1,9 @@
 # Backend AI video storyboard MVP
 
+> **状态：已归档（2026-11-26）。** 本文是服务端 LLM 分镜 MVP 的快照，已被现行接口与产品文档取代。
+> 现行口径见 [API 参考](../api.md)、[视频生产工作台 PRD](../design/video-production-workbench/PRD.md)
+> 与 [Web 五步向导规范](../design/product-video-wizard/README.md)。
+
 Independent from desktop M1. Existing authenticated products/projects and Remotion ZIP exporter are reused.
 
 ## Endpoints
