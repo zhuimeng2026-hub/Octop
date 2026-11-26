@@ -232,6 +232,16 @@ bash scripts/release-video-components.sh \
 > 发布后务必核对三台 sha256 一致（脚本会自动做）。
 
 ### 3.6 打绿色版（默认交付物）
+
+> ★ **发版请走一键脚本，不要手工拼命令**：
+> `bash scripts/gitee/release_client.sh --dry-run`（本地构建+校验+打包，不写远端），
+> 确认后去掉 `--dry-run` 正式发布。脚本强制从 `origin/main` 的干净 worktree 构建，
+> 内置产物字符串闸门（`octopDesktopLibrary` 等），缺桥接立即中止；tag 自动取最大值 +1
+> （Gitee tag 不可移动）。下面是脚本内部执行的等价步骤，供排障参考。
+>
+> **不要复用上一版 exe**：v1.4.1-gitee.9 就是复用了 11-20 的旧壳，而本机素材库桥接
+> 11-22 才合入，导致客户端提示「仅在桌面客户端可用」。前端远程加载 ≠ 壳无需重打。
+
 thin 壳编译完后，用仓库脚本组装成**免安装绿色包**（裸 exe + README，无 NSIS）：
 
 ```bash
@@ -385,6 +395,86 @@ bash scripts/gitee/publish_from_github.sh \
 | arm64 包打出 amd64 的内容 | x64 Git Bash 上把 arm64 误判成 amd64 | 用 arm64 机器，或显式设 `GREEN_HOST_PLAT=windows-arm64` |
 | slim 客户端首启 404 | 运行时 URL 指向的 zip 还没发布 | 先传 zip 再分发客户端；URL 是编译期写死的，改地址要重打 |
 | slim 客户端连了远程服务、没下载运行时 | 构建时没清掉 `DEFAULT_SERVER_URL` | 传 `PORTABLE_RUNTIME_URL` 时打包任务会自动置空远程地址；确认用的是 `package:slim` |
+| **客户端只能出一个视频，选不了多平台** | **staged runtime / CDN 上的 `core.zip` 是旧的** | `runtime.json` 缺 `outputBatchVersion: 1` → 壳侧 `batchSupported` 恒 false → 多平台面板整体不渲染。详见 §7.1 |
+
+### 7.1 多平台输出被静默关掉：`runtime.json` 缺 `outputBatchVersion`
+
+**现象**：视频制作向导里选不了抖音 / 小红书 / B站 等多个平台，只能出一个视频。
+界面不报错，只是**批量面板整块不出现**（`LocalVideoWizard` 的 `batchSupported` 为 false）。
+
+**根因**：批量能力由**运行时产物**的 `runtime.json` 声明，不是由代码声明：
+
+| 位置 | 判据 | 不满足时的后果 |
+|---|---|---|
+| `desktop/src/video_environment.go` `videoOutputBatchSupported()` | `runtime.json` 的 `outputBatchVersion == 1` | `environmentStatus.outputBatchSupported=false` → 前端隐藏批量面板 |
+| `desktop/src/video.go` `startVariants()` | 同上 | 批量渲染直接返回 `BATCH_UNAVAILABLE` |
+
+前端还有第三道闸门 `supportsLocalRenderTargets()`（读 `window.octopDesktopLibrary.renderTargetsVersion`），
+由壳注入、恒为 1——**所以问题一定出在 runtime 产物上，不在前端**。
+
+**判据**：
+
+```bash
+# 期望看到 "outputBatchVersion": 1
+cat desktop/src/video-runtime/runtime.json
+```
+
+缺这个字段说明 runtime 早于多平台功能（`0d3cc58e`，2026-11-23）。
+
+**修复**：重建 staged runtime，再重新打包并发布组件（**只改 `runtime.json` 不够**——
+`desktop-worker.mjs` 也必须是新版，否则 worker 不认 `--targets`，参数会被静默忽略）：
+
+```bash
+# 1) 重建 staged runtime（会联网拉 Node 与 headless shell，慢）
+node remotion/build-desktop-runtime.mjs --target win-x64 --output desktop/src/video-runtime
+# 2) 重新打包 + 上传组件（版本目录要换，否则用户拿到的还是旧包）
+./scripts/release-video-components.sh --base-url https://dw.mengxa.com/video-components/<新版本>/win-x64 --upload ...
+# 3) 重打客户端（manifest URL 写死在 exe 里，指向新版本目录）
+```
+
+**增量更新（推荐，省掉 126 MB 浏览器下载）**：全量重建会把 headless shell 重新下一遍
+（2026-11-25 实测约 40 分钟），而**浏览器与 `node_modules` 通常已经就位且没变**——
+只有 `desktop-worker.mjs` / `render.mjs` / `src/` 与 `runtime.json` 需要更新：
+
+```bash
+# 先确认依赖没变（变了才需要 npm ci）
+diff remotion/package.json desktop/src/video-runtime/package.json && echo "依赖一致，可增量更新"
+
+# 覆盖源码（保留 node_modules 与浏览器）
+cp remotion/desktop-worker.mjs remotion/render.mjs remotion/project.mjs desktop/src/video-runtime/
+cp -r remotion/src/. desktop/src/video-runtime/src/
+
+# 补 runtime.json 的 outputBatchVersion（builder 生成的版本自带，手改的需自己补）
+```
+
+> 增量更新**只适用于本机自测**。要发给用户，仍必须走全量重建 + 重新打包上传——
+> 发布的 `core.zip` 里 `runtime.json` 与 `desktop-worker.mjs` 必须来自同一次构建。
+
+**验证**（改完 runtime 后，三项判据缺一不可）：
+
+```bash
+cat desktop/src/video-runtime/runtime.json | grep outputBatchVersion   # → "outputBatchVersion": 1
+grep -c -- '--targets' desktop/src/video-runtime/desktop-worker.mjs     # → > 0
+```
+
+再跑一次真实验证渲染刷新 `ready.json` 的指纹（worker 变了指纹就变，
+否则自检会一直报 `ENV_NOT_VERIFIED`）：
+
+```bash
+cd desktop/src/video-runtime && ./node.exe desktop-worker.mjs --verify \
+  --cache "$USERPROFILE/.octop/desktop-video-environment"
+```
+
+> ⚠️ **两个必须同步的产物**：`core.zip` 里的 `runtime.json` **和** `desktop-worker.mjs`
+> 来自同一次 staged runtime 重建。从 CDN 下载的旧 `core.zip` 里两者都是旧的
+> （2026-11-25 实测 `dw.mengxa.com/video-components/1.4.0/` 下的 `runtime.json` 无
+> `outputBatchVersion`）——**本机修好不等于用户修好**，组件必须重新发布。
+>
+> **2026-11-25 实测结论**：线上组件目录只有 `1.4.0` 一个版本，且它的 `runtime.json`
+> 缺 `outputBatchVersion`；`1.4.1`–`1.4.4` 均 404。也就是说**当前发出去的绿色版
+> 客户端装完组件后只有单视频输出**。修复必须发一个**新的组件版本目录**（如 `1.4.4`），
+> 并把客户端 exe 里烘焙的 `defaultVideoComponentsURL` 指到新目录——旧目录里的文件被
+> 原地覆盖会让已装组件的客户端走缓存、拿不到新包。
 
 ---
 
