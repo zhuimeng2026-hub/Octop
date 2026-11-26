@@ -319,15 +319,18 @@ release_json="$(curl -fsS -H "Authorization: token ${TOKEN}" \
 printf '%s' "$release_json" | "$PY" -c '
 import json,sys
 d=json.load(sys.stdin) or []
+zip_name, tag = sys.argv[1], sys.argv[2]
+# Gitee always attaches the auto-generated source archives for the tag; they are
+# platform artefacts, not ours, so they are expected rather than "extra".
+auto = {f"{tag}.zip", f"{tag}.tar.gz"}
 names={a.get("name") for a in (d.get("assets") or [])}
-want={sys.argv[1]}
-missing=sorted(w for w in want if w not in names)
-extra=sorted(n for n in names if n not in want)
+missing = [] if zip_name in names else [zip_name]
+extra = sorted(n for n in names if n != zip_name and n not in auto)
 if missing:
     print("missing assets:", missing, file=sys.stderr); sys.exit(1)
 if extra:
     print("unexpected assets (release should carry the zip only):", extra, file=sys.stderr); sys.exit(1)
 print("release id:", d.get("id"), "assets:", sorted(names))
-' "Octop-green-windows-amd64-${VERSION}.zip" || die "release verification failed"
+' "Octop-green-windows-amd64-${VERSION}.zip" "$TAG" || die "release verification failed"
 
 info "Published: https://gitee.com/${OWNER}/${REPO}/releases/tag/${TAG}"
