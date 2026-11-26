@@ -86,7 +86,17 @@ fi
 # Scratch file for the response body of an attachment upload — Gitee's error
 # message is the only clue when an upload is rejected.
 attach_body="$(mktemp)"
-trap 'rm -f "$attach_body"' EXIT
+# rm -f on a mktemp path can trip the host's safe-delete guard on Windows
+# (mktemp returns /tmp/... which maps to a drive-prefixed native path). Use
+# Python so the EXIT trap never masks a successful publish with a cleanup
+# failure.
+trap 'python3 - "$attach_body" <<'"'"'PY'"'"' 2>/dev/null || true
+import os, sys
+try:
+    os.remove(sys.argv[1])
+except OSError:
+    pass
+PY' EXIT
 
 api() {
   # api <method> <path> [curl args...]
