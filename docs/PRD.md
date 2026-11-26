@@ -1,9 +1,18 @@
+---
+标题: Octop 产品需求文档（PRD）
+类型: 需求
+状态: 活文档
+飞书文档: https://my.feishu.cn/docx/UEaUdKWvhogGGKxDdp6cjRYinoh
+代码基线: /opt/Octop @ 94262bee
+代码核对日期: 2026-11-26
+---
+
 # Octop 产品需求文档（PRD）
 
 > 文档类型：产品需求文档（Product Requirements Document）
 > 适用版本：以仓库当前代码为准（详见 §9 版本基线）
 > 状态：**活文档（Living Document）** — 随代码演进更新，最新核实 2026-11-24
-> 代码基线：分支 `feat/video-production-workbench`，HEAD `02a64452`
+> 代码基线：分支 `develop`，HEAD `94262bee`
 > 本次复核（2026-11-24）：§3.7 素材与数据所有权本地化——桌面端本机路径已实施，
 > Web 端服务端素材库仍待迁移；补入 [桌面端本机素材库与分步视频制作](./design/video-production-workbench/local-library-wizard.md)。
 > 本次复核（2026-11-20）：补入 **§4.1 桌面壳六条产品硬约束（红线）**——
