@@ -5,18 +5,24 @@
 #   引擎清单，并（可选）上传到 CDN 节点。
 #
 # 为什么需要重组
-#   上游 release 只发布 Inno Setup 安装包（setup.exe / .msi），不发布便携 zip；
+#   上游 release 只发布 Windows 安装包（setup.exe / .msi），不发布便携 zip；
 #   而 Concat 的绿色模式是靠「exe 同级存在名为 portable 的目录」触发的
-#   （上游 concat-host/src/dirs.rs 的 portable_root()）。本脚本用 innoextract
-#   把安装包解出 {app} 目录树，同级补一个空的 portable/ 目录，再打成 zip。
+#   （上游 concat-host/src/dirs.rs 的 portable_root()）。本脚本用 msiextract
+#   把上游的 .msi 解出 staged 目录树，同级补一个空的 portable/ 目录，再打成 zip。
+#
+# 为什么用 .msi 而不是 setup.exe
+#   上游的 setup.exe 是 Inno Setup 6.7.0，innoextract 最高只认到 6.3.3
+#   （发行版里的 1.8 只认到 6.0.2），Inno 路线解不开。.msi 是标准 MSI 库，
+#   msitools 的 msiextract 能解；上游 .wxs 明说两个安装器出自同一份 staged
+#   目录（"the two installers ship the same files"），所以内容等价。
 #
 # 依赖（缺任何一个都会在开跑前退出，不会半途才炸）
-#   curl / jq / innoextract / zip / sha256sum / scp / ssh
-#   Debian/Ubuntu: apt-get install -y innoextract
+#   curl / jq / msiextract / zip / sha256sum / scp / ssh
+#   Debian/Ubuntu: apt-get install -y msitools
 #
 # 幂等
 #   同一个版本重复跑：远端已有同 sha256 的文件就跳过上传，只做校验；
-#   本地产物已存在、且 meta 里记的上游 setup sha 与本次一致（输入没变）时，
+#   本地产物已存在、且 meta 里记的上游安装包 sha 与本次一致（输入没变）时，
 #   也跳过重新下载与重新打包。
 #
 # 分发拓扑（dw.mengxa.com 的 DNS 轮询到 4 个 IP）
@@ -68,17 +74,23 @@ CONCAT_ENGINE_WEB_ROOT="${CONCAT_ENGINE_WEB_ROOT:-/opt/dw.mengxa.com}"
 CONCAT_ENGINE_UPSTREAM_REPO="${CONCAT_ENGINE_UPSTREAM_REPO:-jub0t/Concat}"
 CONCAT_ENGINE_CURL_NOPROXY="${CONCAT_ENGINE_CURL_NOPROXY:-1}"
 CONCAT_ENGINE_MIN_FREE_MB="${CONCAT_ENGINE_MIN_FREE_MB:-2048}"
+# zip 里写入的时间戳（固定值 → 同样输入产出同样的包）
+CONCAT_ENGINE_ZIP_EPOCH="${CONCAT_ENGINE_ZIP_EPOCH:-1600000000}"
 
 DO_UPLOAD=0
+PUBLISH_NAMES=()
+PUBLISH_PATHS=()
 VERIFY_ONLY=0
 VERIFY_HTTP=0
 DO_BUILD=1
 KEEP_WORK=0
 MIRROR_OVERRIDE=()
 
-say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
-info() { printf '    %s\n' "$*"; }
-warn() { printf '\033[33m    ! %s\033[0m\n' "$*"; }
+# 日志一律走 stderr：download_and_verify 的返回值要用 INSTALLER="$(download_and_verify)"
+# 取，日志混进 stdout 会把安装包路径冲掉（解包工具会拿到一串日志文本当文件名）。
+say()  { printf '\n\033[1m==> %s\033[0m\n' "$*" >&2; }
+info() { printf '    %s\n' "$*" >&2; }
+warn() { printf '\033[33m    ! %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[31m    x %s\033[0m\n' "$*" >&2; exit 1; }
 
 usage() { sed -n '2,55p' "${BASH_SOURCE[0]}"; }
@@ -129,8 +141,8 @@ CURL=(curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors
 [ "$CONCAT_ENGINE_CURL_NOPROXY" = "1" ] && CURL+=(--noproxy '*')
 
 # ---- 前置检查：缺依赖就别开跑 -------------------------------------------------
-for c in curl jq innoextract zip sha256sum; do
-  command -v "$c" >/dev/null 2>&1 || die "缺少依赖：$c（Debian/Ubuntu: apt-get install -y innoextract）"
+for c in curl jq msiextract zip sha256sum; do
+  command -v "$c" >/dev/null 2>&1 || die "缺少依赖：$c（Debian/Ubuntu: apt-get install -y msitools）"
 done
 [ -r "$CONCAT_ENGINE_DEPLOY_KEY" ] || warn "找不到 SSH 私钥 $CONCAT_ENGINE_DEPLOY_KEY（只在 --upload 时需要）"
 
@@ -168,27 +180,51 @@ info "远端目录    = ${CONCAT_ENGINE_WEB_ROOT%/}/$REMOTE_SUBDIR"
 say "读取上游清单"
 UPSTREAM_MANIFEST="$WORK_DIR/upstream-manifest.json"
 mkdir -p "$WORK_DIR"
-"${CURL[@]}" -o "$UPSTREAM_MANIFEST" "$UPSTREAM_MANIFEST_URL" \
-  || die "取不到上游 manifest：$UPSTREAM_MANIFEST_URL"
+# 取不到上游清单时不直接死：本地已有产物（zip + meta + 上一次的 manifest）就降级复用。
+# 凌晨 2 点无人值守时，一次网络抖动不该让整条发布链失败 —— 但降级必须显眼，
+# 且这一轮的上游一致性没有被重新核对。
+OFFLINE_FALLBACK=0
+if ! "${CURL[@]}" -o "$UPSTREAM_MANIFEST" "$UPSTREAM_MANIFEST_URL"; then
+  warn "取不到上游 manifest：$UPSTREAM_MANIFEST_URL"
+  if [ -f "$ZIP_PATH" ] && [ -f "$META_PATH" ] && [ -f "$MANIFEST_PATH" ]; then
+    OFFLINE_FALLBACK=1
+    ARCHIVE_URL=""
+    ARCHIVE_SHA="$(jq -r '.archive_sha // empty' "$META_PATH" 2>/dev/null)"
+    ARCHIVE_BYTES="$(jq -r '.source.installerBytes // 0' "$MANIFEST_PATH" 2>/dev/null)"
+    ARCHIVE_FILE="$(jq -r '.source.installerFile // "（未重新获取）"' "$MANIFEST_PATH" 2>/dev/null)"
+    [ -n "$ARCHIVE_SHA" ] || die "本地 meta 里没有上游 sha256，无法降级复用"
+    warn "降级为复用本地产物（本次未重新核对上游）：$ZIP_PATH"
+  else
+    die "取不到上游 manifest，且本地没有可复用的产物：$UPSTREAM_MANIFEST_URL"
+  fi
+else
 
-SETUP_URL="$(jq -r '.binaries.windows["x86_64"].setup.url // empty' "$UPSTREAM_MANIFEST")"
-SETUP_SHA="$(jq -r '.binaries.windows["x86_64"].setup.sha256 // empty' "$UPSTREAM_MANIFEST")"
-SETUP_BYTES="$(jq -r '.binaries.windows["x86_64"].setup.bytes // 0' "$UPSTREAM_MANIFEST")"
-[ -n "$SETUP_URL" ] && [ -n "$SETUP_SHA" ] \
-  || die "上游清单里没有 windows/x86_64/setup 条目（版本 $VERSION 的发布结构可能变了）"
-info "安装包      = $(basename "$SETUP_URL")"
-info "期望 sha256 = $SETUP_SHA"
+# 上游同时发 .msi（WiX）和 setup.exe（Inno Setup）。这里取 .msi：
+# 上游的 setup.exe 是 Inno Setup 6.7.0，而 innoextract 最高只认到 6.3.3
+# （1.8 只认到 6.0.2），Inno 路线解不开；.msi 是标准 MSI 库，
+# msitools 的 msiextract 能直接解出同一份 staged 目录（上游 .wxs 注释：
+# "Built ... from the staged folder the .exe is made of, so the two
+# installers ship the same files"）。
+ARCHIVE_URL="$(jq -r '.binaries.windows["x86_64"].msi.url // empty' "$UPSTREAM_MANIFEST")"
+ARCHIVE_SHA="$(jq -r '.binaries.windows["x86_64"].msi.sha256 // empty' "$UPSTREAM_MANIFEST")"
+ARCHIVE_BYTES="$(jq -r '.binaries.windows["x86_64"].msi.bytes // 0' "$UPSTREAM_MANIFEST")"
+[ -n "$ARCHIVE_URL" ] && [ -n "$ARCHIVE_SHA" ] \
+  || die "上游清单里没有 windows/x86_64/msi 条目（版本 $VERSION 的发布结构可能变了）"
+ARCHIVE_FILE="$(basename "$ARCHIVE_URL")"
+info "上游包      = $ARCHIVE_FILE"
+info "期望 sha256 = $ARCHIVE_SHA"
+fi
 
 # ---- 下载安装包并校验 --------------------------------------------------------
 download_and_verify() {
-  local installer="$CACHE_DIR/Concat-$VERSION-windows-x86_64-setup.exe"
+  local installer="$CACHE_DIR/$ARCHIVE_FILE"
   mkdir -p "$CACHE_DIR"
 
   # 缓存命中就完全不下载：凌晨那一轮通常直接走这条分支。
   if [ -f "$installer" ]; then
     local cached_sha
     cached_sha="$(sha256sum "$installer" | awk '{print $1}')"
-    if [ "$cached_sha" = "$SETUP_SHA" ]; then
+    if [ "$cached_sha" = "$ARCHIVE_SHA" ]; then
       say "命中缓存，跳过下载"
       info "缓存路径    = $installer"
       info "sha256      = $cached_sha"
@@ -202,20 +238,28 @@ download_and_verify() {
   say "下载上游安装包（断点续传）"
   local part="$installer.part"
   local got_size got_sha
+  local attempt=0 max_attempts=12 rc=0 have=0
   while :; do
+    attempt=$((attempt+1))
+    rc=0
     # -C - 让 curl 从已有字节继续；失败重试由 --retry 处理
-    "${CURL[@]}" -C - -o "$part" "$SETUP_URL" && break
-    local have; have="$(stat -c%s "$part" 2>/dev/null || echo 0)"
-    warn "下载中断，已得 $have 字节，继续重试"
-    if [ "$have" -ge "$SETUP_BYTES" ] && [ "$SETUP_BYTES" != "0" ]; then break; fi
+    "${CURL[@]}" -C - -o "$part" "$ARCHIVE_URL" || rc=$?
+    have="$(stat -c%s "$part" 2>/dev/null || echo 0)"
+    [ "$rc" -eq 0 ] && break
+    # 字节数够了：多半是 416（已经下完），交给下面的 sha256 去判
+    if [ "$ARCHIVE_BYTES" != "0" ] && [ "$have" -ge "$ARCHIVE_BYTES" ]; then break; fi
+    # 22 = HTTP 错误（404/403/5xx）：重试没有意义
+    [ "$rc" -eq 22 ] && die "上游地址返回 HTTP 错误（curl 22）：$ARCHIVE_URL"
+    warn "下载中断（curl $rc），已得 $have 字节，继续重试（第 $attempt 次）"
+    [ "$attempt" -ge "$max_attempts" ] && die "下载连续失败 $attempt 次，放弃：$ARCHIVE_URL"
   done
-  [ -f "$part" ] || die "下载失败：$SETUP_URL"
+  [ -f "$part" ] || die "下载失败：$ARCHIVE_URL"
 
   got_size="$(stat -c%s "$part" 2>/dev/null || echo 0)"
   got_sha="$(sha256sum "$part" | awk '{print $1}')"
-  [ "$got_sha" = "$SETUP_SHA" ] || die "安装包 sha256 不符：期望 $SETUP_SHA，实得 $got_sha"
-  if [ "$SETUP_BYTES" != "0" ] && [ "$got_size" != "$SETUP_BYTES" ]; then
-    die "安装包大小不符：期望 $SETUP_BYTES，实得 $got_size"
+  [ "$got_sha" = "$ARCHIVE_SHA" ] || die "安装包 sha256 不符：期望 $ARCHIVE_SHA，实得 $got_sha"
+  if [ "$ARCHIVE_BYTES" != "0" ] && [ "$got_size" != "$ARCHIVE_BYTES" ]; then
+    die "安装包大小不符：期望 $ARCHIVE_BYTES，实得 $got_size"
   fi
   mv -f "$part" "$installer" || die "写缓存失败"
   info "校验通过（sha256 与 bytes 均一致），已入缓存 $installer"
@@ -230,21 +274,29 @@ build_portable_zip() {
   rm -rf "$extract_dir" "$stage"
   mkdir -p "$extract_dir" "$stage"
 
-  say "解出安装包内容（innoextract）"
-  ( cd "$extract_dir" && innoextract --silent "$installer" ) \
-    || die "innoextract 解包失败（上游换了安装器格式？）"
+  say "解出安装包内容（msiextract）"
+  msiextract -C "$extract_dir" "$installer" \
+    || die "msiextract 解包失败（上游换了安装包格式？）"
 
+  # msiextract 按 MSI 的 Directory 表还原目录树，层级随上游 .wxs 变；
+  # 直接按内容定位：带 concat.exe 的那个目录就是 {app}。
   local app_dir=""
-  for cand in "$extract_dir"/{app} "$extract_dir"/*/{app}; do
-    [ -d "$cand" ] && app_dir="$cand" && break
-  done
-  [ -n "$app_dir" ] || die "在解包结果里找不到 {app} 目录（上游改了安装布局）"
+  app_dir="$(find "$extract_dir" -type f -name 'concat.exe' -printf '%h\n' 2>/dev/null | head -1)"
+  [ -n "$app_dir" ] || die "在解包结果里找不到 concat.exe（上游改了安装布局）"
   info "应用目录    = $app_dir"
 
   local payload="$stage/Concat-$VERSION-windows-x86_64"
   mkdir -p "$payload"
   cp -a "$app_dir"/. "$payload"/ || die "复制应用文件失败"
   [ -f "$payload/concat.exe" ] || die "产物里没有 concat.exe——不是预期的 Windows bundle"
+
+  # 图标：上游的 .iss 额外把 assets/icons/concat.ico 放进 {app}，而 .msi
+  # 只拿 staged 目录（不含图标）。补回来，让便携包与真实安装后的目录一致。
+  local icon="$payload/concat.ico"
+  if [ ! -f "$icon" ]; then
+    local icon_url="https://raw.githubusercontent.com/$CONCAT_ENGINE_UPSTREAM_REPO/$TAG/assets/icons/concat.ico"
+    "${CURL[@]}" -o "$icon" "$icon_url" || { rm -f "$icon"; warn "取不到图标（可选）"; }
+  fi
 
   # portable 目录是绿色模式的触发条件：exe 同级存在名为 portable 的目录时，
   # 设置、recents、模型与缓存全部落在其中，机器上别处不写。
@@ -272,8 +324,18 @@ EOF
 
   say "打包便携 zip"
   rm -f "$ZIP_PATH"
-  ( cd "$stage" && zip -q -r -X "$ZIP_PATH" "Concat-$VERSION-windows-x86_64" ) \
-    || die "zip 打包失败"
+  # 固定时间戳 + 排序后的条目顺序 → 同样的上游包产出同样的 zip。
+  # 这不是洁癖：夜间任务靠「远端 sha256 相同就跳过上传」避免每天重传 132MB，
+  # 而 zip 默认会写入构建时刻的时间戳，那样每次重建 sha 都不同、就会反复重传。
+  find "$payload" -exec touch -h -d "@$CONCAT_ENGINE_ZIP_EPOCH" {} +
+  if find "$payload" -name "*$'\n'" -print -quit | grep -q .; then
+    warn "文件名里有换行，改用 zip -r（顺序不可复现）"
+    ( cd "$stage" && zip -q -r -X "$ZIP_PATH" "Concat-$VERSION-windows-x86_64" ) \
+      || die "zip 打包失败"
+  else
+    ( cd "$stage" && find "Concat-$VERSION-windows-x86_64" -print | LC_ALL=C sort \
+        | zip -q -X "$ZIP_PATH" -@ ) || die "zip 打包失败"
+  fi
   mkdir -p "$DIST_DIR"
   cp -f "$ZIP_PATH" "$DIST_DIR/$ZIP_NAME"
   info "产物大小    = $(stat -c%s "$ZIP_PATH") 字节"
@@ -312,7 +374,9 @@ write_manifest() {
     --argjson bytes "$bytes" \
     --argjson urls "$urls" \
     --argjson connections "$CONCAT_ENGINE_CONNECTIONS" \
-    --arg setup_sha "$SETUP_SHA" \
+    --arg archive_sha "$ARCHIVE_SHA" \
+    --arg archive_file "$ARCHIVE_FILE" \
+    --argjson archive_bytes "$ARCHIVE_BYTES" \
     --arg repo "$CONCAT_ENGINE_UPSTREAM_REPO" \
     '{
       schema: 2,
@@ -335,7 +399,9 @@ write_manifest() {
         repo: ("https://github.com/" + $repo),
         tag: $tag,
         license: "AGPL-3.0-or-later",
-        installerSha256: $setup_sha,
+        installerFile: $archive_file,
+        installerBytes: $archive_bytes,
+        installerSha256: $archive_sha,
         sourceOffer: "本包分发上游未修改的二进制；按 AGPL 提供对应源码的获取地址即上方 repo + tag"
       },
       notes: {
@@ -358,52 +424,56 @@ SCP_OPTS=(-P "$CONCAT_ENGINE_DEPLOY_PORT" -i "$CONCAT_ENGINE_DEPLOY_KEY"
           -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new)
 
 # ---- 单台上传（幂等：远端同 sha256 就跳过）------------------------------------
+# 发布文件清单：PUBLISH_NAMES[i] 是远端文件名，PUBLISH_PATHS[i] 是本地路径。
+# 两个文件：便携 zip、引擎清单。
 deploy_one_host() {
-  local h="$1" remote_dir="$2" local_sha="$3" manifest_sha="$4" status_file="$5"
+  local h="$1" remote_dir="$2" status_file="$3"
   local user="$CONCAT_ENGINE_DEPLOY_USER"
-  local remote_sums rzip rman
+  local remote_sums name local_sha remote_sha i
 
   if ! ssh "${SSH_OPTS[@]}" "$user@$h" "mkdir -p '$remote_dir'" >/dev/null 2>&1; then
     echo "unreachable" > "$status_file"; return 0
   fi
 
+  # 一次 SSH 拿到远端所有文件的 sha256
   remote_sums="$(ssh "${SSH_OPTS[@]}" "$user@$h" \
-      "cd '$remote_dir' 2>/dev/null && sha256sum '$ZIP_NAME' manifest.json 2>/dev/null" 2>/dev/null | tr -d '\r')"
-  rzip="$(printf '%s\n' "$remote_sums" | awk -v n="$ZIP_NAME" '$2==n{print $1; exit}')"
-  rman="$(printf '%s\n' "$remote_sums" | awk '$2=="manifest.json"{print $1; exit}')"
+      "cd '$remote_dir' 2>/dev/null && sha256sum ${PUBLISH_NAMES[*]} 2>/dev/null" 2>/dev/null | tr -d '\r')"
 
-  if [ "$rzip" = "$local_sha" ] && [ "$rman" = "$manifest_sha" ]; then
-    echo "uptodate" > "$status_file"; return 0
-  fi
-  if [ "$rzip" != "$local_sha" ]; then
-    if ! scp "${SCP_OPTS[@]}" "$ZIP_PATH" "$user@$h:$remote_dir/$ZIP_NAME" >/dev/null 2>&1; then
-      echo "zip-failed" > "$status_file"; return 0
+  local uploaded=0
+  for i in "${!PUBLISH_NAMES[@]}"; do
+    name="${PUBLISH_NAMES[$i]}"
+    local_sha="$(sha256sum "${PUBLISH_PATHS[$i]}" | awk '{print $1}')"
+    remote_sha="$(printf '%s\n' "$remote_sums" | awk -v n="$name" '$2==n{print $1; exit}')"
+    [ "$remote_sha" = "$local_sha" ] && continue
+    if ! scp "${SCP_OPTS[@]}" "${PUBLISH_PATHS[$i]}" "$user@$h:$remote_dir/$name" >/dev/null 2>&1; then
+      echo "upload-failed:$name" > "$status_file"; return 0
     fi
-  fi
-  if [ "$rman" != "$manifest_sha" ]; then
-    if ! scp "${SCP_OPTS[@]}" "$MANIFEST_PATH" "$user@$h:$remote_dir/manifest.json" >/dev/null 2>&1; then
-      echo "manifest-failed" > "$status_file"; return 0
-    fi
-  fi
+    uploaded=1
+  done
+  [ "$uploaded" -eq 0 ] && { echo "uptodate" > "$status_file"; return 0; }
 
-  # 上传后立刻校验（每台 1 次 SSH，批量比对两个文件）
+  # 上传后立刻校验（每台 1 次 SSH，批量比对所有文件）
   remote_sums="$(ssh "${SSH_OPTS[@]}" "$user@$h" \
-      "cd '$remote_dir' && sha256sum '$ZIP_NAME' manifest.json" 2>/dev/null | tr -d '\r')"
-  rzip="$(printf '%s\n' "$remote_sums" | awk -v n="$ZIP_NAME" '$2==n{print $1; exit}')"
-  rman="$(printf '%s\n' "$remote_sums" | awk '$2=="manifest.json"{print $1; exit}')"
-  if [ "$rzip" = "$local_sha" ] && [ "$rman" = "$manifest_sha" ]; then
-    echo "uploaded" > "$status_file"; return 0
-  fi
-  echo "mismatch" > "$status_file"
+      "cd '$remote_dir' && sha256sum ${PUBLISH_NAMES[*]}" 2>/dev/null | tr -d '\r')"
+  for i in "${!PUBLISH_NAMES[@]}"; do
+    name="${PUBLISH_NAMES[$i]}"
+    local_sha="$(sha256sum "${PUBLISH_PATHS[$i]}" | awk '{print $1}')"
+    remote_sha="$(printf '%s\n' "$remote_sums" | awk -v n="$name" '$2==n{print $1; exit}')"
+    if [ "$remote_sha" != "$local_sha" ]; then
+      echo "mismatch:$name" > "$status_file"; return 0
+    fi
+  done
+  echo "uploaded" > "$status_file"
 }
 
 # ---- 上传（各节点并发 scp + 逐台 sha256 比对）--------------------------------
 deploy() {
   say "上传到 CDN 节点"
   local remote_dir="${CONCAT_ENGINE_WEB_ROOT%/}/$REMOTE_SUBDIR"
-  local local_sha manifest_sha
-  local_sha="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
-  manifest_sha="$(sha256sum "$MANIFEST_PATH" | awk '{print $1}')"
+
+  # 发布清单：便携 zip + 引擎清单
+  PUBLISH_NAMES=("$ZIP_NAME" "manifest.json")
+  PUBLISH_PATHS=("$ZIP_PATH" "$MANIFEST_PATH")
 
   IFS=',' read -r -a hosts <<< "$CONCAT_ENGINE_DEPLOY_HOSTS"
   local -a hlist=() pids=()
@@ -414,9 +484,9 @@ deploy() {
   [ "${#hlist[@]}" -gt 0 ] || die "没有配置上传节点（CONCAT_ENGINE_DEPLOY_HOSTS）"
 
   local status_dir; status_dir="$(mktemp -d)"
-  say "并发上传 ${#hlist[@]} 台（每台 1 次状态查询 + 按需上传 + 1 次校验）"
+  say "并发上传 ${#hlist[@]} 台（每台 1 次状态查询 + 按需上传 + 1 次校验）；文件：${PUBLISH_NAMES[*]}"
   for h in "${hlist[@]}"; do
-    deploy_one_host "$h" "$remote_dir" "$local_sha" "$manifest_sha" "$status_dir/$h" &
+    deploy_one_host "$h" "$remote_dir" "$status_dir/$h" &
     pids+=("$!")
   done
   for p in "${pids[@]}"; do wait "$p"; done
@@ -458,7 +528,6 @@ verify_remote() {
     [ -n "$h" ] || continue
     local remote_sha
     remote_sha="$(ssh "${SSH_OPTS[@]}" "$CONCAT_ENGINE_DEPLOY_USER@$h" \
-        -o BatchMode=yes -o ConnectTimeout=15 "root@$h" \
         "sha256sum '$remote_dir/$ZIP_NAME' 2>/dev/null | awk '{print \$1}'" 2>/dev/null | tr -d '\r')"
     if [ "$remote_sha" = "$local_sha" ]; then info "   $h 一致 ✓"; else warn "   $h 不一致或缺失"; fi
   done
@@ -504,20 +573,20 @@ verify_http() {
 
 # ---- 本地产物是否仍然有效（幂等：上游输入没变就不重下不重打包）---------------
 write_meta() {
-  jq -n --arg version "$VERSION" --arg setup_sha "$SETUP_SHA" \
+  jq -n --arg version "$VERSION" --arg archive_sha "$ARCHIVE_SHA" \
         --arg zip_sha "$(sha256sum "$ZIP_PATH" | awk '{print $1}')" \
         --argjson bytes "$(stat -c%s "$ZIP_PATH")" \
-        '{version:$version, setup_sha:$setup_sha, zip_sha:$zip_sha, bytes:$bytes}' \
+        '{version:$version, archive_sha:$archive_sha, zip_sha:$zip_sha, bytes:$bytes}' \
         > "$META_PATH" || warn "写 meta 失败（不影响发布）"
 }
 
 local_artifact_current() {
   [ -f "$ZIP_PATH" ] || return 1
   [ -f "$META_PATH" ] || return 1
-  local m_setup m_zip
-  m_setup="$(jq -r '.setup_sha // empty' "$META_PATH" 2>/dev/null)"
+  local m_archive m_zip
+  m_archive="$(jq -r '.archive_sha // empty' "$META_PATH" 2>/dev/null)"
   m_zip="$(jq -r '.zip_sha // empty' "$META_PATH" 2>/dev/null)"
-  [ -n "$m_setup" ] && [ "$m_setup" = "$SETUP_SHA" ] || return 1
+  [ -n "$m_archive" ] && [ "$m_archive" = "$ARCHIVE_SHA" ] || return 1
   [ -n "$m_zip" ] || return 1
   [ "$(sha256sum "$ZIP_PATH" | awk '{print $1}')" = "$m_zip" ] || return 1
   return 0
@@ -528,7 +597,7 @@ mkdir -p "$CONCAT_ENGINE_OUT_DIR" "$WORK_DIR"
 
 free_mb="$(df -Pm "$CONCAT_ENGINE_OUT_DIR" | awk 'NR==2{print $4}')"
 [ "${free_mb:-0}" -ge "$CONCAT_ENGINE_MIN_FREE_MB" ] \
-  || die "磁盘可用 ${free_mb}MB，不足 ${CONCAT_ENGINE_MIN_FREE_MB}MB（安装包 100MB + 解包 + zip）"
+  || die "磁盘可用 ${free_mb}MB，不足 ${CONCAT_ENGINE_MIN_FREE_MB}MB（上游包 114MB + 解包 + zip）"
 
 if [ "$VERIFY_ONLY" -eq 1 ]; then
   verify_remote
