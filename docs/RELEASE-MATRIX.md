@@ -206,8 +206,8 @@ http://dw.mengxa.com/...    （兜底）
 
 | 问题 | 落点 |
 |---|---|
-| **是否启动 Concat 接入（编辑版）开发**（拍板为「启动」= 动手做；为「暂不启动」= 结论留在文档里当参考） | [concat-editor-integration.md §8](./concat-editor-integration.md) |
-| Concat 引擎分发口径三选一（随包 / 客户端按需下载校验 / 用户自备） | [concat-editor-integration.md §8](./concat-editor-integration.md) |
+| **是否启动 Concat 接入（编辑版）开发** | **已决 · 启动**（2026-11-28）；执行条目 [backlog.md B-008](./backlog.md) |
+| Concat 引擎分发口径三选一（随包 / 客户端按需下载校验 / 用户自备） | 待决；**阻塞 B-008 的分发侧步骤**，其余步骤可先做 |
 
 > 长期双主干（一条 1.x 维护线 + 一条 2.x 迭代线，类似 LTS）**暂不采用**：
 > 只有当编辑版确实需要长期与极简版分叉演进时才重新评估。

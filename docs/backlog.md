@@ -1,6 +1,6 @@
 # 工程待办登记（Backlog）
 
-> 状态：**活文档**（最近核实 2026-11-24）
+> 状态：**活文档**（最近核实 2026-11-28）
 > 文档类型：**规范性文档** —— 规定「工程待办」的登记格式与落点规则。
 > 适用范围：**不属于任何单一需求、但需要实施**的工作（规范建设、工具、评测体系、跨模块改造）。
 > 不适用范围：需求条目自身的实现 → 见该需求文档的「实现状态」；需要人工/特定环境的 → 见 [todo.md](./todo.md)；未决的决策 → 见 [PRD.md §8 开放问题](./PRD.md)。
@@ -131,7 +131,7 @@ cd dashboard && npx tsc -b --pretty false
 
 **实际产出**：`docs/eval/examples/product-image-batch-import.yaml`（PLB 14 条）与
 `docs/eval/examples/local-library-wizard.yaml`（LLW 8 条）；两条任务集已接入夜间
-执行器 `scripts/run_eval_nightly.py`（见 [backend-full-test.md](./backend-full-test.md)
+执行器 `scripts/run_eval_nightly.py`（见 [archive/backend-full-test.md](./archive/backend-full-test.md)
 「L4 评测（夜间集合）」）。PLB 是后端任务，夜间可直接产出结论；LLW 是桌面/前端
 命令，在后端生产机上按边界闸门记为 blocked + 原因（规范 §5 的诚实要求），
 需在桌面 / 前端环境执行。回链已写入两份需求文档。
@@ -393,6 +393,79 @@ uv run pytest tests/unit/i18n -q
 （来源：2026-11-25 前的 `docs/design/video-production-workbench/PRD.md`「P1 — 成本优化与易用性增强（后续）」；随本次合并保留，避免想法随文档收敛丢失。）
 
 
+---
+
+### B-008 · Concat 接入编辑界面（双窗口，路径 A）
+
+**状态**：待实施（登记日期：2026-11-28）
+**优先级**：P1 重要不紧急
+**语义来源**：[concat-editor-integration.md §1–§7](./concat-editor-integration.md)（结论与依据）、
+[desktop-video-bridge-contract.md](./design/desktop-video-bridge-contract.md)（桥接动作现行契约）、
+[RELEASE-MATRIX.md §6](./RELEASE-MATRIX.md)（两条产品线安排）、
+[PRD.md §4.1](./PRD.md)（桌面壳六条红线）
+**可无人值守执行**：**否** —— 三项前置未收口（见下），且涉及前端构建环境
+
+**背景**：极简一键生成版覆盖不了的成片场景，缺的是「在 PC 上再剪一刀」的能力。Concat 侧已有
+MCP / JSON-RPC 两种进程外接口与绿色（portable）模式，接入路径清晰（见结论文档）；不做的后果是
+这类需求继续落在用户自己找外部编辑器，产物回不到 Octop 素材库，链路断在最后一段。
+
+**范围（白名单）**：
+- `desktop/src/concat_bridge.go`（**新建**：安装检测、启动进程、握手、导出路径交接、产物回收）
+- `desktop/src/video.go`（**仅**在需要扩展 `VideoTargetRequest` 载荷时）
+- `dashboard/src/pages/**`（编辑入口与状态 UI）
+- `desktop/src/*_test.go`（Go 侧定向用例）
+- `docs/design/desktop-video-bridge-contract.md`（动作表、状态机、错误码同步）
+- `docs/concat-editor-integration.md` / `docs/backlog.md` / `docs/RELEASE-MATRIX.md`（状态回写）
+- `docs/eval/README.md`（若新增 eval 任务，登记任务集与计数行）
+
+**不在范围**：
+- 不把 Concat 源码或 `.slint` 界面并入 Octop（AGPL + Rust ↔ Python/TS + 体量）
+- 不修改 Concat 二进制，也不改其代码后随 Octop 分发（AGPL 下只能独立进程调用）
+- 不自研时间轴 / 预览 / 导出界面（那是路径 B，不在本条目）
+- 不改四阶段步骤模型与工作台 PRD §0.1 不变量
+- 不构建或部署前端产物（前端环境负责，见 [deployment-boundary.md](./deployment-boundary.md)）
+- 不改 `src/octop/**`（服务端不感知 Concat）
+
+**前置条件**：
+1. 「是否启动 Concat 接入（编辑版）开发」拍板为「启动」；
+2. Concat 引擎分发口径三选一收口（甲 / 乙 / 丙，见 [concat-editor-integration.md §8](./concat-editor-integration.md)）；
+3. 上游版本锁定：记录 Concat 版本号 / commit、下载地址与 sha256，并复核许可边界
+   （AGPL-3.0-or-later，独立进程调用，不改其代码随包分发）；
+4. 编辑入口的产品位置拍板（工作台第三阶段内 / 独立一级入口）；
+5. 前端环境可用（`dashboard/` 构建）；后端环境只做 Go 侧与契约。
+
+**步骤**：
+1. **先做不依赖前端的部分**：Go 侧桥接 action + 契约文档同步 + 定向用例；
+2. **进程拉起与握手**：优先 `concat --mcp`（stdio JSON-RPC），备选 7420 socket
+   （`CONCAT_API_ADDRESS` / `CONCAT_API_TOKEN`）；超时或失败必须能降级为「直接打开 Concat 窗口让用户自己剪」；
+3. **工作目录放开**：按已定口径设置 `CONCAT_MCP_ROOTS`，并把工程与导出目录约束在约定路径内；
+4. **导出物回流**：约定导出目录 → 登记进本机素材库（复用 library bridge 的 `ingest` 语义）；
+5. **前端入口与状态**：安装检测 / 启动中 / 失败降级 / 导出中 / 完成；
+6. **分发侧**：按已定口径实现（随包 = 打包脚本带目录；按需下载 = 复用 `environment_install` 校验链；
+   用户自备 = 文档 + 路径探测）。
+
+**验收命令**：
+```bash
+cd desktop && go build ./... && go vet ./... && go test ./src/...   # Go 侧定向
+cd dashboard && npx tsc -b && npx vitest run <触达页面>              # 前端环境
+uv run pytest tests/unit -k bridge -q                                # 契约相关单测
+```
+手动复验：Win10 上从「用 Concat 剪辑」入口拉起 Concat，剪一条素材并导出，成片回到素材库。
+
+**停止条件**：
+- 需要改 `src/octop/**` 或新增服务端接口 → 停，报告；
+- 需要新增桥接 action 之外的契约变更（ZIP 安全不变量、错误码语义）→ 停，报告，先改契约文档；
+- 上游许可或分发条款与 AGPL 边界冲突 → 停，报告；
+- Concat 二进制在本机起不来（依赖缺失 / GPU 不满足）→ 记 blocked + 证据，**不得**判为通过；
+- 无前端环境 → 前端子项记 blocked，**不得**静默跳过；
+- 需要触及四阶段步骤模型或 §0.1 不变量 → 停，报告（须产品负责人批准并更新工作台 PRD §0.1 变更记录）。
+
+**完成后回写**：
+- `docs/design/desktop-video-bridge-contract.md`：新增 action、状态机、错误码；
+- 本文 §8：两条待决 → 已决，并写明结论与日期；
+- `docs/RELEASE-MATRIX.md` §6：分发口径一行落定；
+- `docs/backlog.md`：本条目状态 → 已完成；
+- `docs/eval/README.md`：若新增 eval 任务，登记任务集与计数行。
 ---
 
 ## 5. 与其它文档的关系
