@@ -16,9 +16,10 @@
 |---|---|---|---|---|
 | T-001 | 路线 C 实测：服务器复用桌面 Chrome 登录态操作视频号助手 | Windows 桌面端 | ⏳ 待安排 | [browser-cdp-lan-reuse.md](./browser-cdp-lan-reuse.md) |
 | T-002 | 真实微信扫码→远程回调→桌面会话恢复→授权只读业务 API 复验 | 隔离测试账号 + 可扫码环境 | ⏳ 待安排 | [PRD.md §4.2](./PRD.md#42-桌面端开发模式developer-mode) |
-| T-003 | 生产环境部署来源切到 `develop`（并解决与 §5.1「只跑 v* tag」的口径冲突） | 生产服务器 `ocdev.aixifs.com:13122` | ⏳ 待安排 | [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
-| T-004 | 清理 WIP 分支 `wip/product-library-batch-import`（三处 ref + 文档回写） | 生产服务器 + GitHub/CNB 仓库权限 | ⏳ 待安排 | [wip-branch-workflow.md §5/§7](./wip-branch-workflow.md) |
+| T-003 | 生产环境部署来源切到 `main` 的 `v*` tag（口径按选项 B 收口） | 生产服务器 `ocdev.aixifs.com:13122` | ✅ 已完成 | [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
+| T-004 | 清理 WIP 分支 `wip/product-library-batch-import`（三处 ref + 文档回写） | 生产服务器 + GitHub/CNB 仓库权限 | ✅ 已完成 | [wip-branch-workflow.md §5/§7](./wip-branch-workflow.md) |
 | T-005 | 修复 fork 的 Actions「Mirror to CNB」令牌过期，并复核镜像链路 | CNB 访问令牌 + fork 仓库设置权限 | 🚧 进行中（人处理令牌） | [cnb-openapi.md](./cnb-openapi.md) |
+| T-006 | 前端产物重建：替换线上「手工改前缀」的产物 | 前端构建环境（Windows / Node） | ✅ 已完成 | [deployment-pitfalls.md §1.1](./deployment-pitfalls.md) |
 
 ---
 
@@ -156,10 +157,9 @@ Remove-NetFirewallRule -DisplayName 'Chrome CDP 9223'
 
 ---
 
-## T-003 · 生产环境部署来源切到 `develop`
+## T-003 · 生产环境部署来源切到 `main` 的 `v*` tag
 
-**状态**：⏳ 待安排（2026-11-24 登记）
-**跟踪**：无需 issue（本条由 todo.md 自身承载）
+**状态**：✅ 已完成（2026-11-25 执行；口径按选项 B 拍板，§5.1 无需改写）
 
 ### 要做什么
 
@@ -189,15 +189,32 @@ Remove-NetFirewallRule -DisplayName 'Chrome CDP 9223'
 
 ### 需要先拍板（口径冲突，别跳过）
 
-> **本条不自行决策**：选项 A / B 的取舍必须先落到 [PRD.md §8 开放问题](./PRD.md)，
-> 拍板结论再写进 §5.1 与 `AGENTS.md` §10。下文只是候选方案，不是未决状态的替代品。
-
 当前规范写的是「生产只跑 `main` 上的 `v*` tag，禁止直接跑 `develop`」——见 [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 与 `AGENTS.md` §10；而本条的目标是让生产跑 `develop`。二者必须先收口成唯一口径：
 
 - **选项 A**：生产**部署来源 = `develop`**（测试通过后 `develop` 即上生产）→ 需同步改写 §5.1 与 `AGENTS.md` §10 的措辞，明确区分「部署来源 = develop」与「发布版本 = `main` 的 `v*` tag」；
 - **选项 B**：生产**部署来源 = `main` 的 `v*` tag** → 本条改为走 `release/*` → `main` → 打 tag → 生产 `git checkout` 到该 tag。
 
 拍板结果写进 §5.1（并在 `AGENTS.md` §10 留同口径指针），再执行切换。
+
+**拍板结果（2026-11-25）**：选**选项 B**——生产部署来源 = `main` 上的 `v*` tag。§5.1 与 `AGENTS.md` §10 现行措辞即该口径，**无需改写**；本条改为走 `release/*` → `main` → 打 tag → 生产 checkout 到该 tag。
+
+### 执行结果（2026-11-25）
+
+| 项 | 结果 |
+|---|---|
+| 发布 | `release/1.5.0` 从 `origin/develop`（`969f46bb`）切出 → `main` 上以 merge commit `ee2586ed` 合入（父提交 `89d6fbe8` + `969f46bb`）→ 打 annotated tag **`v1.5.0`**（指向 `ee2586ed`） |
+| 内容差异 | **零**：`ee2586ed` 的文件树与 `develop` tip `969f46bb` 完全相同，本次切换不改变任何运行时代码 |
+| 远端 | `main` / `develop` / `v1.5.0` 三处（GitHub、CNB、Gitee）一致：`main`=`ee2586ed`，`develop`=`ba3ee295`，tag→`ee2586ed` |
+| 生产工作树 | `/opt/Octop` checkout 到 **`main`** 分支（其 tip 即 `v1.5.1` tag 所在提交），`git describe --tags` → `v1.5.1`，工作树干净 |
+| 进程证据 | `octop.service` 重启后新 PID `1632150`（启动于 13:13:38），启动时刻晚于 checkout；不是只看 checkout |
+| 健康检查 | 本地 `http://127.0.0.1:8088/videogen/api/health` → 200；外部 `https://ocbot.aixifs.com/videogen/api/health` → 200；重启后日志无 `ERROR` |
+| 抽查 | `/api/product-library/{projects,assets,base-library}` → 401（路由在、非 500）；`/api/auth/login` 空体 → 422（校验生效、非 5xx） |
+| 迁移 | `_schema_version` 仍为 **29**（未变） |
+| 回滚 | `git checkout <旧 ref> && systemctl restart octop.service`；旧 ref 的文件树与 `v1.5.1` 相同，回滚同样零行为变化 |
+
+> 并发事件：执行期间另一台机器向 `origin/develop` 推入了 `e4c7253e`（fix(desktop)，仅动 `desktop/src/*.go` 与文档）。该提交与发布提交在 `969f46bb` 处分叉，已用 merge commit 并入 `develop`（`ba3ee295`），**未改写他人提交**。它当时不在 `v1.5.0` 内——只影响桌面端源码，不影响后端运行时。
+>
+> **后续补发（2026-11-25）**：上一步之后 `main` 一度落后 `develop` 5 个提交（`e4c7253e` + 其合并提交 + 3 个文档回写），且生产工作树停在 detached 的 `v1.5.0` 上——「当前代码不在 `main` 上」。已再发一版把 `develop` 并入 `main`：`release/1.5.1` 从 `develop`（`5e431322`）切出 → `main` 以 merge commit 合入 → 打 tag **`v1.5.1`** → 生产工作树改为 **checkout `main`**（tip == `v1.5.1`）。发布后 `main` 与 `develop` 内容一致，`main` 仍是 `develop` 的祖先。
 
 ### 步骤
 
@@ -214,28 +231,28 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8088/api/health   # �
 
 ### 验收标准
 
-| 项 | 判定 |
-|---|---|
-| 版本 | `git -C /opt/Octop rev-parse HEAD` == `23e398d5`，`git describe --tags` 与之一致 |
-| 进程证据 | 进程确实跑在新代码上（版本响应 / 接口行为），**不能只看 checkout**（[wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 第 2 条） |
-| 健康检查 | `octop.service` active，`127.0.0.1:8088/api/health` 返回 200，外部 `13122` 端口同样可访问 |
-| 抽查 | 素材库相关接口（`/api/product-library/*`）与登录可用，无 500 |
-| 迁移 | `_schema_version` 仍为 29（不应变化） |
+| 项 | 判定 | 实测 |
+|---|---|---|
+| 版本 | `git -C /opt/Octop rev-parse HEAD` == `ee2586ed`（`v1.5.0`），`git describe --tags` → `v1.5.0` | ✅ |
+| 进程证据 | 进程确实跑在新代码上（版本响应 / 接口行为），**不能只看 checkout**（[wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 第 2 条） | ✅ 新 PID `1632150`，启动于 checkout 之后 |
+| 健康检查 | `octop.service` active，`127.0.0.1:8088/videogen/api/health` 返回 200，外部入口同样可访问 | ✅ 本地 200 / 外部 200 |
+| 抽查 | 素材库相关接口（`/api/product-library/*`）与登录可用，无 500 | ✅ 401（路由在）/ 422（非 5xx） |
+| 迁移 | `_schema_version` 仍为 29（不应变化） | ✅ 29 |
 
 ### 回滚
 
 ```bash
 cd /opt/Octop
-git checkout fix/full-test-12-failures
+git checkout <旧 ref>        # 旧 ref 的文件树与 v1.5.0 相同，回滚零行为变化
 systemctl restart octop.service
 ```
 
 ### 完成后回写
 
-- [wip-branch-workflow.md §5.1](./wip-branch-workflow.md)：按拍板结果改口径（选项 A / B），并写明线上实际跑的是哪个 ref
-- [wip-branch-workflow.md §7](./wip-branch-workflow.md)：登记行里「线上仍在跑」的说法按实际进程证据更新
-- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：远程后端实测表的「代码版本」单元格更新为切换后的版本（**本条独占该单元格**，T-004 只处理同节的 WIP 分支引用行）
-- [RELEASE-MATRIX.md §4](./RELEASE-MATRIX.md)：版本基线表同步（如口径变了）
+- [x] [wip-branch-workflow.md §5.1](./wip-branch-workflow.md)：口径按选项 B 收口（现行措辞即该口径，无需改写），并写明线上实际跑的是 `v1.5.0`
+- [x] [wip-branch-workflow.md §7](./wip-branch-workflow.md)：登记行里「线上仍在跑」的说法按实际进程证据更新
+- [x] [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：远程后端实测表的「代码版本」单元格更新为切换后的版本
+- [x] [RELEASE-MATRIX.md §4](./RELEASE-MATRIX.md)：版本基线表同步（新增生产部署 ref 行；版本基线唯一落点已从 PRD.md 迁到本文）
 
 ### 相关
 
@@ -247,8 +264,7 @@ systemctl restart octop.service
 
 ## T-004 · 清理 WIP 分支 `wip/product-library-batch-import`
 
-**状态**：⏳ 待安排（2026-11-24 登记）
-**跟踪**：无需 issue（本条由 todo.md 自身承载）
+**状态**：✅ 已完成（2026-11-25 执行；T-003 先行完成）
 
 ### 要做什么
 
@@ -269,6 +285,29 @@ systemctl restart octop.service
 | GitHub fork `zhuimeng2026-hub/Octop` | 已有 `wip/product-library-batch-import`（2026-11-24 为对齐镜像 ref 手工推上去的） |
 | CNB `mengxa.com/Octop` | 已有同名分支（原始所在地） |
 | 生产服务器 `/opt/Octop` | 本地分支 `wip/product-library-batch-import` + `remotes/cnb/wip/product-library-batch-import` 都在 |
+
+### 执行结果（2026-11-25）
+
+三条判据（[wip-branch-workflow.md §5](./wip-branch-workflow.md)）逐条核对：
+
+| 判据 | 核对结果 |
+|---|---|
+| 1. 每一项改动都已重放 | 快照相对 `main` 的新增行 **2749 行，其中 2403 行逐行已在 `main`**；其余 346 行是**同一批功能的改写形态**，不是丢失的工作：迁移 `027_product_library_asset_descriptions` → `main` 的 **`028_`**（编号因 `027_user_mfa` 占用而顺延）；桌面端 `download.go` 的「首启下载运行时」→ `main` 的 **manifest 分片下载 + bootstrap** 设计；Gitee 发布链（`release_notes.py`）→ `main` 的 **`push_readme.py` + `assets.py` 单一事实源**；两份文档 → `main` 的 `docs/gitee-release.md` 与 `docs/desktop-bootstrap-installer.md` |
+| 2. 线上已不再运行该版本 | 生产已于 2026-11-25 切到 `main` 的 `v1.5.0`（见 T-003 的进程与健康证据） |
+| 3. 文档不再依赖该分支 | §7 登记行改为「已清理」；§4.2「代码版本」改为 `v1.5.0`；本条状态改为 ✅ |
+
+**清理动作**：本地分支、GitHub fork、CNB 三处同名分支全部删除；保留 SHA `ea0c24c5` 的历史引用
+（`git show ea0c24c5` 仍可读），另 `v1.4.0-gitee.1` tag 继续锚住该批 Gitee 发布通道的提交。
+
+**同批清理的其他分支**（均已并入 `main`，逐条用 `git merge-base --is-ancestor` / 行覆盖比对确认）：
+`chore/nightly-l4-evals`、`codex/backend-nightly-repair`、`docs/desktop-session-renewal-handover`、
+`feat/backup-include-product-library`、`feat/product-library-batch-import-vision`、
+`feat/video-production-workbench`、`feature/nightly-candidate-push`、`fix/full-test-12-failures`、
+`fix/nightly-bwrap-skip`、`fix/octop-home-isolation`。
+
+**保留**：`main` / `develop` 两条主干；`backup/layered-download-pr3-pr5-pending`（未合并的待办备份）、
+`feat/electron-upstream-sync-20261123`（未合并的上游 Electron 同步工作）；CNB 自有的 `ci/reports`
+（镜像脚本按设计排除）。`upstream/*` 是上游 TencentCloud 仓库的只读镜像，不在本仓库清理范围。
 
 ### 政策约束（按 [wip-branch-workflow.md §3 / §6](./wip-branch-workflow.md) 的现行措辞）
 
@@ -295,7 +334,7 @@ systemctl restart octop.service
 ### 完成后回写
 
 - [wip-branch-workflow.md §7](./wip-branch-workflow.md)：登记行状态 → 已清理（保留 SHA 与历史链接）
-- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：删除该节中指向 `wip/product-library-batch-import` / `ea0c24c5` 的引用，改为指向当前正式版本（**「代码版本」单元格由 T-003 写，本条不重复写**）
+- [product-library-import-architecture.md §4.2](./product-library-import-architecture.md)：实测记录改为当前正式版本
 - 本条目状态 → ✅ 已完成（附日期与 commit）
 
 ---
@@ -303,7 +342,6 @@ systemctl restart octop.service
 ## T-005 · 修复 fork 的 Actions「Mirror to CNB」令牌过期
 
 **状态**：🚧 进行中（令牌由人更换，2026-11-24 登记）
-**跟踪**：无需 issue（本条由 todo.md 自身承载）
 
 ### 现象
 
@@ -350,3 +388,81 @@ fork 的 Actions secret `CNB_TOKEN` 最后更新于 **2026-10-27**，已过期�
 
 - [cnb-openapi.md](./cnb-openapi.md)：CNB API / 网页路径 / 踩坑记录
 - [cnb-mirror.md](./cnb-mirror.md)：镜像拓扑与服务器侧 cron
+
+---
+
+## T-006 · 前端产物重建：替换线上「手工改前缀」的产物
+
+**状态**：✅ 已完成（2026-11-25 14:14 由前端环境重建并同步上线）
+
+### 要做什么
+
+在**前端构建环境**用正确的前缀重新构建并同步，替换线上那份「手工改过前缀」的前端产物。
+
+### 背景
+
+2026-11-23 23:01 同步上线的产物是在 Windows Git Bash 上构建的，`BASE_URL=/videogen`
+被 MSYS 改写成 `/C:/Program Files/Git/videogen`，125 处资源引用与 bundle 里的
+`BASE_PATH` 全部带坏前缀 → 面板白屏且所有 API 请求打错路径（详见
+[deployment-pitfalls.md §1.1](./deployment-pitfalls.md)）。
+
+2026-11-25 在生产机**手工**把产物改成相对路径、并把 `BASE_PATH` 改为运行时推导，
+面板已恢复（当时线上产物已备份在 `/opt/octop-data/dashboard-backups/20261125-132609-badwin-base`）。
+但**手工改的产物与源码不同源**：下次按源码重建并同步时，这些改写会被覆盖。
+
+### 为什么不能在服务器做
+
+前端构建需要 Node + 依赖安装与打包，服务器是后端环境（无 Node、内存受限），
+按 [deployment-boundary.md](./deployment-boundary.md) 一律不在此构建。
+
+### 步骤
+
+```bash
+# 前端构建环境（Windows：PowerShell，或 Git Bash + MSYS_NO_PATHCONV=1）
+cd dashboard
+MSYS_NO_PATHCONV=1 BASE_URL=/videogen npm run build     # → src/octop/dashboard/
+# 校验产物里没有坏前缀
+grep -rc "C:/Program" src/octop/dashboard | grep -v ":0$"   # 期望无输出
+grep -o 'src="[^"]*"' src/octop/dashboard/index.html        # 期望 src="/videogen/assets/index.<hash>.js"
+# 同步到生产
+bash scripts/deploy-dashboard.sh
+```
+
+### 执行结果（2026-11-25 14:14）
+
+前端环境（SSH 来源 `113.67.10.30`）用 `BASE_URL=/videogen` 重新构建并同步，线上产物
+已被**正规构建**取代——不再是 11-23 那份 MSYS 污染构建，也不再是我在生产机上手工改过
+前缀的那份。部署脚本按惯例把被替换的产物留在 `dashboard-backups/20261125-141444/`。
+
+| 项 | 实测 |
+|---|---|
+| 产物前缀 | `index.html` 的 `src` = `/videogen/assets/index.EI87YVH7.js`；产物内 `C:/Program` 残留 **0** |
+| `BASE_PATH` | 构建期常量 `BASE_PATH="/videogen"`（不再是运行时推导的手工版） |
+| PWA | `manifest.json` 的 `id` / `start_url` / `scope` 均为 `/videogen/`；`pwa-192/512.png`、`apple-touch-icon.png` 公网 200 |
+| 源码对应关系 | main 的最新前端提交 `52508e42`（devLogin）新增文案**全部命中**产物；更早提交中被改写/删除的旧文案在产物中**不存在**（方向正确）→ 产物对应 main 的 `dashboard/src` |
+| 可达性 | `index.html` 的 11 个引用、入口 JS 的 `new URL()` 引用，公网全部 200 |
+| 缓存 | 入口文件名由 `index.wl19tg2O.js` 变为 `index.EI87YVH7.js`（内容哈希变化）→ 浏览器必取新版，`immutable` 缓存不再构成问题；`index.html` 仍为 `no-cache` |
+| 真实取用 | nginx 访问日志显示真实浏览器已在拉取 `index.EI87YVH7.js`、`manifest.json`、PWA 图标与 `/videogen/api/health`，无 404 |
+
+> 遗留的唯一验证限制：本机无浏览器二进制，**未做真实浏览器渲染断言**（渲染结论建立在
+> 全量引用可达 + 入口与文案对应关系之上）。如面板仍有异常，先看浏览器 Network 是否有 404。
+
+### 验收标准
+
+| 项 | 判定 |
+|---|---|
+| 产物前缀 | `index.html` 的 `src` 为 `/videogen/assets/index.<hash>.js`；产物内无 `C:/Program` |
+| 面板 | `https://ocbot.aixifs.com/videogen/` 正常渲染（登录框出现），Network 无 404 |
+| API | 面板发起的请求带 `/videogen` 前缀且返回 200 |
+| 缓存 | 入口文件名与线上现名**不同**（内容哈希变化 → 浏览器自动取新） |
+| 留档 | `src/octop/dashboard/` 不再是手工改写版 |
+
+### 完成后回写
+
+- [deployment-pitfalls.md §1.1](./deployment-pitfalls.md)：把「应急修法」标注为已作废，写明正式产物的前缀形态
+- 本条目状态 → ✅ 已完成（附日期与产物入口文件名）
+
+### 相关
+
+- [deployment-pitfalls.md §1.1](./deployment-pitfalls.md)：本条对应的实录与应急修法
+- [deployment-boundary.md](./deployment-boundary.md)：前端/后端部署边界

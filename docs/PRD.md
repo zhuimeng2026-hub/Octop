@@ -4,6 +4,8 @@
 状态: 活文档
 最新核实: 2026-11-26
 代码基线: /opt/Octop @ develop
+代码核对日期: 2026-11-26
+飞书文档: https://my.feishu.cn/docx/UEaUdKWvhogGGKxDdp6cjRYinoh
 ---
 
 # Octop 产品需求文档（PRD）
@@ -109,6 +111,12 @@
   草稿编辑确认、导出。步骤模型见 [工作台 PRD §2](./design/video-production-workbench/PRD.md)
 - **多平台规格导出**：同一份分镜按目标平台输出不同画幅的成片文件（抖音 / 小红书 / 视频号 / 快手 /
   B 站 / TikTok / Instagram / YouTube 及自定义），**只产出文件，不做平台自动上传**
+- **跨产品分类选材（防回退）**：主产品与多选的素材来源分类独立管理，切换查看分类须保留已勾选素材，
+  完整选材须用于分镜与渲染。口径见 [跨产品分类选材](./product-video-multi-category-materials.md)，
+  验收以 [工作台 PRD §7](./design/video-production-workbench/PRD.md) 为准
+- **成片交付与多输出不回退**：桌面端按各输出目标的真实尺寸与帧率渲染，逐目标进度、失败重试与
+  单 MP4 / 批量 ZIP 交付；网页环境无本机渲染时提供 Remotion Studio 工程 ZIP 并标记交付类型。
+  规格见 [工作台 PRD §4](./design/video-production-workbench/PRD.md)
 - **配音**：免费档 Windows SAPI 本机合成 / 付费档服务端 MiniMax，失败按免费档降级。
   **路径覆盖**：Web 向导与桌面本机渲染路径已接入；**桌面本机向导（LocalVideoWizard）暂未接入**
 - **配乐**：服务端曲库、试听与 BPM 搜索、时长按小节吸附；曲库不随客户端分发

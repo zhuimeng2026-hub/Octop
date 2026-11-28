@@ -2,9 +2,9 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   InputNumber,
   List,
-  Select,
   Space,
   Tag,
   Typography,
@@ -28,6 +28,21 @@ export interface LocalVideoTargetOption {
   label: string;
 }
 
+const recommendedPlatforms: Record<RenderProfile, string[]> = {
+  short_vertical: [
+    "douyin",
+    "xiaohongshu",
+    "channels",
+    "kuaishou",
+    "tiktok",
+    "Instagram Reels",
+    "YouTube Shorts",
+  ],
+  landscape: ["bilibili", "YouTube standard"],
+  square: ["Instagram", "xiaohongshu", "YouTube Shorts"],
+  custom: [],
+};
+
 export interface LocalVideoTargetSettingsProps {
   targets: LocalVideoTarget[];
   platformOptions: LocalVideoTargetOption[];
@@ -50,17 +65,27 @@ function filenameFor(platform: string | undefined, index: number): string {
 export function defaultLocalVideoTargets(
   platforms: PlatformKey[],
 ): LocalVideoTarget[] {
-  return platforms.map((platform, index) => {
+  const groups = new Map<string, PlatformKey[]>();
+  for (const platform of platforms) {
+    const profile = PLATFORM_RENDER_PROFILES[platform];
+    const size = sizeForProfile(profile) ?? { width: 1080, height: 1080 };
+    const key = `${profile}:${size.width}x${size.height}:30`;
+    const group = groups.get(key) ?? [];
+    group.push(platform);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map((relatedPlatforms, index) => {
+    const platform = relatedPlatforms[0];
     const profile = PLATFORM_RENDER_PROFILES[platform];
     const size = sizeForProfile(profile) ?? { width: 1080, height: 1080 };
     return {
-      id: `target-${platform}`,
+      id: `target-${profile}`,
       platform,
       profile,
       width: size.width,
       height: size.height,
       fps: 30,
-      filename: filenameFor(platform, index),
+      filename: filenameFor(profile, index),
     };
   });
 }
@@ -76,12 +101,6 @@ export function LocalVideoTargetSettings({
   disabled = false,
 }: LocalVideoTargetSettingsProps) {
   const { t } = useTranslation();
-  const selectedPlatforms = targets
-    .map((target) => target.platform)
-    .filter((platform): platform is PlatformKey =>
-      platformOptions.some((option) => option.key === platform),
-    );
-
   const updateTarget = (id: string, patch: Partial<LocalVideoTarget>) =>
     onChange(
       targets.map((target) =>
@@ -89,28 +108,34 @@ export function LocalVideoTargetSettings({
       ),
     );
 
-  const setPlatforms = (next: PlatformKey[]) => {
-    const custom = targets.filter((target) => !target.platform);
-    const nextTargets = next.map((platform, index) => {
-      const existing = targets.find((target) => target.platform === platform);
+  const setProfiles = (next: RenderProfile[]) => {
+    const custom = targets.filter((target) => target.profile === "custom");
+    const existingByProfile = new Map<RenderProfile, LocalVideoTarget>();
+    for (const target of targets) {
+      if (target.profile && !existingByProfile.has(target.profile))
+        existingByProfile.set(target.profile, { ...target });
+    }
+    const nextTargets = next.map((profile, index) => {
+      const existing = existingByProfile.get(profile);
       if (existing) return existing;
-      const profile = PLATFORM_RENDER_PROFILES[platform];
       const size = sizeForProfile(profile) ?? { width: 1080, height: 1080 };
       return {
-        id: `target-${platform}`,
-        platform,
+        id: `target-${profile}`,
         profile,
         width: size.width,
         height: size.height,
         fps: 30,
-        filename: filenameFor(platform, index),
+        filename: filenameFor(profile, index),
       };
     });
-    onChange([...nextTargets, ...custom]);
+    onChange([
+      ...nextTargets,
+      ...custom.filter((target) => target.profile === "custom"),
+    ]);
   };
 
   const addCustom = () => {
-    if (targets.some((target) => !target.platform)) return;
+    if (targets.some((target) => target.profile === "custom")) return;
     onChange([
       ...targets,
       {
@@ -130,21 +155,40 @@ export function LocalVideoTargetSettings({
         <Typography.Text type="secondary">
           {t("localVideoWizard.multiOutputHint")}
         </Typography.Text>
-        <Select
-          mode="multiple"
-          value={selectedPlatforms}
+        <Checkbox.Group
+          value={targets
+            .map((target) => target.profile)
+            .filter((profile): profile is RenderProfile => Boolean(profile))}
           disabled={disabled}
-          style={{ width: "100%" }}
-          placeholder={t("localVideoWizard.targetPlatform")}
-          options={platformOptions.map((option) => ({
-            value: option.key,
-            label: option.label,
-          }))}
-          onChange={(value: PlatformKey[]) => setPlatforms(value)}
+          onChange={(value) => setProfiles(value as RenderProfile[])}
+          options={profiles
+            .filter(({ value }) => value !== "custom")
+            .map(({ value, labelKey }) => ({
+              value,
+              label: t(`localVideoWizard.targetFormats.${labelKey}`),
+            }))}
         />
+        <Space wrap>
+          {profiles
+            .filter(({ value }) => value !== "custom")
+            .map(({ value, labelKey }) => (
+              <Tag key={value}>
+                {t(`localVideoWizard.targetFormats.${labelKey}`)}:{" "}
+                {recommendedPlatforms[value]
+                  .map(
+                    (platform) =>
+                      platformOptions.find((option) => option.key === platform)
+                        ?.label ?? platform,
+                  )
+                  .join(" / ")}
+              </Tag>
+            ))}
+        </Space>
         <Button
           onClick={addCustom}
-          disabled={disabled || targets.some((target) => !target.platform)}
+          disabled={
+            disabled || targets.some((target) => target.profile === "custom")
+          }
         >
           {t("localVideoWizard.addCustomTarget")}
         </Button>
@@ -170,27 +214,23 @@ export function LocalVideoTargetSettings({
               >
                 <Space wrap>
                   <Typography.Text strong>
-                    {platformOptions.find(
-                      (option) => option.key === target.platform,
-                    )?.label ?? t("localVideoWizard.customTarget")}
+                    {t(
+                      `localVideoWizard.targetFormats.${
+                        profiles.find(
+                          (profile) =>
+                            profile.value === (target.profile ?? "custom"),
+                        )?.labelKey ?? "custom"
+                      }`,
+                    )}
                   </Typography.Text>
-                  <Select
-                    value={target.profile ?? "custom"}
-                    disabled={disabled}
-                    options={profiles.map((profile) => ({
-                      value: profile.value,
-                      label: t(
-                        `localVideoWizard.targetFormats.${profile.labelKey}`,
-                      ),
-                    }))}
-                    onChange={(profile: RenderProfile) => {
-                      const nextSize = sizeForProfile(profile);
-                      updateTarget(target.id, {
-                        profile,
-                        ...(nextSize ?? {}),
-                      });
-                    }}
-                  />
+                  {target.profile &&
+                    recommendedPlatforms[target.profile].map((platform) => (
+                      <Tag key={platform}>
+                        {platformOptions.find(
+                          (option) => option.key === platform,
+                        )?.label ?? platform}
+                      </Tag>
+                    ))}
                   <InputNumber
                     min={1}
                     max={4096}
@@ -291,7 +331,7 @@ export function LocalVideoJobResults({
                     })}
                   </Tag>
                 </Space>
-                {target.videoUrl && (
+                {target.status === "completed" && target.videoUrl && (
                   <video
                     controls
                     src={target.videoUrl}

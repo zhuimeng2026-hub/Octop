@@ -59,6 +59,67 @@ PowerShell 里 `$env:BASE_URL = "/videogen"; npm run build`。
 React Router 不知道 basename → 路由 404，页面显示「页面不存在」；
 Service Worker 注册在根 scope → 缓存了旧版本资源。
 
+### 1.1 实录：MSYS 把 `/videogen` 改成 `/C:/Program Files/Git/videogen`（2026-11-23）
+
+**症状与上面第 1 条不同**——不是「漏了前缀」，而是**前缀被换成了 Windows 盘符路径**：
+
+```
+src="/C:/Program%20Files/Git/videogen/assets/index.<hash>.js"
+href="/C:/Program%20Files/Git/videogen/favico.svg"
+```
+
+`index.html`、`manifest.json`、CSS 的 `url()`、JS 里的图标常量与
+`new URL("...", import.meta.url)` **共 125 处**引用全是这个前缀。更隐蔽的是
+bundle 里还烘焙了 `BASE_PATH="/C:/Program Files/Git/videogen"`——它被
+`getApiUrl()` / `getWsUrl()` / `BrowserRouter basename` 共 13 处使用，
+所以**不只是白屏，所有 API 请求与路由前缀一起坏掉**。
+
+**判定**（比开浏览器快）：
+
+```bash
+curl -s https://host/videogen/ | grep -o 'src="[^"]*"'
+# 出现 "C:/Program" 或 "/C:/Program%20Files" → 中招
+curl -s https://host/videogen/ | grep -c 'C:/Program'
+```
+
+**根因**：`BASE_URL=/videogen npm run build` 在 Git Bash 里被 MSYS 改写成
+`C:/Program Files/Git/videogen`（本节上面已写）。那次构建机没带
+`MSYS_NO_PATHCONV=1`，产物在 2026-11-23 23:01 同步上线，**面板白屏两天**。
+
+**应急修法**（生产机不能构建前端时，改已部署的产物）：
+
+> **现状（2026-11-25 14:14）**：线上产物已由前端环境用 `BASE_URL=/videogen` **正规重建**
+> 并同步，坏前缀与手工改写版一并消失（入口由 `index.wl19tg2O.js` 变为 `index.EI87YVH7.js`）。
+> 下面的应急改写**仅保留为「产物已坏且暂时无法重建」时的手段**，不是常规路径；常规路径是
+> 在前端环境重建后用 `scripts/deploy-dashboard.sh` 同步。
+
+1. 先备份产物：`cp -a src/octop/dashboard /opt/octop-data/dashboard-backups/<ts>-badwin-base`
+2. 把产物里的坏前缀改成**相对路径**（`/C:/.../videogen/` → 空）：
+   - `index.html` 的 `src`/`href` → `assets/xxx.js`、`favico.svg`（文档相对）
+   - CSS 的 `url(/C:/.../assets/X)` → `url(X)`（与样式表同目录）
+   - JS 的 `new URL("/C:/.../assets/X", import.meta.url)` → `new URL("X", import.meta.url)`（与模块同目录）
+   - JS 的字符串常量 → `"assets/X"`（文档相对）
+   - `manifest.json` 的 `id`/`start_url`/`scope` → `"./"`，图标 → `"./x.png"`
+3. 把 bundle 里烘焙的 `BASE_PATH` 改成**运行时推导**（入口脚本 URL 去掉 `/assets/` 段），
+   产物就不再依赖任何写死的前缀：
+
+   ```js
+   BASE_PATH=(function(){try{
+     var s=document.querySelector('script[type="module"][src]');
+     if(s){var p=new URL(s.src,document.baseURI).pathname;
+           var i=p.lastIndexOf("/assets/");if(i>0)return p.slice(0,i);}
+     return new URL(".",document.baseURI).pathname;
+   }catch(e){return ""}})().replace(/\/+$/,"")
+   ```
+
+**注意**：产物里的 `index.html` 是 `cache-control: no-cache`（会重新校验），
+但 `assets/*` 是 `immutable, max-age=31536000`——**改了同名文件，老浏览器仍会用
+旧副本**。所幸内容哈希文件名每次构建都会变，新产物用的是新名字，浏览器必然重取；
+手工改同一份产物时若改了同名文件，则要另行改名破缓存。
+
+**根治**：在前端构建环境用 `MSYS_NO_PATHCONV=1 BASE_URL=/videogen npm run build`
+（或 PowerShell）重新构建并同步，本节的应急改写随之作废（下次同步会被覆盖）。
+
 ---
 
 ## 2. 反代带不带尾斜杠

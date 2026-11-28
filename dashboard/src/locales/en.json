@@ -6744,6 +6744,7 @@
     "oidcWith": "Continue with {{name}}",
     "noProviderEnabled": "No sign-in method is available. Contact the administrator.",
     "oidcStartFailed": "Could not start single sign-on",
+    "debugLoginFailed": "Debug sign-in failed. Check the local test server and account configuration.",
     "ldapHint": "Sign in with your {{name}} account",
     "oidcError": {
       "denied": "Single sign-on was cancelled.",
@@ -8578,6 +8579,8 @@
       "confirm": "Confirm rendering",
       "result": "Finished video"
     },
+    "mainProduct": "Main product (default title and selling points)",
+    "materialSources": "Material source categories (multi-select)",
     "inbox": "Unfiled materials",
     "selectedCount": "{{count}} selected",
     "noMaterials": "No materials here yet. Import images to continue.",

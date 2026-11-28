@@ -144,12 +144,13 @@ http://dw.mengxa.com/...    （兜底）
 
 | 来源 | 版本 | 用途 |
 |---|---|---|
-| `CHANGELOG.md` / README badge | **1.5.0** | 对外发布版本（2026-11-12） |
+| `CHANGELOG.md` / README badge | **1.5.1** | 对外发布版本（2026-11-25） |
+| 生产部署 ref | `main` | 线上 `/opt/Octop` checkout 到 `main` 分支（tip 即 `v1.5.1` tag 所在提交）；见 [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) |
 | `pyproject.toml` | 1.4.0 | Python 包版本 |
 | 桌面构建脚本 / exe 文件名 | 1.4.0 | 桌面客户端版本 |
 | `desktop/.../info.json` | 0.9.26 | Windows 文件版本资源（历史遗留） |
 
-> 影响：分发时以 CHANGELOG/README 的 1.5.0 为对外口径；制品文件名沿用 1.4.0。
+> 影响：分发时以 CHANGELOG/README 的 1.5.1 为对外口径；制品文件名沿用 1.4.0。
 > 两者不一致是历史状态，非笔误。
 
 ---

@@ -136,7 +136,7 @@
 | 文档 | 说明 |
 |---|---|
 | [eval/README.md](./eval/README.md) | 评测规范（**规范性**）：L0–L4 分层、任务集格式、判定规则、集合划分与 CI 接入；样板见 [eval/examples/](./eval/examples/product-video-multi-category.yaml) |
-| [backlog.md](./backlog.md) | 工程待办登记（**规范性**）：条目格式、优先级语义、可无人值守执行的规格要求；当前条目 B-001…B-006 |
+| [backlog.md](./backlog.md) | 工程待办登记（**规范性**）：条目格式、优先级语义、可无人值守执行的规格要求；当前条目 B-001…B-007 |
 | [todo.md](./todo.md) | 需要人 / 特定环境的待办（扫码、真机、真实账号）；与 backlog 的分流见 §文档维护规范第 7 条 |
 | [wip-branch-workflow.md](./wip-branch-workflow.md) | WIP 分支工作流（**规范性**）：未提交工作树的快照、重放规则、保留与清理判据、与镜像链路的关系 |
 | [feishu-rewrite-rules.md](./feishu-rewrite-rules.md) | 飞书通俗版改写规则（**发布口径，非产品需求**）：把 PRD.md 改写成人话版的范围、术语与事实边界 |

@@ -93,6 +93,10 @@ WIP 分支**可以删除**，当且仅当以下三条全部满足：
 
 **不要**反过来：为了让快照分支「有存在理由」而把生产留在快照版本上。
 
+**当前线上（2026-11-25 核实）**：生产工作树 `/opt/Octop` checkout 到 **`main`** 分支，其 tip 即 `v1.5.1` tag 所在提交（`git describe --tags` → `v1.5.1`）；`octop.service` 重启后 `/videogen/api/health` → 200。此前线上停在 `develop`（属本表所列的禁止来源），已按上述处置顺序纠正——过程与证据见 [todo.md T-003](./todo.md)。
+
+> 部署落地方式：先按 `release/*` → `main` → `v*` tag 发布，再让生产 checkout 到 `main`；生产工作树始终停在**带 tag 的 `main` 提交**上。`main` 前进后需重新 checkout + 重启才会切到新提交。
+
 ### 怎么验证「已重放」
 
 ```bash
@@ -124,7 +128,7 @@ git diff cnb/develop wip/<主题> -- <path>
 
 | 分支 | 快照提交 | 来源 | 状态 | 关联文档 |
 |---|---|---|---|---|
-| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **待处理** —— 内容已逐项重放到 `develop`；“线上仍在跑”仅为登记记录（登记证据日期 2026-11-24），须以实际进程/健康证据复核，不能据此宣称当前线上状态；完成后按 §5 核对实际发布 refs 再清理 | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
+| `wip/product-library-batch-import` | `ea0c24c5` | 线上 `/opt/Octop` 工作树（原停在 `feat/desktop-slim-installer @ bf5994a9`） | **已清理（2026-11-25）** —— 内容已逐项重放到 `develop`/`main`（逐行覆盖比对 2749 行中 2403 行原样在 `main`，其余为同批功能的改写形态：迁移 027→028、桌面端改 manifest 分片下载、Gitee 链改 `push_readme.py` 单一事实源）；线上已于同日切到 `main` 的 `v1.5.0`；本地 + GitHub + CNB 三处分支均已删除，保留 SHA `ea0c24c5` 的历史引用与 `v1.4.0-gitee.1` tag | [product-library-import-architecture.md §4.2](./product-library-import-architecture.md) |
 
 ---
 

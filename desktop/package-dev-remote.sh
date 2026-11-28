@@ -21,6 +21,22 @@ REMOTE="${OCTOP_DEV_REMOTE_URL:-https://ocbot.aixifs.com/videogen}"
 VITE_PORT="${OCTOP_DEV_VITE_PORT:-5173}"
 USE_VITE=1
 [[ "${1:-}" == "--direct" ]] && USE_VITE=0
+DEBUG_LOGIN="${OCTOP_DEV_SKIP_WECHAT_LOGIN:-0}"
+
+if [[ "$DEBUG_LOGIN" == "1" ]]; then
+  [[ "$USE_VITE" -eq 1 ]] || { echo "WeChat login debug mode cannot use --direct." >&2; exit 1; }
+  [[ -n "${OCTOP_DEV_REMOTE_URL:-}" ]] || { echo "WeChat login debug mode requires OCTOP_DEV_REMOTE_URL." >&2; exit 1; }
+  [[ -n "${OCTOP_DEV_VITE_PORT:-}" ]] || VITE_PORT=5174
+  [[ "$VITE_PORT" == "5174" ]] || { echo "WeChat login debug mode requires port 5174." >&2; exit 1; }
+  case "$REMOTE" in
+    http://127.0.0.1:*|http://localhost:*|http://\[::1\]:*) ;;
+    *) echo "WeChat login debug mode requires an explicit http:// loopback target." >&2; exit 1 ;;
+  esac
+  [[ -n "${OCTOP_DEV_LOGIN_USERNAME:-}" && -n "${OCTOP_DEV_LOGIN_PASSWORD:-}" ]] || {
+    echo "WeChat login debug mode requires OCTOP_DEV_LOGIN_USERNAME and OCTOP_DEV_LOGIN_PASSWORD." >&2
+    exit 1
+  }
+fi
 
 if ! command -v go >/dev/null 2>&1; then
   echo "go is not installed (need Go 1.25+)." >&2
@@ -48,7 +64,13 @@ ORIGIN="${scheme}://${host}"
 
 vite_pid=""
 cleanup() {
-  [[ -n "$vite_pid" ]] && kill "$vite_pid" 2>/dev/null || true
+  if [[ -n "$vite_pid" ]]; then
+    if command -v taskkill.exe >/dev/null 2>&1; then
+      taskkill.exe //PID "$vite_pid" //T //F >/dev/null 2>&1 || true
+    else
+      kill "$vite_pid" 2>/dev/null || true
+    fi
+  fi
 }
 trap cleanup EXIT INT TERM
 
@@ -68,6 +90,9 @@ if [[ "$USE_VITE" -eq 1 ]]; then
       BASE_URL="$BASE_PATH" \
       VITE_API_TARGET="$ORIGIN" \
       VITE_DEV_PORT="$VITE_PORT" \
+      OCTOP_DEV_SKIP_WECHAT_LOGIN="$DEBUG_LOGIN" \
+      OCTOP_DEV_LOGIN_USERNAME="${OCTOP_DEV_LOGIN_USERNAME:-}" \
+      OCTOP_DEV_LOGIN_PASSWORD="${OCTOP_DEV_LOGIN_PASSWORD:-}" \
       npm run dev
   ) &
   vite_pid=$!

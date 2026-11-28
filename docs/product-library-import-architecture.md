@@ -89,7 +89,7 @@
 | 验证项 | 结果 |
 |---|---|
 | 服务状态 | ✅ `octop.service` active；`/videogen/api/health` → 200 |
-| 代码版本 | `ea0c24c5 wip: 备份线上工作树在途改动`（线上在途快照，存于分支 `wip/product-library-batch-import`；与本地 develop `6205ce99` 不同。**线上跑 WIP 快照属部署偏差**，按 [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 应更新生产到 `main` 的 `v*` tag 后再删该分支） |
+| 代码版本 | `main`（tip == `v1.5.1` tag 所在提交；2026-11-25 起线上 `/opt/Octop` checkout 到 `main`）。此前记录为 `ea0c24c5 wip: 备份线上工作树在途改动`——**线上跑 WIP 快照属部署偏差**，已于 2026-11-25 按 [wip-branch-workflow.md §5.1](./wip-branch-workflow.md) 更正为正式版本） |
 | `batch_import.py` | ✅ 存在（13974 B，Nov 18 20:55） |
 | `/imports/analyze` 路由 | ✅ 401（非 404），已注册 |
 | `/imports/commit` 路由 | ✅ 401（非 404），已注册 |
