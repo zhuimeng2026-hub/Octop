@@ -399,11 +399,16 @@ uv run pytest tests/unit/i18n -q
 
 **状态**：待实施（登记日期：2026-11-28）
 **优先级**：P1 重要不紧急
+**跟踪**：CNB issue 四条并行跟踪（规格只在本条目，不在 issue 里复制）：
+[#34 引擎打包与发布管线](https://cnb.cool/mengxa.com/Octop/-/issues/34)、
+[#35 客户端按需下载与校验](https://cnb.cool/mengxa.com/Octop/-/issues/35)、
+[#36 Go 侧桥接与进程生命周期](https://cnb.cool/mengxa.com/Octop/-/issues/36)、
+[#37 前端入口与导出物回流](https://cnb.cool/mengxa.com/Octop/-/issues/37)
 **语义来源**：[concat-editor-integration.md §1–§7](./concat-editor-integration.md)（结论与依据）、
 [desktop-video-bridge-contract.md](./design/desktop-video-bridge-contract.md)（桥接动作现行契约）、
 [RELEASE-MATRIX.md §6](./RELEASE-MATRIX.md)（两条产品线安排）、
 [PRD.md §4.1](./PRD.md)（桌面壳六条红线）
-**可无人值守执行**：**否** —— 三项前置未收口（见下），且涉及前端构建环境
+**可无人值守执行**：**否** —— 前置 1、2 已收口（启动 ✓、分发口径 = 乙 ✓），仍需产品位置拍板（前置 4）与前端构建环境
 
 **背景**：极简一键生成版覆盖不了的成片场景，缺的是「在 PC 上再剪一刀」的能力。Concat 侧已有
 MCP / JSON-RPC 两种进程外接口与绿色（portable）模式，接入路径清晰（见结论文档）；不做的后果是
@@ -428,7 +433,8 @@ MCP / JSON-RPC 两种进程外接口与绿色（portable）模式，接入路径
 
 **前置条件**：
 1. 「是否启动 Concat 接入（编辑版）开发」拍板为「启动」；
-2. Concat 引擎分发口径三选一收口（甲 / 乙 / 丙，见 [concat-editor-integration.md §8](./concat-editor-integration.md)）；
+2. ~~Concat 引擎分发口径三选一收口~~ —— **已定：乙（客户端按需下载并校验）**，2026-11-28；
+   三渠道差异与理由见 [concat-editor-integration.md §8.1](./concat-editor-integration.md)。
 3. 上游版本锁定：记录 Concat 版本号 / commit、下载地址与 sha256，并复核许可边界
    （AGPL-3.0-or-later，独立进程调用，不改其代码随包分发）；
 4. 编辑入口的产品位置拍板（工作台第三阶段内 / 独立一级入口）；
