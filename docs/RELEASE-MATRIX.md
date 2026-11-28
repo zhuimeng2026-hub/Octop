@@ -1,8 +1,8 @@
 # Octop 交付形态与渠道矩阵
 
 > 文档类型：产品交付/发布参考（Release & Delivery Reference）
-> 状态：活文档，最新核实 2026-11-20
-> 代码基线：分支 `feat/desktop-direct-chat-panel`，HEAD `019c6e00`
+> 状态：活文档，最新核实 2026-11-28
+> 代码基线：分支 `develop`
 >
 > 本文固化「有哪些客户端形态、各自怎么构建、发到哪里、版本如何对齐」。
 > 这些事实此前散落在 CHANGELOG、多个 `docs/desktop-*.md` 与构建脚本中，容易误用。
@@ -168,11 +168,59 @@ http://dw.mengxa.com/...    （兜底）
 
 ---
 
-## 6. 相关文档
+## 6. 两条产品线的并行安排（2026-11-28 定）
+
+产品线上会同时存在两条：**极简一键生成版**（现行主推，thin 内核绿色版）与
+**带编辑界面的新版本**（在建，接 Concat 引擎；可行性结论见
+[Concat 接入结论](./concat-editor-integration.md)）。
+
+**安排口径**：两条线是**同一份代码的不同交付形态**，用「同一仓库 + 同一条 `main` + 两个版本号段」表达，
+**不得**用两个仓库或两条长期主干来表达。
+
+| 层 | 极简一键生成版 | 带编辑界面的新版本 |
+|---|---|---|
+| 仓库 / 主干 | 同一仓库、同一 `main` | 同左 |
+| 开发 | `main` 保持可发布 | `feature/desktop-editor` → PR → `develop` |
+| 发布 | `release/1.x.y` → PR → `main` → tag `v1.x.y` | `release/2.0.0` → PR → `main` → tag `v2.0.0` |
+| 分发产物 | thin 内核绿色版（**不含** Concat 引擎） | 同一 thin 壳 + 编辑入口 + Concat 引擎**按需下载并校验**（口径已定为「乙」，见 §6.2） |
+| CNB 上的载体 | 同一仓库、同一条 `main`，按 tag 区分下载页 | 同左 |
+
+### 6.1 规则（规范性）
+
+1. **MUST NOT** 为两条产品线开两个仓库或两条长期主干。
+2. 版本 MUST 用同一 tag 序列表达（`v1.x.y` / `v2.0.0`）；**MUST NOT** 用仓库名或分支名表达版本。
+3. 合并 MUST 在 **GitHub（权威源）** 执行。CNB 侧只开合并请求作协作入口，
+   **MUST NOT** 在 CNB 直接合并——镜像是单向的（GitHub → CNB），CNB 上的合并不会回流 GitHub，
+   且会让镜像推送被拒绝、镜像工作流变红。详见 [CNB 镜像](./cnb-mirror.md)。
+4. 功能分支 MUST 两边都推（`git push origin <branch>` 与 `git push cnb <branch>`）。
+   本仓是 fork，**push 事件不触发 workflow**，镜像实际靠 `pull_request` 事件与每日 02:30 的兜底 cron
+   同步，单推一侧会让 CNB 落后。
+5. `main` MUST 只接受 `release/*` 与 `hotfix/*` 的 PR（`.github/workflows/restrict-pr-authors.yml`）。
+   因此编辑版进 `main` 前 MUST 先切 `release/2.0.0`。
+6. 生产部署 MUST 只认 `main` 上的 `v*` tag（[wip-branch-workflow.md §5.1](./wip-branch-workflow.md)）。
+   编辑版在打出自己的 tag 之前 MUST NOT 上生产；极简版照常发 `1.x`。
+7. 协作跟踪 MUST 走 CNB 的 Issue/PR；工程执行规格 MUST 只落 [backlog.md](./backlog.md)
+   （一条待办一个落点）。建议用 label 分线：编辑版 `editor-2.0`、极简版 `thin-1.x`。
+
+### 6.2 未决事项（待决）
+
+| 问题 | 落点 |
+|---|---|
+| **是否启动 Concat 接入（编辑版）开发** | **已决 · 启动**（2026-11-28）；执行条目 [backlog.md B-008](./backlog.md) |
+| Concat 引擎分发口径三选一（随包 / 客户端按需下载校验 / 用户自备） | **已决 · 乙（客户端按需下载并校验）**（2026-11-28）；三渠道差异与选型理由见 [concat-editor-integration.md §8.1](./concat-editor-integration.md) |
+
+> 长期双主干（一条 1.x 维护线 + 一条 2.x 迭代线，类似 LTS）**暂不采用**：
+> 只有当编辑版确实需要长期与极简版分叉演进时才重新评估。
+
+---
+
+## 7. 相关文档
 
 - [PRD](./PRD.md) — 产品需求
 - [桌面 Windows 构建](./desktop-windows-build.md) — 构建流程与本机坑
 - [分层下载任务书](./desktop-runtime-layered-download-task.md) — PR-0/PR-1 待办与代码位置
 - [桌面引导安装器设计](./desktop-bootstrap-installer.md) — 方案与路线图权威文档
 - [CNB 镜像](./cnb-mirror.md)、[Gitee 发布](./gitee-release.md) — 渠道细节
+- [Concat 接入结论](./concat-editor-integration.md) — 带编辑界面的新版本（2.x 线）的可行性结论与分发口径候选
+- [wip-branch-workflow.md](./wip-branch-workflow.md) — 分支隔离、tag 与生产部署来源的口径
 - [CHANGELOG](../CHANGELOG.md) — 版本变更记录

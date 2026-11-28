@@ -111,6 +111,7 @@
 | [desktop-runtime-layered-download-report-pr1.md](./desktop-runtime-layered-download-report-pr1.md) | PR-1 报告（源码层制品） |
 | [desktop-runtime-layered-download-report-pr35.md](./desktop-runtime-layered-download-report-pr35.md) | PR-3/PR-5 设计与最小实现报告 |
 | [desktop-single-instance.md](./desktop-single-instance.md) | 桌面端进程互斥（单实例）复核（权威） |
+| [concat-editor-integration.md](./concat-editor-integration.md) | Concat 视频编辑器接入 PC 客户端的可行性结论（原生 Slint 界面**不能同窗嵌入**；推荐双窗口路径 A；AGPL 独立进程边界；Win10 绿色免安装可行性与分发口径三候选） |
 
 ## 8. 部署与运维
 
@@ -136,7 +137,7 @@
 | 文档 | 说明 |
 |---|---|
 | [eval/README.md](./eval/README.md) | 评测规范（**规范性**）：L0–L4 分层、任务集格式、判定规则、集合划分与 CI 接入；样板见 [eval/examples/](./eval/examples/product-video-multi-category.yaml) |
-| [backlog.md](./backlog.md) | 工程待办登记（**规范性**）：条目格式、优先级语义、可无人值守执行的规格要求；当前条目 B-001…B-007 |
+| [backlog.md](./backlog.md) | 工程待办登记（**规范性**）：条目格式、优先级语义、可无人值守执行的规格要求；当前条目 B-001…B-008 |
 | [todo.md](./todo.md) | 需要人 / 特定环境的待办（扫码、真机、真实账号）；与 backlog 的分流见 §文档维护规范第 7 条 |
 | [wip-branch-workflow.md](./wip-branch-workflow.md) | WIP 分支工作流（**规范性**）：未提交工作树的快照、重放规则、保留与清理判据、与镜像链路的关系 |
 | [feishu-rewrite-rules.md](./feishu-rewrite-rules.md) | 飞书通俗版改写规则（**发布口径，非产品需求**）：把 PRD.md 改写成人话版的范围、术语与事实边界 |
