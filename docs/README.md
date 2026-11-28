@@ -111,6 +111,7 @@
 | [desktop-runtime-layered-download-report-pr1.md](./desktop-runtime-layered-download-report-pr1.md) | PR-1 报告（源码层制品） |
 | [desktop-runtime-layered-download-report-pr35.md](./desktop-runtime-layered-download-report-pr35.md) | PR-3/PR-5 设计与最小实现报告 |
 | [desktop-single-instance.md](./desktop-single-instance.md) | 桌面端进程互斥（单实例）复核（权威） |
+| [concat-editor-integration.md](./concat-editor-integration.md) | Concat 视频编辑器接入 PC 客户端的可行性结论（原生 Slint 界面**不能同窗嵌入**；推荐双窗口路径 A；AGPL 独立进程边界；Win10 绿色免安装可行性与分发口径三候选） |
 
 ## 8. 部署与运维
 
